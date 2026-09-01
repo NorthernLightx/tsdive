@@ -47,9 +47,12 @@ def time_weighted_mean(
     epoch = ts.to_numpy(dtype="datetime64[ns]").astype("int64")
     backwards = [int(i) for i in np.flatnonzero(np.diff(epoch) < 0) + 1]
     if backwards:
+        # Positions index the GOOD subset, not the caller's frame. Saying
+        # "positions" alone reads the same as ensure_monotonic's frame-row
+        # message and sends the reader to the wrong rows.
         raise NonMonotonicIndex(
-            f"non-monotonic timestamps at positions {backwards}; "
-            "refusing to sort silently",
+            f"non-monotonic timestamps at GOOD-sample positions {backwards} "
+            "(counted over GOOD samples, not frame rows); refusing to sort silently",
             offending_positions=backwards,
         )
     end = window_end if window_end is not None else ts.iloc[-1]

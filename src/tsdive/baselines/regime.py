@@ -81,7 +81,10 @@ def regime_baselines(
         mad = float(np.median(np.abs(vals - med))) * MAD_TO_SIGMA
         out[regime] = RegimeBaseline(regime=regime, center=med, scale=mad, n_good=len(vals))
     if not out:
-        raise InsufficientQuality("no GOOD samples in history at all")
+        # Reachable only with no mode labels, which _require_alignment
+        # ties to a history of no rows. A regime holding no GOOD sample
+        # raises RegimeTooSparse above and names that regime.
+        raise InsufficientQuality("history has no rows; there is no regime to baseline")
     return out
 
 

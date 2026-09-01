@@ -106,8 +106,13 @@ def check_comparable(
             reference state, or differing dimensions.
     """
     ra, rb = resolve_unit(a_raw), resolve_unit(b_raw)
-    for r in (ra, rb):
+    for name, r in (("a_raw", ra), ("b_raw", rb)):
         if not r.resolved:
+            if not r.raw:
+                raise UnresolvedUnitError(
+                    f"{name} names no unit; declare the tag's unit_raw before "
+                    "comparing units"
+                )
             raise UnresolvedUnitError(
                 f"unit {r.raw!r} is not in the alias table; "
                 "register it or declare the reference state"
