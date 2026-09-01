@@ -1,35 +1,20 @@
 # tsdive
 
-tsdive is a Python library and command-line tool for data-quality
-checks and statistical monitoring of process time series (historian and
-sensor data).
+[![ci](https://github.com/NorthernLightx/tsdive/actions/workflows/ci.yml/badge.svg)](https://github.com/NorthernLightx/tsdive/actions/workflows/ci.yml)
 
-It checks a window for gaps, bad quality codes, clipped ranges, timestamp
-faults and unit mismatches, then runs baseline, control-chart and PCA
-monitoring on the same data. It reads parquet archives, CSV exports, or a
-custom source adapter ([docs/SOURCES.md](docs/SOURCES.md)), and writes
-text, Python objects, a static HTML page, or a JSON ledger. It runs
-offline with no server. A check with no answer raises a typed error.
-
-## How it compares
-
-General anomaly-detection libraries score the values they are given.
-tsdive checks what the archive did to those values first.
-
-| Tool | What it does | What tsdive does differently |
-|---|---|---|
-| PyOD | outlier detectors over numeric feature arrays | reads timestamps, quality codes and units before any detector runs, and raises `SchemaError` when they are missing |
-| ADTK | rule-based and unsupervised anomaly detection on pandas series | reports coverage, gap classes and clipping for the window, and raises `InsufficientQuality` instead of scoring a censored one |
-| Darts | forecasting models with anomaly scores from forecast residuals | takes baselines from validated reference windows and raises `ValueError` when a baseline overlaps the window it screens |
-| aeon | machine-learning toolkit for time-series tasks | states the sampling contract of every window and raises `IncomparableSamplingError` across contracts |
-| Seeq, TrendMiner | commercial analytics servers connected to a live historian | runs offline on exported archives, makes no network calls, and replays identically under a recorded provenance fingerprint |
-
-A refusal is a typed error naming the check that failed. Detectors,
-control charts and reports inherit every check above.
+tsdive is a Python library and command-line tool that checks process
+time series (historian and sensor archives) for gaps, bad quality codes,
+clipped ranges, timestamp faults and unit mismatches, then runs baseline,
+control-chart and PCA monitoring on the same window. It reads single-tag
+parquet archives, built from CSV or parquet exports with `ingest` or
+through a source adapter ([docs/SOURCES.md](docs/SOURCES.md)), and writes
+text, JSON, Python objects or a static HTML page. A check with no answer
+raises a typed error naming the check.
 
 ## Install
 
-To try it on the demo data, clone the repository:
+tsdive needs Python 3.12 or newer. To try it on the demo data, clone the
+repository:
 
 ```console
 git clone https://github.com/NorthernLightx/tsdive.git && cd tsdive
@@ -38,27 +23,27 @@ python scripts/make_demo_archive.py
 ```
 
 To use it on your own archives without a clone:
-`pip install "git+https://github.com/NorthernLightx/tsdive.git"`.
-Add `[ml]` to that line for the IsolationForest detector (scikit-learn).
-The package is not on PyPI.
+`pip install "git+https://github.com/NorthernLightx/tsdive.git"`. Built
+wheels are on the
+[releases page](https://github.com/NorthernLightx/tsdive/releases). Add
+`[ml]` to the install for the IsolationForest detector (scikit-learn) or
+`[mcp]` for the MCP server. The package is not on PyPI.
 
 The library and CLI make no network calls. The dataset fetch scripts
 under `scripts/` download on request and print their size first.
 
-Every analysis command takes `--json` and prints one JSON object instead
-of text. `--no-color` and the `NO_COLOR` environment variable turn colour
-off.
-
 ## Use
 
-Commands in the order you run them once you have an archive.
-`tsdive --help` lists them.
+Commands in the order you run them on an archive. `tsdive --help` lists
+them. Every analysis command takes `--json` after the command name and
+prints one JSON object instead of text. `--no-color` and the `NO_COLOR`
+environment variable turn colour off. The transcripts below are trimmed
+to the lines the text reads.
 
 ### profile
 
 Data checks and statistics for one window. The headline carries the
-numbers you read first, then one section per group of findings. The
-Timestamps section and two Values lines are trimmed, 6 of 30.
+numbers you read first, then one section per group of findings.
 
 ```console
 $ tsdive profile data/demo/fic101_demo.parquet \
@@ -96,7 +81,6 @@ only. The transmitter sat at full scale for half an hour.
 ### segment
 
 Finds where the tag's level changed, so you can pick a baseline window.
-3 of the 6 segment rows are trimmed.
 
 ```console
 $ tsdive segment data/demo/fic101_demo.parquet
@@ -116,8 +100,7 @@ fewer segments.
 
 ### screen
 
-Flags samples outside a baseline built from another window. The caveat
-line is trimmed.
+Flags samples outside a baseline built from another window.
 
 ```console
 $ tsdive screen data/demo/fic101_demo.parquet \
@@ -144,8 +127,7 @@ censored, or that overlaps the window, raises an error in `screen`,
 ### spc
 
 Individuals control chart with three Nelson rules on the same baseline
-as `screen`. A rule with no hits prints zero. All but the first hit of
-each rule is trimmed, 11 of 26 lines.
+as `screen`. A rule with no hits prints zero.
 
 ```console
 $ tsdive spc data/demo/fic101_demo.parquet \
@@ -170,8 +152,7 @@ TREND_6  2
 
 ### mspc
 
-PCA T2 and SPE over two or more archives on one grid. All but the first
-breach timestamp of each statistic is trimmed, 10 of 23 lines.
+PCA T2 and SPE over two or more archives on one grid.
 
 ```console
 $ tsdive mspc \
@@ -256,7 +237,7 @@ tz = ["Europe/London"]
 ```
 
 The findings go to the files, so stdout carries the counts and the
-refusals. Nothing is trimmed here.
+refusals.
 
 ```console
 $ tsdive run examples/plans/demo.toml
@@ -271,15 +252,15 @@ wrote     examples/plans/tsdive-run/ledger.json
           examples/plans/tsdive-run/report.html
 ```
 
-`ledger.txt` opens with this text and then carries every finding in full.
-
-Here the baseline holds the 40-minute outage. `tsdive report-html
+Here the baseline holds the 40-minute outage, so the aligned grid covers
+0.867 and `mspc` raises `MspcAlignmentError`. `ledger.txt` opens with
+this text and then carries every finding in full. `tsdive report-html
 <parquet...> --window START/END -o report.html` writes the same HTML
 page for bare archives without a plan.
 
-### Your own export
+### ingest
 
-`ingest` builds an archive from a CSV or parquet export.
+Builds an archive from your own CSV or parquet export.
 
 ```console
 tsdive ingest export.csv \
@@ -316,6 +297,13 @@ p.physics.coverage.coverage      # 0.933
 p.render()                       # the plain text the CLI prints, no colour
 ```
 
+### MCP
+
+`tsdive-mcp` serves `profile`, `segment`, `screen`, `spc` and `compare`
+to an MCP client over stdio, with the same arguments and fields as
+`--json`. It needs the `[mcp]` extra. Tools, arguments and result shapes
+are in [docs/MCP.md](docs/MCP.md).
+
 ## What it checks
 
 Every read runs these checks.
@@ -332,6 +320,19 @@ Every read runs these checks.
 | unit spelling resolves through one alias table | `units <raw> -> <canonical>` or `unresolved (null)` | `UnresolvedUnitError`; `IncomparableUnitsError`: reference-condition unit with no declared state |
 | statistics use GOOD rows only | `Values  GOOD n=...` | `InsufficientQuality`: no GOOD sample |
 
+## How it compares
+
+General anomaly-detection libraries score the values they are given.
+tsdive checks what the archive did to those values first.
+
+| Tool | What it does | What tsdive does differently |
+|---|---|---|
+| PyOD | outlier detectors over numeric feature arrays | reads timestamps and quality codes before any detector runs, and raises `SchemaError` on an archive with no metadata, naive timestamps or no quality column |
+| ADTK | rule-based and unsupervised anomaly detection on pandas series | reports coverage, gap classes and clipping for the window, and raises `InsufficientQuality` instead of scoring a censored one |
+| Darts | forecasting models with anomaly scores from forecast residuals | takes baselines from validated reference windows and raises `ValueError` when a baseline overlaps the window it screens |
+| aeon | machine-learning toolkit for time-series tasks | states the sampling contract of every window and raises `IncomparableSamplingError` across contracts |
+| Seeq, TrendMiner | commercial analytics servers connected to a live historian | runs offline on exported archives and replays identically under a recorded provenance fingerprint |
+
 ## Results on real data
 
 The checks ran over the 3W dataset (Petrobras, 1,119 offshore well
@@ -343,14 +344,15 @@ Reproduce with [docs/DATA.md](docs/DATA.md).
 ## Limits
 
 No fault diagnosis and no causal inference. No writes to any process or
-historian. No alarm limits, notifications or real-time path. Deferred work is in [docs/SCOPE.md](docs/SCOPE.md) and
+historian. No alarm limits, notifications or real-time path. Deferred
+work is in [docs/SCOPE.md](docs/SCOPE.md) and
 [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Development
 
 ```console
 uv sync          # editable install plus the dev group
-make test        # uv run pytest, 535 tests, offline
+make test        # uv run pytest, offline
 make lint        # uv run ruff check .
 make reference   # refusal cases, byte for byte
 make bench       # BENCHMARKS.md, byte for byte
