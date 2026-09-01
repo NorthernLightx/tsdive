@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install (pinned lockfile)
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Test (offline)
+        run: uv run pytest
+      - name: Reference cases byte-identical
+        run: uv run python examples/reference_case/run_reference.py
+      - name: Benchmarks byte-identical
+        run: uv run python examples/benchmarks/run_benchmarks.py

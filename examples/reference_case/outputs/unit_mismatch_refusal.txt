@@ -1,0 +1,11 @@
+reference case 1: unit-mismatch refusal
+
+tags:
+  plant1:FIC101.AIR_FLOW  unit_raw=Nm3/h (reference_condition=True)
+  plant1:FIC101.N2_FLOW   unit_raw=m3/h (reference_condition=False)
+requested: cross-tag comparison of air flow vs nitrogen flow
+declared reference state for Nm3/h: none
+
+result: REFUSED
+[IncomparableUnitsError] reference-condition unit(s) ['Nm3/h'] require a declared reference state before cross-tag comparison
+reason code present verbatim: IncomparableUnitsError

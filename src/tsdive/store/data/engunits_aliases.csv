@@ -1,0 +1,29 @@
+alias_raw,canonical,pint_units,reference_condition
+m3/h,cubic meters per hour,m^3/h,false
+m³/h,cubic meters per hour,m^3/h,false
+m3/s,cubic meters per second,m^3/s,false
+m³/s,cubic meters per second,m^3/s,false
+l/min,liters per minute,L/min,false
+Nm3/h,normal cubic meters per hour,m^3/h,true
+Sm3/h,standard cubic meters per hour,m^3/h,true
+scfm,standard cubic feet per minute,ft^3/min,true
+kg/h,kilograms per hour,kg/h,false
+t/h,metric tons per hour,t/h,false
+lb/h,pounds per hour,lb/h,false
+bar,bar,bar,false
+mbar,millibar,mbar,false
+psi,pounds per square inch,psi,false
+Pa,pascals,Pa,false
+kPa,kilopascals,kPa,false
+MPa,megapascals,MPa,false
+degC,degrees Celsius,degC,false
+oC,degrees Celsius,degC,false
+°C,degrees Celsius,degC,false
+degF,degrees Fahrenheit,degF,false
+K,kelvin,K,false
+percent,percent,%,false
+%,percent,%,false
+m/s,meters per second,m/s,false
+rpm,revolutions per minute,rpm,false
+mA,milliamperes,mA,false
+V,volts,V,false

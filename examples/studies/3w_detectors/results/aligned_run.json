@@ -1,0 +1,381 @@
+{
+  "iforest": [
+    {
+      "fold": 0,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 1,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 2,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 3,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 4,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    }
+  ],
+  "mspc": [
+    {
+      "explained_variance": [
+        0.654556,
+        0.295087,
+        0.050352
+      ],
+      "fold": 0,
+      "n_components": 3,
+      "n_fit_windows": 148,
+      "n_test_windows_refused": 12,
+      "n_train_windows_aligned": 76,
+      "n_train_windows_refused": 72
+    },
+    {
+      "explained_variance": [
+        0.768654,
+        0.228747
+      ],
+      "fold": 1,
+      "n_components": 2,
+      "n_fit_windows": 148,
+      "n_test_windows_refused": 19,
+      "n_train_windows_aligned": 80,
+      "n_train_windows_refused": 68
+    },
+    {
+      "explained_variance": [
+        0.524174,
+        0.419236,
+        0.056582
+      ],
+      "fold": 2,
+      "n_components": 3,
+      "n_fit_windows": 148,
+      "n_test_windows_refused": 36,
+      "n_train_windows_aligned": 92,
+      "n_train_windows_refused": 56
+    },
+    {
+      "explained_variance": [
+        0.601444,
+        0.353851
+      ],
+      "fold": 3,
+      "n_components": 2,
+      "n_fit_windows": 160,
+      "n_test_windows_refused": 36,
+      "n_train_windows_aligned": 104,
+      "n_train_windows_refused": 56
+    },
+    {
+      "explained_variance": [
+        0.477148,
+        0.448883,
+        0.073964
+      ],
+      "fold": 4,
+      "n_components": 3,
+      "n_fit_windows": 164,
+      "n_test_windows_refused": 18,
+      "n_train_windows_aligned": 96,
+      "n_train_windows_refused": 68
+    }
+  ],
+  "provenance": {
+    "aligned_manifest": {
+      "archives_root": "data/3w_archives",
+      "baseline_windows": 3,
+      "common_variables": [
+        "P-ANULAR",
+        "P-JUS-CKGL",
+        "P-MON-CKP",
+        "P-PDG",
+        "P-TPT",
+        "T-TPT"
+      ],
+      "design": "onset-aligned",
+      "disagreeing_windows": [],
+      "jobs": 14,
+      "n_feature_rows": 1524,
+      "n_instances": 48,
+      "n_test_windows_whose_rows_disagree_with_the_design_label": 0,
+      "n_wells": 21,
+      "n_windows": 288,
+      "n_windows_per_role": {
+        "baseline": 144,
+        "post0": 48,
+        "post1": 48,
+        "pre": 48
+      },
+      "offsets": [
+        {
+          "design_label": 0,
+          "offset": -5,
+          "role": "baseline"
+        },
+        {
+          "design_label": 0,
+          "offset": -4,
+          "role": "baseline"
+        },
+        {
+          "design_label": 0,
+          "offset": -3,
+          "role": "baseline"
+        },
+        {
+          "design_label": 0,
+          "offset": -2,
+          "role": "pre"
+        },
+        {
+          "design_label": 1,
+          "offset": 0,
+          "role": "post0"
+        },
+        {
+          "design_label": 1,
+          "offset": 1,
+          "role": "post1"
+        }
+      ],
+      "onsets_csv": "data/3w_windows/onsets.csv",
+      "per_folder_instances": {
+        "1": 3,
+        "6": 1,
+        "7": 23,
+        "8": 14,
+        "9": 7
+      },
+      "row_label_by_role": {
+        "baseline": {
+          "row_positive": 0,
+          "row_transient_only": 0,
+          "windows": 144
+        },
+        "post0": {
+          "row_positive": 48,
+          "row_transient_only": 47,
+          "windows": 48
+        },
+        "post1": {
+          "row_positive": 48,
+          "row_transient_only": 47,
+          "windows": 48
+        },
+        "pre": {
+          "row_positive": 0,
+          "row_transient_only": 0,
+          "windows": 48
+        }
+      },
+      "subgroups": 60,
+      "tagledger_version": "0.1.0",
+      "wall_seconds": 25.3,
+      "window_s": 3600.0
+    },
+    "beyond_float32": {
+      "features": {
+        "n_cells": 24,
+        "n_rows": 6
+      },
+      "subgroup_grid": {
+        "n_cells": 360,
+        "n_rows": 6
+      }
+    },
+    "code": {
+      "git_head": "edf2b4ad0debb4df2cfe6109d9c1da1c599211c6",
+      "tagledger_version": "0.1.0"
+    },
+    "dataset_manifest_sha256": "14bc1397d3eef8a671b9f6253d195c161d06157307e47e687829da2070f3b1c2",
+    "design": "onset-aligned",
+    "n_pairs_refused_degenerate_baseline": 56,
+    "n_pairs_with_a_usable_baseline": 198,
+    "onsets": {
+      "baseline_windows": 3,
+      "n_evaluable": 48,
+      "n_evaluable_steady_onset": 0,
+      "n_evaluable_transient_onset": 48,
+      "n_evaluable_wells": 21,
+      "n_instances": 1119,
+      "n_onset_steady": 375,
+      "n_onset_transient": 107,
+      "n_with_2_post_windows": 109,
+      "n_with_k_pre_and_2_post": 56,
+      "n_with_k_pre_windows": 60,
+      "n_with_onset": 482,
+      "n_without_onset": 637,
+      "onset_class_counts": {
+        "101": 4,
+        "102": 22,
+        "105": 11,
+        "106": 6,
+        "107": 36,
+        "108": 14,
+        "109": 14,
+        "3": 32,
+        "4": 343
+      },
+      "per_folder": {
+        "0": {
+          "evaluable": 0,
+          "instances": 594,
+          "k_pre_and_2_post": 0,
+          "with_onset": 0
+        },
+        "1": {
+          "evaluable": 3,
+          "instances": 4,
+          "k_pre_and_2_post": 3,
+          "with_onset": 4
+        },
+        "2": {
+          "evaluable": 0,
+          "instances": 22,
+          "k_pre_and_2_post": 0,
+          "with_onset": 22
+        },
+        "3": {
+          "evaluable": 0,
+          "instances": 32,
+          "k_pre_and_2_post": 0,
+          "with_onset": 32
+        },
+        "4": {
+          "evaluable": 0,
+          "instances": 343,
+          "k_pre_and_2_post": 0,
+          "with_onset": 343
+        },
+        "5": {
+          "evaluable": 0,
+          "instances": 11,
+          "k_pre_and_2_post": 6,
+          "with_onset": 11
+        },
+        "6": {
+          "evaluable": 1,
+          "instances": 6,
+          "k_pre_and_2_post": 1,
+          "with_onset": 6
+        },
+        "7": {
+          "evaluable": 23,
+          "instances": 36,
+          "k_pre_and_2_post": 25,
+          "with_onset": 36
+        },
+        "8": {
+          "evaluable": 14,
+          "instances": 14,
+          "k_pre_and_2_post": 14,
+          "with_onset": 14
+        },
+        "9": {
+          "evaluable": 7,
+          "instances": 57,
+          "k_pre_and_2_post": 7,
+          "with_onset": 14
+        }
+      },
+      "post_onset_windows_required": 2,
+      "pre_onset_windows_required": 5,
+      "seconds_after_onset": {
+        "median": 7169.0,
+        "p05": 4983.1,
+        "p95": 158146.2499999999
+      },
+      "seconds_to_onset": {
+        "median": 3600.0,
+        "p05": 3600.0,
+        "p95": 37651.149999999994
+      },
+      "wall_seconds": 6.2,
+      "window_s": 3600.0
+    },
+    "refusals": {
+      "design_refusal_reason": "fewer than 5 whole windows before onset or fewer than 2 after it, or no fault row at all",
+      "n_instances_evaluable": 48,
+      "n_instances_in_corpus": 1119,
+      "n_instances_refused_by_design": 1071
+    },
+    "split": {
+      "applies_to": [
+        "mspc_t2",
+        "mspc_spe",
+        "iforest"
+      ],
+      "fold_sizes": [
+        66,
+        66,
+        66,
+        48,
+        42
+      ],
+      "folds": [
+        [
+          "WELL-00022",
+          "WELL-00027",
+          "WELL-00032",
+          "WELL-00040"
+        ],
+        [
+          "WELL-00024",
+          "WELL-00025",
+          "WELL-00031",
+          "WELL-00041"
+        ],
+        [
+          "WELL-00006",
+          "WELL-00014",
+          "WELL-00023",
+          "WELL-00028",
+          "WELL-00029",
+          "WELL-00030"
+        ],
+        [
+          "WELL-00002",
+          "WELL-00019",
+          "WELL-00021",
+          "WELL-00037"
+        ],
+        [
+          "WELL-00001",
+          "WELL-00026",
+          "WELL-00042"
+        ]
+      ],
+      "group_col": "well",
+      "kind": "5-fold group holdout by well over the evaluable instances",
+      "n_folds": 5,
+      "seed": 42,
+      "stratum_col": "folder_label",
+      "why_not_the_others": "the own-history tools fit nothing across instances: each tag's limits come from that instance's own baseline windows, so a group holdout has no cross-instance parameter to protect"
+    },
+    "standardisation": {
+      "features": {
+        "n_pairs_with_baseline_stats": 254,
+        "n_scored_rows_without_baseline_stats": 12,
+        "n_zero_scale_columns": 603
+      },
+      "grid": {
+        "n_pairs_with_baseline_stats": 254,
+        "n_scored_rows_without_baseline_stats": 12,
+        "n_zero_scale_columns": 2876
+      }
+    },
+    "threshold_rule": "each instance's own alarm limit is the largest score the tool gave that instance's baseline windows; a test window fires when it scores strictly above it",
+    "wall_seconds": 15.0
+  }
+}

@@ -1,0 +1,10 @@
+reference case 2: insufficient-quality refusal
+
+window: plant1:TIC101.PV [2024-03-01T00:00:00+00:00 -> 2024-03-01T00:00:06+00:00]
+samples: 4; severity counts: BAD=4
+GOOD samples remaining after masking: 0
+requested: event-weighted mean over GOOD samples only
+
+result: REFUSED
+[InsufficientQuality] no GOOD samples remain after masking; refusing to invent a statistic
+reason code present verbatim: InsufficientQuality

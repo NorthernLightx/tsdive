@@ -1,0 +1,686 @@
+{
+  "iforest": [
+    {
+      "fold": 0,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 1,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 2,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 3,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 4,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    }
+  ],
+  "iforest_standardised": [
+    {
+      "fold": 0,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 1,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 2,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 3,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    },
+    {
+      "fold": 4,
+      "n_test_overflow": 0,
+      "n_train_overflow": 0
+    }
+  ],
+  "mspc": [
+    {
+      "explained_variance": [
+        0.349245,
+        0.272194,
+        0.164348,
+        0.128792,
+        0.062695
+      ],
+      "fold": 0,
+      "n_components": 5,
+      "n_test_windows_refused": 1634,
+      "n_train_windows_aligned": 2995,
+      "n_train_windows_refused": 2309
+    },
+    {
+      "explained_variance": [
+        0.421019,
+        0.230377,
+        0.165626,
+        0.124032,
+        0.040626
+      ],
+      "fold": 1,
+      "n_components": 5,
+      "n_test_windows_refused": 612,
+      "n_train_windows_aligned": 2128,
+      "n_train_windows_refused": 3331
+    },
+    {
+      "explained_variance": [
+        0.38081,
+        0.297335,
+        0.136741,
+        0.098316,
+        0.046081
+      ],
+      "fold": 2,
+      "n_components": 5,
+      "n_test_windows_refused": 883,
+      "n_train_windows_aligned": 2329,
+      "n_train_windows_refused": 3060
+    },
+    {
+      "explained_variance": [
+        0.393286,
+        0.184257,
+        0.168574,
+        0.130128,
+        0.098468
+      ],
+      "fold": 3,
+      "n_components": 5,
+      "n_test_windows_refused": 375,
+      "n_train_windows_aligned": 2304,
+      "n_train_windows_refused": 3568
+    },
+    {
+      "explained_variance": [
+        0.358312,
+        0.272691,
+        0.164393,
+        0.113296,
+        0.058382
+      ],
+      "fold": 4,
+      "n_components": 5,
+      "n_test_windows_refused": 439,
+      "n_train_windows_aligned": 2440,
+      "n_train_windows_refused": 3504
+    }
+  ],
+  "mspc_standardised": [
+    {
+      "explained_variance": [
+        0.986317
+      ],
+      "fold": 0,
+      "n_components": 1,
+      "n_test_windows_refused": 855,
+      "n_train_windows_aligned": 2017,
+      "n_train_windows_refused": 1578
+    },
+    {
+      "explained_variance": [
+        0.988961
+      ],
+      "fold": 1,
+      "n_components": 1,
+      "n_test_windows_refused": 283,
+      "n_train_windows_aligned": 1183,
+      "n_train_windows_refused": 2150
+    },
+    {
+      "explained_variance": [
+        0.987784
+      ],
+      "fold": 2,
+      "n_components": 1,
+      "n_test_windows_refused": 612,
+      "n_train_windows_aligned": 1545,
+      "n_train_windows_refused": 1821
+    },
+    {
+      "explained_variance": [
+        0.712508,
+        0.28592
+      ],
+      "fold": 3,
+      "n_components": 2,
+      "n_test_windows_refused": 301,
+      "n_train_windows_aligned": 1686,
+      "n_train_windows_refused": 2132
+    },
+    {
+      "explained_variance": [
+        0.990116
+      ],
+      "fold": 4,
+      "n_components": 1,
+      "n_test_windows_refused": 382,
+      "n_train_windows_aligned": 1817,
+      "n_train_windows_refused": 2051
+    }
+  ],
+  "population": {
+    "instance": {
+      "example_evidence": [
+        "window holds 1 distinct value; (WELL-00002, P-TPT) holds more than one in at least 95% of its 744 training windows (p05 762.6, median 1830)",
+        "window holds 1 distinct value; (WELL-00002, T-TPT) holds more than one in at least 95% of its 744 training windows (p05 481.9, median 1458)",
+        "window holds 1 distinct value; (WELL-00002, P-TPT) holds more than one in at least 95% of its 744 training windows (p05 762.6, median 1830)",
+        "window holds 1 distinct value; (WELL-00002, P-TPT) holds more than one in at least 95% of its 744 training windows (p05 762.6, median 1830)",
+        "window holds 1 distinct value; (WELL-00002, T-TPT) holds more than one in at least 95% of its 744 training windows (p05 481.9, median 1458)"
+      ],
+      "flagged_pairs": {
+        "WELL-00001|P-TPT": 2,
+        "WELL-00002|P-ANULAR": 28,
+        "WELL-00002|P-TPT": 7,
+        "WELL-00002|T-TPT": 6,
+        "WELL-00006|P-MON-CKP": 6,
+        "WELL-00006|T-TPT": 12,
+        "WELL-00014|P-ANULAR": 2,
+        "WELL-00014|P-TPT": 5,
+        "WELL-00014|T-TPT": 5,
+        "WELL-00019|P-MON-CKP": 2,
+        "WELL-00019|P-PDG": 69,
+        "WELL-00019|P-TPT": 2,
+        "WELL-00019|T-TPT": 10,
+        "WELL-00020|P-ANULAR": 2,
+        "WELL-00024|P-JUS-CKGL": 3,
+        "WELL-00024|P-TPT": 42,
+        "WELL-00041|P-MON-CKP": 3,
+        "WELL-00041|P-PDG": 12,
+        "WELL-00041|P-TPT": 12,
+        "WELL-00041|T-TPT": 12
+      },
+      "frozen_windows": {
+        "flagged_frac": 0.045532,
+        "n_frozen_feature_rows": 5315,
+        "n_frozen_flagged": 242,
+        "n_frozen_refused": 645,
+        "refused_frac": 0.121355
+      },
+      "whole_life_frozen": {
+        "n_indicted": 9,
+        "n_reachable_in_common_variable_set": 748,
+        "n_whole_life_frozen_measurement_tags": 1643,
+        "per_variable_indicted": {
+          "P-ANULAR": 1,
+          "P-JUS-CKGL": 0,
+          "P-MON-CKP": 0,
+          "P-PDG": 1,
+          "P-TPT": 6,
+          "T-TPT": 1
+        },
+        "per_variable_reachable": {
+          "P-ANULAR": 7,
+          "P-JUS-CKGL": 31,
+          "P-MON-CKP": 0,
+          "P-PDG": 652,
+          "P-TPT": 38,
+          "T-TPT": 20
+        }
+      }
+    },
+    "well": {
+      "example_evidence": [],
+      "flagged_pairs": {},
+      "frozen_windows": {
+        "flagged_frac": 0.0,
+        "n_frozen_feature_rows": 5315,
+        "n_frozen_flagged": 0,
+        "n_frozen_refused": 5315,
+        "refused_frac": 1.0
+      },
+      "whole_life_frozen": {
+        "n_indicted": 0,
+        "n_reachable_in_common_variable_set": 748,
+        "n_whole_life_frozen_measurement_tags": 1643,
+        "per_variable_indicted": {
+          "P-ANULAR": 0,
+          "P-JUS-CKGL": 0,
+          "P-MON-CKP": 0,
+          "P-PDG": 0,
+          "P-TPT": 0,
+          "T-TPT": 0
+        },
+        "per_variable_reachable": {
+          "P-ANULAR": 7,
+          "P-JUS-CKGL": 31,
+          "P-MON-CKP": 0,
+          "P-PDG": 652,
+          "P-TPT": 38,
+          "T-TPT": 20
+        }
+      }
+    }
+  },
+  "provenance": {
+    "beyond_float32": {
+      "features": {
+        "n_cells": 320,
+        "n_rows": 80
+      },
+      "subgroup_grid": {
+        "n_cells": 4795,
+        "n_rows": 80
+      }
+    },
+    "code": {
+      "git_head": "f5ab869af1bce1554fccbfa5cb035774cf75f243",
+      "tagledger_version": "0.1.0"
+    },
+    "common_variables": [
+      "P-ANULAR",
+      "P-JUS-CKGL",
+      "P-MON-CKP",
+      "P-PDG",
+      "P-TPT",
+      "T-TPT"
+    ],
+    "dataset_manifest_sha256": "14bc1397d3eef8a671b9f6253d195c161d06157307e47e687829da2070f3b1c2",
+    "min_baseline_windows": 20,
+    "n_positive": 3596,
+    "n_transient_only": 3057,
+    "n_windows": 6992,
+    "own_history": {
+      "baseline_windows": 3,
+      "feature_standardisation": {
+        "n_pairs_with_baseline_stats": 3036,
+        "n_scored_rows_without_baseline_stats": 124,
+        "n_zero_scale_columns": 7305
+      },
+      "grid_standardisation": {
+        "n_pairs_with_baseline_stats": 3036,
+        "n_scored_rows_without_baseline_stats": 169,
+        "n_zero_scale_columns": 36450
+      },
+      "n_baseline_windows": 1935,
+      "n_instances_scored": 645,
+      "n_instances_too_short": 468,
+      "n_instances_with_fully_positive_baseline": 34,
+      "n_instances_with_windows": 1113,
+      "n_pairs_refused_degenerate_baseline": 694,
+      "n_pairs_with_a_usable_baseline": 2342,
+      "n_scored_windows": 4495,
+      "n_scored_windows_in_those_instances": 42,
+      "scored_per_folder": {
+        "0": {
+          "positive": 0,
+          "windows": 543
+        },
+        "1": {
+          "positive": 18,
+          "windows": 47
+        },
+        "2": {
+          "positive": 7,
+          "windows": 7
+        },
+        "3": {
+          "positive": 31,
+          "windows": 31
+        },
+        "5": {
+          "positive": 80,
+          "windows": 80
+        },
+        "6": {
+          "positive": 2,
+          "windows": 3
+        },
+        "7": {
+          "positive": 1838,
+          "windows": 2023
+        },
+        "8": {
+          "positive": 1054,
+          "windows": 1273
+        },
+        "9": {
+          "positive": 53,
+          "windows": 488
+        }
+      },
+      "scored_positive_rate": 0.685873
+    },
+    "positive_rate": 0.514302,
+    "splits": {
+      "instance": {
+        "fold_sizes": [
+          1399,
+          1394,
+          1399,
+          1401,
+          1399
+        ],
+        "group_col": "instance",
+        "kind": "5-fold group holdout by instance (population screen only)",
+        "n_folds": 5,
+        "seed": 42,
+        "strata_counts": [
+          {
+            "0": 443,
+            "1": 3,
+            "2": 9,
+            "3": 28,
+            "4": 69,
+            "5": 15,
+            "6": 3,
+            "7": 426,
+            "8": 275,
+            "9": 128
+          },
+          {
+            "0": 443,
+            "1": 26,
+            "2": 9,
+            "3": 27,
+            "4": 69,
+            "5": 18,
+            "6": 6,
+            "7": 423,
+            "8": 244,
+            "9": 129
+          },
+          {
+            "0": 442,
+            "1": 0,
+            "2": 9,
+            "3": 24,
+            "4": 69,
+            "5": 40,
+            "6": 0,
+            "7": 433,
+            "8": 254,
+            "9": 128
+          },
+          {
+            "0": 442,
+            "1": 14,
+            "2": 9,
+            "3": 24,
+            "4": 68,
+            "5": 16,
+            "6": 0,
+            "7": 427,
+            "8": 273,
+            "9": 128
+          },
+          {
+            "0": 443,
+            "1": 16,
+            "2": 9,
+            "3": 24,
+            "4": 69,
+            "5": 16,
+            "6": 3,
+            "7": 422,
+            "8": 269,
+            "9": 128
+          }
+        ],
+        "stratum_col": "folder_label"
+      },
+      "own-history": {
+        "baseline_windows": 3,
+        "kind": "own history, first 3 windows per instance, label-blind; all instances, no group holdout",
+        "why_no_holdout": "nothing is fitted across instances: each tag's limits come from that tag's own earlier windows, so there is no cross-instance parameter for a group holdout to protect"
+      },
+      "well": {
+        "fold_sizes": [
+          1688,
+          1533,
+          1603,
+          1120,
+          1048
+        ],
+        "folds": [
+          [
+            "WELL-00002",
+            "WELL-00023",
+            "WELL-00028",
+            "WELL-00029",
+            "WELL-00031",
+            "WELL-00034",
+            "WELL-00038",
+            "WELL-00039"
+          ],
+          [
+            "WELL-00003",
+            "WELL-00005",
+            "WELL-00007",
+            "WELL-00016",
+            "WELL-00022",
+            "WELL-00027",
+            "WELL-00030",
+            "WELL-00035",
+            "WELL-00040"
+          ],
+          [
+            "WELL-00008",
+            "WELL-00009",
+            "WELL-00010",
+            "WELL-00014",
+            "WELL-00015",
+            "WELL-00019",
+            "WELL-00024",
+            "WELL-00036"
+          ],
+          [
+            "WELL-00004",
+            "WELL-00006",
+            "WELL-00012",
+            "WELL-00013",
+            "WELL-00025",
+            "WELL-00032",
+            "WELL-00041"
+          ],
+          [
+            "WELL-00001",
+            "WELL-00011",
+            "WELL-00020",
+            "WELL-00021",
+            "WELL-00026",
+            "WELL-00033",
+            "WELL-00037",
+            "WELL-00042"
+          ]
+        ],
+        "group_col": "well",
+        "kind": "5-fold group holdout by well",
+        "n_folds": 5,
+        "seed": 42,
+        "strata_counts": [
+          {
+            "0": 809,
+            "1": 3,
+            "2": 2,
+            "3": 0,
+            "4": 112,
+            "5": 0,
+            "6": 12,
+            "7": 428,
+            "8": 227,
+            "9": 95
+          },
+          {
+            "0": 300,
+            "1": 0,
+            "2": 9,
+            "3": 0,
+            "4": 48,
+            "5": 4,
+            "6": 0,
+            "7": 850,
+            "8": 231,
+            "9": 91
+          },
+          {
+            "0": 266,
+            "1": 0,
+            "2": 3,
+            "3": 123,
+            "4": 104,
+            "5": 5,
+            "6": 0,
+            "7": 744,
+            "8": 266,
+            "9": 92
+          },
+          {
+            "0": 464,
+            "1": 40,
+            "2": 4,
+            "3": 0,
+            "4": 43,
+            "5": 0,
+            "6": 0,
+            "7": 66,
+            "8": 235,
+            "9": 268
+          },
+          {
+            "0": 374,
+            "1": 16,
+            "2": 27,
+            "3": 4,
+            "4": 37,
+            "5": 96,
+            "6": 0,
+            "7": 43,
+            "8": 356,
+            "9": 95
+          }
+        ],
+        "stratum_col": "folder_label"
+      }
+    },
+    "wall_seconds": 217.7,
+    "windows_manifest": {
+      "archives_root": "data\\3w_archives",
+      "common_variables": [
+        "P-ANULAR",
+        "P-JUS-CKGL",
+        "P-MON-CKP",
+        "P-PDG",
+        "P-TPT",
+        "T-TPT"
+      ],
+      "jobs": 14,
+      "min_share": 0.6,
+      "n_feature_rows": 33970,
+      "n_instances": 1119,
+      "n_positive": 3596,
+      "n_transient_only": 3057,
+      "n_windows": 6992,
+      "n_windows_dropped_no_labelled_rows": 0,
+      "n_windows_dropped_unlabelled_prefix": 1119,
+      "per_folder": {
+        "0": {
+          "positive": 0,
+          "windows": 2213
+        },
+        "1": {
+          "positive": 20,
+          "windows": 59
+        },
+        "2": {
+          "positive": 34,
+          "windows": 45
+        },
+        "3": {
+          "positive": 127,
+          "windows": 127
+        },
+        "4": {
+          "positive": 344,
+          "windows": 344
+        },
+        "5": {
+          "positive": 90,
+          "windows": 105
+        },
+        "6": {
+          "positive": 5,
+          "windows": 12
+        },
+        "7": {
+          "positive": 1862,
+          "windows": 2131
+        },
+        "8": {
+          "positive": 1054,
+          "windows": 1315
+        },
+        "9": {
+          "positive": 60,
+          "windows": 641
+        }
+      },
+      "per_well_windows": {
+        "WELL-00001": 451,
+        "WELL-00002": 938,
+        "WELL-00003": 113,
+        "WELL-00004": 55,
+        "WELL-00005": 232,
+        "WELL-00006": 558,
+        "WELL-00007": 12,
+        "WELL-00008": 228,
+        "WELL-00009": 1,
+        "WELL-00010": 141,
+        "WELL-00011": 27,
+        "WELL-00012": 2,
+        "WELL-00013": 2,
+        "WELL-00014": 176,
+        "WELL-00015": 7,
+        "WELL-00016": 20,
+        "WELL-00019": 304,
+        "WELL-00020": 97,
+        "WELL-00021": 23,
+        "WELL-00022": 850,
+        "WELL-00023": 428,
+        "WELL-00024": 744,
+        "WELL-00025": 199,
+        "WELL-00026": 356,
+        "WELL-00027": 188,
+        "WELL-00028": 89,
+        "WELL-00029": 39,
+        "WELL-00030": 43,
+        "WELL-00031": 99,
+        "WELL-00032": 36,
+        "WELL-00033": 36,
+        "WELL-00034": 47,
+        "WELL-00035": 67,
+        "WELL-00036": 2,
+        "WELL-00037": 20,
+        "WELL-00038": 33,
+        "WELL-00039": 15,
+        "WELL-00040": 8,
+        "WELL-00041": 268,
+        "WELL-00042": 38
+      },
+      "positive_rate": 0.514302,
+      "subgroups": 60,
+      "tagledger_version": "0.1.0",
+      "wall_seconds": 194.7,
+      "window_s": 3600.0
+    }
+  }
+}

@@ -1,0 +1,76 @@
+[project]
+name = "tsdive"
+dynamic = ["version"]
+description = "Data-quality profiling and statistical monitoring for process time series from any source. Reports what the store did to the window; a check with no answer raises a typed error."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "tsdive contributors" }]
+requires-python = ">=3.12"
+keywords = ["industrial", "process-data", "historian", "time-series", "data-quality", "provenance"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=2.0,<3",
+    "pandas>=2.2,<3",
+    "pyarrow>=23.0.1,<24",
+    "pint>=0.24,<1",
+]
+
+[project.urls]
+Repository = "https://github.com/NorthernLightx/tsdive"
+Issues = "https://github.com/NorthernLightx/tsdive/issues"
+
+[project.optional-dependencies]
+# The IsolationForest detector, and nothing else, needs scikit-learn.
+ml = ["scikit-learn>=1.5,<2"]
+# scripts/convert_tep.py, and nothing else, reads R .RData; the library
+# itself never imports pyreadr.
+tep = ["pyreadr>=0.5"]
+# Everything the library itself can use. pyreadr is a script dependency,
+# not a library one, so it stays out.
+all = ["scikit-learn>=1.5,<2"]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.100,<7",
+    "matplotlib>=3.8,<4",
+    "pyreadr>=0.5",
+    "pytest>=9.0.3,<10",
+    "pytest-regressions>=2.5,<3",
+    "ruff>=0.6",
+    "scikit-learn>=1.5,<2",
+]
+
+[project.scripts]
+tsdive = "tsdive.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/tsdive/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tsdive"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error"]
+
+[tool.uv]
+package = true

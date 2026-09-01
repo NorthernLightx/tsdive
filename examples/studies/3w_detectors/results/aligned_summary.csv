@@ -1,0 +1,64 @@
+tool,design,variant,n_instances,n_instances_with_threshold,n_instances_refused,roc_auc,pr_auc,n_pre_windows,n_post_windows,ranking_refusal,n_paired,paired_hit_post0,paired_hit_post1,n_pre_at_threshold,false_alarm_rate_pre,n_post0_at_threshold,detection_rate_post0,n_post1_at_threshold,detection_rate_post1,n_detected,n_never_detected,median_delay_windows,n_folds_scored,auc_fold_min,auc_fold_max
+mad,onset-aligned,all,48,48,0,0.7987,0.8899,48,96,,48,0.8125,0.9167,48,0.625,48,0.8125,48,0.9167,44,4,0.0,5,0.7293,0.9375
+mad,onset-aligned,no_folder9,41,41,0,0.7905,0.8892,41,82,,41,0.7805,0.9024,41,0.6585,41,0.8293,41,0.9268,38,3,0.0,5,0.705,0.949
+mad,onset-aligned,transient_onset,48,48,0,0.7987,0.8899,48,96,,48,0.8125,0.9167,48,0.625,48,0.8125,48,0.9167,44,4,0.0,5,0.7293,0.9375
+mad,onset-aligned,steady_onset,0,0,0,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+mad,onset-aligned,folder_1,3,3,0,0.7778,0.8734,3,6,,3,1.0,1.0,3,1.0,3,1.0,3,1.0,3,0,0.0,2,1.0,1.0
+mad,onset-aligned,folder_6,1,1,0,1.0,1.0,1,2,,1,1.0,1.0,1,1.0,1,1.0,1,1.0,1,0,0.0,1,1.0,1.0
+mad,onset-aligned,folder_7,23,23,0,0.6186,0.7777,23,46,,23,0.6087,0.8261,23,0.6957,23,0.7826,23,0.913,21,2,0.0,5,0.5977,1.0
+mad,onset-aligned,folder_8,14,14,0,0.9694,0.9862,14,28,,14,1.0,1.0,14,0.5,14,0.8571,14,0.9286,13,1,0.0,5,0.8889,1.0
+mad,onset-aligned,folder_9,7,7,0,0.8878,0.9505,7,14,,7,1.0,1.0,7,0.4286,7,0.7143,7,0.8571,6,1,0.0,5,0.75,1.0
+spc,onset-aligned,all,48,48,0,0.7131,0.8478,48,96,,48,0.8125,0.8125,48,0.4375,48,0.7708,48,0.8542,42,6,0.0,5,0.5714,0.8789
+spc,onset-aligned,no_folder9,41,41,0,0.7203,0.8562,41,82,,41,0.8049,0.8049,41,0.439,41,0.8049,41,0.8537,36,5,0.0,5,0.6,0.8827
+spc,onset-aligned,transient_onset,48,48,0,0.7131,0.8478,48,96,,48,0.8125,0.8125,48,0.4375,48,0.7708,48,0.8542,42,6,0.0,5,0.5714,0.8789
+spc,onset-aligned,steady_onset,0,0,0,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+spc,onset-aligned,folder_1,3,3,0,0.9444,0.9762,3,6,,3,1.0,1.0,3,0.3333,3,1.0,3,1.0,3,0,0.0,2,1.0,1.0
+spc,onset-aligned,folder_6,1,1,0,1.0,1.0,1,2,,1,1.0,1.0,1,1.0,1,1.0,1,1.0,1,0,0.0,1,1.0,1.0
+spc,onset-aligned,folder_7,23,23,0,0.6271,0.7745,23,46,,23,0.6957,0.6957,23,0.5652,23,0.7826,23,0.7826,19,4,0.0,5,0.5,0.8125
+spc,onset-aligned,folder_8,14,14,0,0.875,0.9445,14,28,,14,0.9286,0.9286,14,0.2143,14,0.7857,14,0.9286,13,1,0.0,5,0.7222,1.0
+spc,onset-aligned,folder_9,7,7,0,0.6939,0.8471,7,14,,7,0.8571,0.8571,7,0.4286,7,0.5714,7,0.8571,6,1,0.0,5,0.5,1.0
+mspc_t2,onset-aligned,all,48,28,20,0.5409,0.7395,28,55,,28,0.6429,0.6296,28,0.5714,28,0.7143,27,0.7778,22,6,0.0,5,0.4074,0.75
+mspc_t2,onset-aligned,no_folder9,41,22,19,0.5359,0.7377,22,43,,22,0.5909,0.5238,22,0.5909,22,0.7273,21,0.7143,16,6,0.0,5,0.375,0.75
+mspc_t2,onset-aligned,transient_onset,48,28,20,0.5409,0.7395,28,55,,28,0.6429,0.6296,28,0.5714,28,0.7143,27,0.7778,22,6,0.0,5,0.4074,0.75
+mspc_t2,onset-aligned,steady_onset,0,0,0,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+mspc_t2,onset-aligned,folder_1,3,2,1,1.0,1.0,2,4,,2,1.0,1.0,2,0.5,2,1.0,2,1.0,2,0,0.0,2,1.0,1.0
+mspc_t2,onset-aligned,folder_6,1,0,1,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+mspc_t2,onset-aligned,folder_7,23,18,5,0.5048,0.7244,18,35,,18,0.5556,0.4706,18,0.6667,18,0.7222,17,0.7059,13,5,0.0,4,0.375,1.0
+mspc_t2,onset-aligned,folder_8,14,2,12,0.5,0.8167,2,4,,2,0.5,0.5,2,0.0,2,0.5,2,0.5,1,1,0.0,1,0.5,0.5
+mspc_t2,onset-aligned,folder_9,7,6,1,0.5694,0.7669,6,12,,6,0.8333,1.0,6,0.5,6,0.6667,6,1.0,6,0,0.0,4,0.5,1.0
+mspc_spe,onset-aligned,all,48,28,20,0.6578,0.7889,28,55,,28,0.8929,0.8519,28,0.9643,28,1.0,27,1.0,28,0,0.0,5,0.5625,1.0
+mspc_spe,onset-aligned,no_folder9,41,22,19,0.6543,0.7893,22,43,,22,0.8636,0.8095,22,0.9545,22,1.0,21,1.0,22,0,0.0,5,0.5,1.0
+mspc_spe,onset-aligned,transient_onset,48,28,20,0.6578,0.7889,28,55,,28,0.8929,0.8519,28,0.9643,28,1.0,27,1.0,28,0,0.0,5,0.5625,1.0
+mspc_spe,onset-aligned,steady_onset,0,0,0,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+mspc_spe,onset-aligned,folder_1,3,2,1,0.75,0.8875,2,4,,2,1.0,1.0,2,1.0,2,1.0,2,1.0,2,0,0.0,2,1.0,1.0
+mspc_spe,onset-aligned,folder_6,1,0,1,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+mspc_spe,onset-aligned,folder_7,23,18,5,0.5857,0.7504,18,35,,18,0.8333,0.7647,18,0.9444,18,1.0,17,1.0,18,0,0.0,4,0.0,1.0
+mspc_spe,onset-aligned,folder_8,14,2,12,1.0,1.0,2,4,,2,1.0,1.0,2,1.0,2,1.0,2,1.0,2,0,0.0,1,1.0,1.0
+mspc_spe,onset-aligned,folder_9,7,6,1,0.6806,0.8218,6,12,,6,1.0,1.0,6,1.0,6,1.0,6,1.0,6,0,0.0,4,0.75,1.0
+iforest,onset-aligned,all,48,48,0,0.7933,0.8743,48,96,,48,0.875,0.875,48,1.0,48,1.0,48,1.0,48,0,0.0,5,0.7449,0.9492
+iforest,onset-aligned,no_folder9,41,41,0,0.8003,0.8974,41,82,,41,0.8537,0.8537,41,1.0,41,1.0,41,1.0,41,0,0.0,5,0.64,0.9541
+iforest,onset-aligned,transient_onset,48,48,0,0.7933,0.8743,48,96,,48,0.875,0.875,48,1.0,48,1.0,48,1.0,48,0,0.0,5,0.7449,0.9492
+iforest,onset-aligned,steady_onset,0,0,0,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+iforest,onset-aligned,folder_1,3,3,0,1.0,1.0,3,6,,3,1.0,1.0,3,1.0,3,1.0,3,1.0,3,0,0.0,2,1.0,1.0
+iforest,onset-aligned,folder_6,1,1,0,0.75,0.8333,1,2,,1,1.0,0.0,1,1.0,1,1.0,1,1.0,1,0,0.0,1,0.75,0.75
+iforest,onset-aligned,folder_7,23,23,0,0.707,0.8498,23,46,,23,0.7826,0.7826,23,1.0,23,1.0,23,1.0,23,0,0.0,5,0.5,1.0
+iforest,onset-aligned,folder_8,14,14,0,0.9184,0.9658,14,28,,14,0.9286,1.0,14,1.0,14,1.0,14,1.0,14,0,0.0,5,0.8333,1.0
+iforest,onset-aligned,folder_9,7,7,0,0.8673,0.8898,7,14,,7,1.0,1.0,7,1.0,7,1.0,7,1.0,7,0,0.0,5,0.75,1.0
+clock,onset-aligned,all,48,48,0,0.6259,0.7374,48,96,,48,1.0,1.0,48,1.0,48,1.0,48,1.0,48,0,0.0,5,0.626,0.686
+clock,onset-aligned,no_folder9,41,41,0,0.6197,0.7363,41,82,,41,1.0,1.0,41,1.0,41,1.0,41,1.0,41,0,0.0,5,0.61,0.6875
+clock,onset-aligned,transient_onset,48,48,0,0.6259,0.7374,48,96,,48,1.0,1.0,48,1.0,48,1.0,48,1.0,48,0,0.0,5,0.626,0.686
+clock,onset-aligned,steady_onset,0,0,0,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+clock,onset-aligned,folder_1,3,3,0,0.8056,0.879,3,6,,3,1.0,1.0,3,1.0,3,1.0,3,1.0,3,0,0.0,2,0.75,1.0
+clock,onset-aligned,folder_6,1,1,0,1.0,1.0,1,2,,1,1.0,1.0,1,1.0,1,1.0,1,1.0,1,0,0.0,1,1.0,1.0
+clock,onset-aligned,folder_7,23,23,0,0.6621,0.7664,23,46,,23,1.0,1.0,23,1.0,23,1.0,23,1.0,23,0,0.0,5,0.6406,1.0
+clock,onset-aligned,folder_8,14,14,0,0.6173,0.7529,14,28,,14,1.0,1.0,14,1.0,14,1.0,14,1.0,14,0,0.0,5,0.6667,0.8125
+clock,onset-aligned,folder_9,7,7,0,1.0,1.0,7,14,,7,1.0,1.0,7,1.0,7,1.0,7,1.0,7,0,0.0,5,1.0,1.0
+clock_flat,onset-aligned,all,48,48,0,0.5,0.6667,48,96,,48,0.0,0.0,48,0.0,48,0.0,48,0.0,0,48,,5,0.5,0.5
+clock_flat,onset-aligned,no_folder9,41,41,0,0.5,0.6667,41,82,,41,0.0,0.0,41,0.0,41,0.0,41,0.0,0,41,,5,0.5,0.5
+clock_flat,onset-aligned,transient_onset,48,48,0,0.5,0.6667,48,96,,48,0.0,0.0,48,0.0,48,0.0,48,0.0,0,48,,5,0.5,0.5
+clock_flat,onset-aligned,steady_onset,0,0,0,,,0,0,fold under test carries one class only; no ranking metric exists,0,,,0,,0,,0,,0,0,,0,,
+clock_flat,onset-aligned,folder_1,3,3,0,0.5,0.6667,3,6,,3,0.0,0.0,3,0.0,3,0.0,3,0.0,0,3,,2,0.5,0.5
+clock_flat,onset-aligned,folder_6,1,1,0,0.5,0.6667,1,2,,1,0.0,0.0,1,0.0,1,0.0,1,0.0,0,1,,1,0.5,0.5
+clock_flat,onset-aligned,folder_7,23,23,0,0.5,0.6667,23,46,,23,0.0,0.0,23,0.0,23,0.0,23,0.0,0,23,,5,0.5,0.5
+clock_flat,onset-aligned,folder_8,14,14,0,0.5,0.6667,14,28,,14,0.0,0.0,14,0.0,14,0.0,14,0.0,0,14,,5,0.5,0.5
+clock_flat,onset-aligned,folder_9,7,7,0,0.5,0.6667,7,14,,7,0.0,0.0,7,0.0,7,0.0,7,0.0,0,7,,5,0.5,0.5

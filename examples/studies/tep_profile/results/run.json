@@ -1,0 +1,11 @@
+{
+  "archives_root": "data\\tep_archives",
+  "git_head": "46e8d3b1bfe11afb51ef373d338cfc9e768ba3d2",
+  "jobs": 14,
+  "n_runs": 420,
+  "n_runs_available": 420,
+  "n_tags": 22260,
+  "tagledger_version": "0.1.0",
+  "wall_seconds": 166.5,
+  "window_s": 10800.0
+}

@@ -1,0 +1,98 @@
+tool,design,split,variant,n_folds_scored,auc_mean,auc_min,auc_max,pr_auc_mean,precision_at_recall_50_mean,refused_frac_mean,n_windows,n_scored,n_refused,n_refused_by_design
+clock,own-history,own-history,all,1,0.8997,0.8997,0.8997,0.9506,0.9794,0.3571,6992,4495,2497,2497
+clock,own-history,own-history,no_folder9,1,0.9337,0.9337,0.9337,0.9751,0.9878,0.3691,6351,4007,2344,2344
+clock,own-history,own-history,no_transients,1,0.658,0.658,0.658,0.4272,0.217,0.618,3935,1503,2432,2432
+clock,own-history,own-history,no_folder9_no_transients,1,0.7,0.7,0.7,0.4917,0.4388,0.6825,3348,1063,2285,2285
+clock,own-history,own-history,no_positive_baseline,1,0.9083,0.9083,0.9083,0.9539,0.9815,0.3497,6848,4453,2395,2395
+mad,own-history,own-history,all,1,0.8665,0.8665,0.8665,0.9291,0.956,0.3571,6992,4495,2497,2497
+mad,own-history,own-history,no_folder9,1,0.8835,0.8835,0.8835,0.9545,0.9774,0.3691,6351,4007,2344,2344
+mad,own-history,own-history,no_transients,1,0.6929,0.6929,0.6929,0.3886,0.5679,0.618,3935,1503,2432,2432
+mad,own-history,own-history,no_folder9_no_transients,1,0.6771,0.6771,0.6771,0.4388,0.6719,0.6825,3348,1063,2285,2285
+mad,own-history,own-history,no_positive_baseline,1,0.8737,0.8737,0.8737,0.9311,0.956,0.3497,6848,4453,2395,2395
+spc,own-history,own-history,all,1,0.754,0.754,0.754,0.8178,0.8581,0.3571,6992,4495,2497,2497
+spc,own-history,own-history,no_folder9,1,0.8285,0.8285,0.8285,0.934,0.9576,0.3691,6351,4007,2344,2344
+spc,own-history,own-history,no_transients,1,0.854,0.854,0.854,0.2113,0.2212,0.618,3935,1503,2432,2432
+spc,own-history,own-history,no_folder9_no_transients,1,0.9233,0.9233,0.9233,0.6153,0.5867,0.6825,3348,1063,2285,2285
+spc,own-history,own-history,no_positive_baseline,1,0.754,0.754,0.754,0.8161,0.8567,0.3497,6848,4453,2395,2395
+iforest,per-instance-standardised,well,all,5,0.706,0.6627,0.8132,0.7741,0.7934,0.3603,6992,4495,2497,2497
+iforest,per-instance-standardised,well,no_folder9,5,0.6977,0.639,0.7618,0.8305,0.8511,0.3793,6351,4007,2344,2344
+iforest,per-instance-standardised,well,no_transients,5,0.7337,0.5108,0.9929,0.3511,0.4299,0.6127,3935,1503,2432,2432
+iforest,per-instance-standardised,well,no_folder9_no_transients,5,0.73,0.4604,0.9901,0.384,0.4553,0.6747,3348,1063,2285,2285
+iforest,per-instance-standardised,well,no_positive_baseline,5,0.7082,0.6629,0.8132,0.7737,0.7933,0.3522,6848,4453,2395,2395
+mspc_spe,per-instance-standardised,well,all,5,0.7009,0.4405,1.0,0.7012,0.7349,0.7016,6992,2062,4930,2497
+mspc_spe,per-instance-standardised,well,no_folder9,5,0.7687,0.4296,1.0,0.7787,0.838,0.7317,6351,1753,4598,2344
+mspc_spe,per-instance-standardised,well,no_transients,4,0.4236,0.0401,1.0,0.3942,0.3743,0.8148,3935,694,3241,2432
+mspc_spe,per-instance-standardised,well,no_folder9_no_transients,4,0.4981,0.0115,1.0,0.4596,0.612,0.8526,3348,428,2920,2285
+mspc_spe,per-instance-standardised,well,no_positive_baseline,5,0.707,0.4692,1.0,0.7012,0.7336,0.7003,6848,2025,4823,2395
+mspc_t2,per-instance-standardised,well,all,5,0.7516,0.3258,1.0,0.7818,0.7744,0.7016,6992,2062,4930,2497
+mspc_t2,per-instance-standardised,well,no_folder9,5,0.7713,0.3042,1.0,0.8612,0.8863,0.7317,6351,1753,4598,2344
+mspc_t2,per-instance-standardised,well,no_transients,4,0.7161,0.269,1.0,0.7439,0.8526,0.8148,3935,694,3241,2432
+mspc_t2,per-instance-standardised,well,no_folder9_no_transients,4,0.6129,0.1826,1.0,0.6256,0.6146,0.8526,3348,428,2920,2285
+mspc_t2,per-instance-standardised,well,no_positive_baseline,5,0.7564,0.3233,1.0,0.7812,0.7736,0.7003,6848,2025,4823,2395
+population,pooled-cross-well,instance,all,5,0.5082,0.4927,0.5238,0.4823,0.4759,0.1229,6992,6133,859,0
+population,pooled-cross-well,instance,no_folder9,5,0.5101,0.4901,0.5327,0.5249,0.516,0.1183,6351,5600,751,0
+population,pooled-cross-well,instance,no_transients,5,0.5138,0.4962,0.5333,0.1444,0.1334,0.0593,3935,3702,233,0
+population,pooled-cross-well,instance,no_folder9_no_transients,5,0.5146,0.4947,0.5327,0.1676,0.1543,0.045,3348,3199,149,0
+iforest,pooled-cross-well,well,all,5,0.5325,0.4423,0.7772,0.5358,0.5634,0.0,6992,6992,0,0
+iforest,pooled-cross-well,well,no_folder9,5,0.5136,0.2855,0.7607,0.5783,0.5889,0.0,6351,6351,0,0
+iforest,pooled-cross-well,well,no_transients,5,0.5445,0.1841,0.7721,0.2613,0.2276,0.0,3935,3935,0,0
+iforest,pooled-cross-well,well,no_folder9_no_transients,5,0.556,0.1411,0.7584,0.3016,0.2586,0.0,3348,3348,0,0
+mad,pooled-cross-well,well,all,5,0.5795,0.1778,0.8544,0.6191,0.7587,0.0,6992,6992,0,0
+mad,pooled-cross-well,well,no_folder9,5,0.5597,0.1843,0.7975,0.6378,0.7809,0.0,6351,6351,0,0
+mad,pooled-cross-well,well,no_transients,5,0.4596,0.0719,0.7091,0.1685,0.2325,0.0,3935,3935,0,0
+mad,pooled-cross-well,well,no_folder9_no_transients,5,0.407,0.076,0.5865,0.1847,0.2396,0.0,3348,3348,0,0
+mspc_spe,pooled-cross-well,well,all,5,0.6165,0.4336,0.8264,0.5996,0.642,0.5343,6992,3049,3943,0
+mspc_spe,pooled-cross-well,well,no_folder9,5,0.6551,0.4017,1.0,0.6403,0.64,0.5481,6351,2670,3681,0
+mspc_spe,pooled-cross-well,well,no_transients,4,0.5232,0.1096,1.0,0.4844,0.4538,0.5617,3935,1619,2316,0
+mspc_spe,pooled-cross-well,well,no_folder9_no_transients,4,0.4985,0.0039,1.0,0.5099,0.6897,0.562,3348,1289,2059,0
+mspc_t2,pooled-cross-well,well,all,5,0.5022,0.337,0.7347,0.5225,0.5934,0.5343,6992,3049,3943,0
+mspc_t2,pooled-cross-well,well,no_folder9,5,0.5015,0.3412,0.875,0.5756,0.6184,0.5481,6351,2670,3681,0
+mspc_t2,pooled-cross-well,well,no_transients,4,0.4335,0.1014,0.9667,0.265,0.3176,0.5617,3935,1619,2316,0
+mspc_t2,pooled-cross-well,well,no_folder9_no_transients,4,0.4158,0.0103,1.0,0.3945,0.4518,0.562,3348,1289,2059,0
+population,pooled-cross-well,well,all,0,,,,,,1.0,6992,0,6992,0
+population,pooled-cross-well,well,no_folder9,0,,,,,,1.0,6351,0,6351,0
+population,pooled-cross-well,well,no_transients,0,,,,,,1.0,3935,0,3935,0
+population,pooled-cross-well,well,no_folder9_no_transients,0,,,,,,1.0,3348,0,3348,0
+regime,pooled-cross-well,well,all,5,0.4934,0.1576,0.7587,0.5536,0.6262,0.0415,6992,6730,262,0
+regime,pooled-cross-well,well,no_folder9,5,0.4496,0.164,0.7452,0.568,0.6353,0.0515,6351,6089,262,0
+regime,pooled-cross-well,well,no_transients,5,0.5156,0.062,0.7076,0.2016,0.2299,0.0115,3935,3895,40,0
+regime,pooled-cross-well,well,no_folder9_no_transients,5,0.4598,0.0651,0.6564,0.218,0.2374,0.0131,3348,3308,40,0
+spc,pooled-cross-well,well,all,5,0.5452,0.3187,0.7975,0.5775,0.6239,0.0,6992,6992,0,0
+spc,pooled-cross-well,well,no_folder9,5,0.52,0.2344,0.7952,0.6085,0.6539,0.0,6351,6351,0,0
+spc,pooled-cross-well,well,no_transients,5,0.6103,0.1079,0.8816,0.3237,0.346,0.0,3935,3935,0,0
+spc,pooled-cross-well,well,no_folder9_no_transients,5,0.6201,0.1163,0.8865,0.3796,0.3852,0.0,3348,3348,0,0
+iforest,"pooled-cross-well, own-history windows",well,all,5,0.5438,0.3879,0.7087,0.6791,0.7342,0.0,4495,4495,0,0
+iforest,"pooled-cross-well, own-history windows",well,no_folder9,5,0.5005,0.3604,0.649,0.7273,0.7635,0.0,4007,4007,0,0
+iforest,"pooled-cross-well, own-history windows",well,no_transients,5,0.7565,0.4429,0.9382,0.2791,0.3093,0.0,1503,1503,0,0
+iforest,"pooled-cross-well, own-history windows",well,no_folder9_no_transients,5,0.7127,0.3886,0.9801,0.3629,0.3991,0.0,1063,1063,0,0
+iforest,"pooled-cross-well, own-history windows",well,no_positive_baseline,5,0.542,0.3879,0.7026,0.6764,0.7329,0.0,4453,4453,0,0
+mad,"pooled-cross-well, own-history windows",well,all,5,0.602,0.2723,0.9277,0.7555,0.8365,0.0,4495,4495,0,0
+mad,"pooled-cross-well, own-history windows",well,no_folder9,5,0.5795,0.3432,0.8518,0.7775,0.8556,0.0,4007,4007,0,0
+mad,"pooled-cross-well, own-history windows",well,no_transients,5,0.6355,0.3995,0.9504,0.1965,0.2729,0.0,1503,1503,0,0
+mad,"pooled-cross-well, own-history windows",well,no_folder9_no_transients,5,0.618,0.4549,0.877,0.248,0.2909,0.0,1063,1063,0,0
+mad,"pooled-cross-well, own-history windows",well,no_positive_baseline,5,0.603,0.2723,0.9277,0.754,0.8358,0.0,4453,4453,0,0
+mspc_spe,"pooled-cross-well, own-history windows",well,all,5,0.6321,0.5025,0.8571,0.7018,0.7543,0.552,4495,2095,2400,0
+mspc_spe,"pooled-cross-well, own-history windows",well,no_folder9,5,0.6859,0.4853,1.0,0.7376,0.776,0.5952,4007,1786,2221,0
+mspc_spe,"pooled-cross-well, own-history windows",well,no_transients,4,0.6128,0.0802,1.0,0.5887,0.6225,0.5613,1503,694,809,0
+mspc_spe,"pooled-cross-well, own-history windows",well,no_folder9_no_transients,4,0.6877,0.0161,1.0,0.5991,0.6503,0.5593,1063,428,635,0
+mspc_spe,"pooled-cross-well, own-history windows",well,no_positive_baseline,5,0.6372,0.5047,0.8571,0.7012,0.7543,0.5551,4453,2058,2395,0
+mspc_t2,"pooled-cross-well, own-history windows",well,all,5,0.5647,0.3227,0.7857,0.6299,0.7011,0.552,4495,2095,2400,0
+mspc_t2,"pooled-cross-well, own-history windows",well,no_folder9,5,0.5241,0.3645,0.875,0.645,0.694,0.5952,4007,1786,2221,0
+mspc_t2,"pooled-cross-well, own-history windows",well,no_transients,4,0.4868,0.1284,1.0,0.371,0.3814,0.5613,1503,694,809,0
+mspc_t2,"pooled-cross-well, own-history windows",well,no_folder9_no_transients,4,0.5293,0.053,1.0,0.397,0.3854,0.5593,1063,428,635,0
+mspc_t2,"pooled-cross-well, own-history windows",well,no_positive_baseline,5,0.5703,0.3229,0.7857,0.6293,0.7006,0.5551,4453,2058,2395,0
+population,"pooled-cross-well, own-history windows",well,all,0,,,,,,1.0,4495,0,4495,0
+population,"pooled-cross-well, own-history windows",well,no_folder9,0,,,,,,1.0,4007,0,4007,0
+population,"pooled-cross-well, own-history windows",well,no_transients,0,,,,,,1.0,1503,0,1503,0
+population,"pooled-cross-well, own-history windows",well,no_folder9_no_transients,0,,,,,,1.0,1063,0,1063,0
+population,"pooled-cross-well, own-history windows",well,no_positive_baseline,0,,,,,,1.0,4453,0,4453,0
+regime,"pooled-cross-well, own-history windows",well,all,5,0.5477,0.2007,0.8679,0.7154,0.7637,0.067,4495,4233,262,0
+regime,"pooled-cross-well, own-history windows",well,no_folder9,5,0.4961,0.1747,0.7038,0.733,0.7724,0.0951,4007,3745,262,0
+regime,"pooled-cross-well, own-history windows",well,no_transients,5,0.7723,0.5891,0.9843,0.3735,0.4832,0.0298,1503,1463,40,0
+regime,"pooled-cross-well, own-history windows",well,no_folder9_no_transients,5,0.7284,0.4859,0.9611,0.4259,0.5203,0.0383,1063,1023,40,0
+regime,"pooled-cross-well, own-history windows",well,no_positive_baseline,5,0.5475,0.2007,0.8679,0.7136,0.7628,0.0674,4453,4191,262,0
+spc,"pooled-cross-well, own-history windows",well,all,5,0.6085,0.4775,0.8049,0.7446,0.7755,0.0,4495,4495,0,0
+spc,"pooled-cross-well, own-history windows",well,no_folder9,5,0.5709,0.3664,0.7915,0.781,0.8126,0.0,4007,4007,0,0
+spc,"pooled-cross-well, own-history windows",well,no_transients,5,0.8057,0.6111,0.956,0.3724,0.3888,0.0,1503,1503,0,0
+spc,"pooled-cross-well, own-history windows",well,no_folder9_no_transients,5,0.8074,0.6407,0.9358,0.4253,0.4435,0.0,1063,1063,0,0
+spc,"pooled-cross-well, own-history windows",well,no_positive_baseline,5,0.6062,0.4746,0.8049,0.7416,0.7741,0.0,4453,4453,0,0

@@ -1,0 +1,102 @@
+{
+  "baseline_windows": 3,
+  "n_evaluable": 48,
+  "n_evaluable_steady_onset": 0,
+  "n_evaluable_transient_onset": 48,
+  "n_evaluable_wells": 21,
+  "n_instances": 1119,
+  "n_onset_steady": 375,
+  "n_onset_transient": 107,
+  "n_with_2_post_windows": 109,
+  "n_with_k_pre_and_2_post": 56,
+  "n_with_k_pre_windows": 60,
+  "n_with_onset": 482,
+  "n_without_onset": 637,
+  "onset_class_counts": {
+    "101": 4,
+    "102": 22,
+    "105": 11,
+    "106": 6,
+    "107": 36,
+    "108": 14,
+    "109": 14,
+    "3": 32,
+    "4": 343
+  },
+  "per_folder": {
+    "0": {
+      "evaluable": 0,
+      "instances": 594,
+      "k_pre_and_2_post": 0,
+      "with_onset": 0
+    },
+    "1": {
+      "evaluable": 3,
+      "instances": 4,
+      "k_pre_and_2_post": 3,
+      "with_onset": 4
+    },
+    "2": {
+      "evaluable": 0,
+      "instances": 22,
+      "k_pre_and_2_post": 0,
+      "with_onset": 22
+    },
+    "3": {
+      "evaluable": 0,
+      "instances": 32,
+      "k_pre_and_2_post": 0,
+      "with_onset": 32
+    },
+    "4": {
+      "evaluable": 0,
+      "instances": 343,
+      "k_pre_and_2_post": 0,
+      "with_onset": 343
+    },
+    "5": {
+      "evaluable": 0,
+      "instances": 11,
+      "k_pre_and_2_post": 6,
+      "with_onset": 11
+    },
+    "6": {
+      "evaluable": 1,
+      "instances": 6,
+      "k_pre_and_2_post": 1,
+      "with_onset": 6
+    },
+    "7": {
+      "evaluable": 23,
+      "instances": 36,
+      "k_pre_and_2_post": 25,
+      "with_onset": 36
+    },
+    "8": {
+      "evaluable": 14,
+      "instances": 14,
+      "k_pre_and_2_post": 14,
+      "with_onset": 14
+    },
+    "9": {
+      "evaluable": 7,
+      "instances": 57,
+      "k_pre_and_2_post": 7,
+      "with_onset": 14
+    }
+  },
+  "post_onset_windows_required": 2,
+  "pre_onset_windows_required": 5,
+  "seconds_after_onset": {
+    "median": 7169.0,
+    "p05": 4983.1,
+    "p95": 158146.2499999999
+  },
+  "seconds_to_onset": {
+    "median": 3600.0,
+    "p05": 3600.0,
+    "p95": 37651.149999999994
+  },
+  "wall_seconds": 6.2,
+  "window_s": 3600.0
+}

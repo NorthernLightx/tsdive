@@ -1,0 +1,11 @@
+{
+  "archives_root": "data\\3w_archives",
+  "cap_per_folder": null,
+  "jobs": 14,
+  "n_instances": 1119,
+  "n_instances_available": 1119,
+  "n_tags": 14347,
+  "tagledger_version": "0.1.0",
+  "wall_seconds": 254.0,
+  "window_s": 3600.0
+}

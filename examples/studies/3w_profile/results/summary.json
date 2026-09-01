@@ -1,0 +1,168 @@
+{
+  "absent_variables": {
+    "max_absent_per_instance": 26,
+    "mean_absent_per_instance": 16.178731009830205,
+    "min_absent_per_instance": 6,
+    "n_variables": 27,
+    "per_variable_absent_instances": {
+      "ABER-CKGL": 833,
+      "ABER-CKP": 820,
+      "ESTADO-DHSV": 649,
+      "ESTADO-M1": 618,
+      "ESTADO-M2": 615,
+      "ESTADO-PXO": 587,
+      "ESTADO-SDV-GL": 639,
+      "ESTADO-SDV-P": 458,
+      "ESTADO-W1": 561,
+      "ESTADO-W2": 586,
+      "ESTADO-XO": 586,
+      "P-ANULAR": 198,
+      "P-JUS-BS": 1119,
+      "P-JUS-CKGL": 430,
+      "P-JUS-CKP": 1108,
+      "P-MON-CKGL": 1117,
+      "P-MON-CKP": 397,
+      "P-MON-SDV-P": 1119,
+      "P-PDG": 292,
+      "P-TPT": 159,
+      "PT-P": 1119,
+      "QBS": 1119,
+      "QGL": 674,
+      "T-JUS-CKP": 557,
+      "T-MON-CKP": 1104,
+      "T-PDG": 556,
+      "T-TPT": 84
+    }
+  },
+  "clipping": {
+    "n_censored": 0,
+    "n_tags_with_a_clipped_fraction": 0
+  },
+  "code": {
+    "git_head": "9ef5f1b08d2fc1d72ee771d9d890f41f7bd8869f",
+    "tagledger_version": "0.1.0"
+  },
+  "converted": {
+    "n_archives": 14347,
+    "n_instances": 1119,
+    "n_rows": 32872250,
+    "n_wells": 40
+  },
+  "coverage": {
+    "max": 1.0,
+    "mean": 1.0,
+    "min": 1.0,
+    "p05": 1.0,
+    "p50": 1.0,
+    "p95": 1.0
+  },
+  "coverage_below_1": 0,
+  "dataset": {
+    "bytes_downloaded": 515992578,
+    "commit": "d717f0aadbe90b6dc6e15e29f6035e9630d22a5e",
+    "filters": {
+      "classes": null,
+      "only_real": true
+    },
+    "manifest_sha256": "14bc1397d3eef8a671b9f6253d195c161d06157307e47e687829da2070f3b1c2",
+    "n_files_downloaded": 1122,
+    "repo": "petrobras/3W"
+  },
+  "flatline_assessable_roles": {
+    "n_fired": 2294,
+    "n_mode_declined_as_state_valued": 6956,
+    "n_mode_tags": 7010,
+    "n_non_mode_assessed": 7271,
+    "n_non_mode_tags": 7337
+  },
+  "flatline_signal_behaviour": {
+    "fired_by_signal_combination": {
+      "1": 515,
+      "1;2": 391,
+      "2": 1388
+    },
+    "n_assessed": 7271,
+    "n_p99_of_one_second": 3580,
+    "n_signal1_only_fires": 515,
+    "n_signal1_only_fires_under_5s": 5,
+    "n_signal2_fires": 1779,
+    "n_signal2_fires_within_10pc_of_p05": 802,
+    "n_with_a_p99": 5582,
+    "signal1_only_stall_median_s": 471.0
+  },
+  "flatline_verdicts": {
+    "FIRED": 2294,
+    "NOT_ASSESSED_MODE_TAG": 6956,
+    "NOT_ASSESSED_NO_VALID_SAMPLES": 12,
+    "NOT_ASSESSED_TOO_SHORT": 108,
+    "NO_FLATLINE": 4977
+  },
+  "gap_classes": {},
+  "labels": {
+    "folder_mismatch_by_folder": {
+      "9": 43
+    },
+    "n_folder_row_label_mismatch": 43,
+    "n_instances_with_3600_prefix": 1119,
+    "unlabelled_prefix_rows_distinct": {
+      "3600": 1119
+    }
+  },
+  "quality": {
+    "n_bad_samples": 9816175,
+    "n_good_samples": 464444058,
+    "n_tags_with_unmapped_codes": 0,
+    "n_uncertain_samples": 0
+  },
+  "refusals": {},
+  "studied": {
+    "cap_per_folder": null,
+    "jobs": 14,
+    "n_instances": 1119,
+    "n_tags": 14347,
+    "wall_seconds": 254.0,
+    "window_s": 3600.0
+  },
+  "timestamp_audit": {
+    "duplicates": 0,
+    "non_monotonic": 0
+  },
+  "units": {
+    "n_tags_non_mode": 7337,
+    "n_tags_unresolved": 0,
+    "unresolved_raw_units": []
+  },
+  "valid_fraction": {
+    "max": 1.0,
+    "mean": 0.964202404823308,
+    "min": 0.037216,
+    "p05": 0.666234,
+    "p50": 1.0,
+    "p95": 1.0
+  },
+  "valid_fraction_below_1": 2824,
+  "whole_life_frozen": {
+    "n_frozen_whole_life": 1643,
+    "n_instances_affected": 903,
+    "n_non_mode_tags": 7337,
+    "per_variable": {
+      "ABER-CKGL": 237,
+      "ABER-CKP": 24,
+      "P-ANULAR": 7,
+      "P-JUS-CKGL": 31,
+      "P-JUS-CKP": 1,
+      "P-PDG": 652,
+      "P-TPT": 38,
+      "QGL": 298,
+      "T-JUS-CKP": 2,
+      "T-MON-CKP": 1,
+      "T-PDG": 332,
+      "T-TPT": 20
+    },
+    "verdicts": {
+      "NOT_ASSESSED_NO_VALID_SAMPLES": 12,
+      "NOT_ASSESSED_TOO_SHORT": 13,
+      "NO_FLATLINE": 1618
+    }
+  }
+}

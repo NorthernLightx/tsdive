@@ -1,0 +1,8 @@
+archives = ["../../data/demo/*.parquet"]
+window   = "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z"
+baseline = "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z"
+steps    = ["profile", "segment", "screen", "spc", "mspc"]
+
+[options.profile]
+flatline = true
+tz = ["Europe/London"]
