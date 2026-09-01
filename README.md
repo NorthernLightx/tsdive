@@ -11,6 +11,22 @@ custom source adapter ([docs/SOURCES.md](docs/SOURCES.md)), and writes
 text, Python objects, a static HTML page, or a JSON ledger. It runs
 offline with no server. A check with no answer raises a typed error.
 
+## How it compares
+
+General anomaly-detection libraries score the values they are given.
+tsdive checks what the archive did to those values first.
+
+| Tool | What it does | What tsdive does differently |
+|---|---|---|
+| PyOD | outlier detectors over numeric feature arrays | reads timestamps, quality codes and units before any detector runs, and raises `SchemaError` when they are missing |
+| ADTK | rule-based and unsupervised anomaly detection on pandas series | reports coverage, gap classes and clipping for the window, and raises `InsufficientQuality` instead of scoring a censored one |
+| Darts | forecasting models with anomaly scores from forecast residuals | takes baselines from validated reference windows and raises `ValueError` when a baseline overlaps the window it screens |
+| aeon | machine-learning toolkit for time-series tasks | states the sampling contract of every window and raises `IncomparableSamplingError` across contracts |
+| Seeq, TrendMiner | commercial analytics servers connected to a live historian | runs offline on exported archives, makes no network calls, and replays identically under a recorded provenance fingerprint |
+
+A refusal is a typed error naming the check that failed. Detectors,
+control charts and reports inherit every check above.
+
 ## Install
 
 To try it on the demo data, clone the repository:
@@ -334,7 +350,7 @@ historian. No alarm limits, notifications or real-time path. Deferred work is in
 
 ```console
 uv sync          # editable install plus the dev group
-make test        # uv run pytest, 468 tests, offline
+make test        # uv run pytest, 535 tests, offline
 make lint        # uv run ruff check .
 make reference   # refusal cases, byte for byte
 make bench       # BENCHMARKS.md, byte for byte
