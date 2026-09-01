@@ -3,6 +3,11 @@
 The list is deliberately short: each entry is a phrase this repository
 has actually used, not a general vocabulary filter. A hit names the
 file, the line and the pattern.
+
+The README shape is fixed too. The section list is closed, so new
+material goes under an existing section or into a ``docs/`` page reached
+by one link line, and the line and word budgets force a deletion for
+every addition.
 """
 
 from __future__ import annotations
@@ -64,3 +69,76 @@ def _hits(path: Path) -> list[str]:
 def test_prose_has_no_banned_phrases(path: Path) -> None:
     hits = _hits(path)
     assert not hits, "\n".join(hits)
+
+
+README = ROOT / "README.md"
+
+README_SECTIONS = [
+    "# tsdive",
+    "## Install",
+    "## Use",
+    "## What it checks",
+    "## How it compares",
+    "## Results on real data",
+    "## Limits",
+    "## Development",
+    "## License",
+]
+
+README_USE_SUBSECTIONS = [
+    "profile",
+    "segment",
+    "screen",
+    "spc",
+    "mspc",
+    "compare",
+    "run",
+    "ingest",
+    "Python",
+    "MCP",
+]
+
+README_MAX_LINES = 370
+README_MAX_WORDS = 1950
+
+
+def _headings(text: str, prefix: str) -> list[str]:
+    """Return the lines starting with ``prefix``, in file order.
+
+    Fenced blocks are skipped, so a ``#`` written inside a console
+    transcript is not read as a heading.
+    """
+    out: list[str] = []
+    fenced = False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced and line.startswith(prefix):
+            out.append(line.rstrip())
+    return out
+
+
+def test_readme_sections_match_the_fixed_list() -> None:
+    text = README.read_text(encoding="utf-8")
+    top = [h for h in _headings(text, "#") if h.startswith(("# ", "## "))]
+    assert top == README_SECTIONS
+
+
+def test_readme_use_subsections_match_the_fixed_list() -> None:
+    text = README.read_text(encoding="utf-8")
+    expected = ["### " + name for name in README_USE_SUBSECTIONS]
+    assert _headings(text, "### ") == expected
+
+
+def test_readme_stays_within_budget() -> None:
+    text = README.read_text(encoding="utf-8")
+    lines = len(text.splitlines())
+    words = len(text.split())
+    assert lines <= README_MAX_LINES, f"{lines} lines, budget {README_MAX_LINES}"
+    assert words <= README_MAX_WORDS, f"{words} words, budget {README_MAX_WORDS}"
+
+
+def test_readme_states_no_test_count() -> None:
+    hit = re.search(r"\b\d+ tests\b", README.read_text(encoding="utf-8"))
+    assert hit is None, f"README states a test count: {hit.group(0) if hit else ''}"
