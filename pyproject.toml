@@ -31,14 +31,18 @@ ml = ["scikit-learn>=1.5,<2"]
 # scripts/convert_tep.py, and nothing else, reads R .RData; the library
 # itself never imports pyreadr.
 tep = ["pyreadr>=0.5"]
+# src/tsdive/mcp_server.py, and nothing else, needs the MCP SDK. Version 2
+# is the first that carries mcp.server.mcpserver.
+mcp = ["mcp>=2.1,<3"]
 # Everything the library itself can use. pyreadr is a script dependency,
 # not a library one, so it stays out.
-all = ["scikit-learn>=1.5,<2"]
+all = ["scikit-learn>=1.5,<2", "mcp>=2.1,<3"]
 
 [dependency-groups]
 dev = [
     "hypothesis>=6.100,<7",
     "matplotlib>=3.8,<4",
+    "mcp>=2.1,<3",
     "pyreadr>=0.5",
     "pytest>=9.0.3,<10",
     "pytest-regressions>=2.5,<3",
@@ -48,6 +52,7 @@ dev = [
 
 [project.scripts]
 tsdive = "tsdive.cli:main"
+tsdive-mcp = "tsdive.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]
