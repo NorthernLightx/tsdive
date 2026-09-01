@@ -106,6 +106,15 @@ def test_help_and_unknown_command_list_every_command(capsys):
     assert all(f"'{name}'" in suggested for name in commands)
 
 
+def test_global_flags_are_accepted_before_the_command_name(tmp_path, capsys):
+    path, meta = _demo_archive(tmp_path)
+    assert main(["--no-color", "segment", str(path)]) == 0
+    assert capsys.readouterr().out.startswith(f"{meta.identity}  ")
+
+    assert main(["--json", "segment", str(path)]) == 0
+    assert json.loads(capsys.readouterr().out)["tag"] == str(meta.identity)
+
+
 def test_help_names_the_installed_command(capsys):
     """The package ships a console script, so the help spells commands that way."""
     assert main(["--help"]) == 0
