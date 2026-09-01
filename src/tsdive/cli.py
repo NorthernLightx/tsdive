@@ -1803,6 +1803,14 @@ def cmd_run(argv: Sequence[str] | None = None) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     argv_l = list(sys.argv[1:] if argv is None else argv)
+    # MAIN_DOC calls --json and --no-color global, but each one is owned by
+    # the command's own parser, so a leading run of them moves behind the
+    # command name before dispatch.
+    lead = 0
+    while lead < len(argv_l) and argv_l[lead] in {"--json", "--no-color"}:
+        lead += 1
+    if 0 < lead < len(argv_l):
+        argv_l = [argv_l[lead], *argv_l[:lead], *argv_l[lead + 1 :]]
     if not argv_l or argv_l[0] in {"-h", "--help"}:
         print(MAIN_DOC.strip(), file=sys.stderr)
         return 0 if argv_l else 2
