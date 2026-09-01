@@ -334,7 +334,7 @@ historian. No alarm limits, notifications or real-time path. Deferred work is in
 
 ```console
 uv sync          # editable install plus the dev group
-make test        # uv run pytest, 461 tests, offline
+make test        # uv run pytest, 468 tests, offline
 make lint        # uv run ruff check .
 make reference   # refusal cases, byte for byte
 make bench       # BENCHMARKS.md, byte for byte
