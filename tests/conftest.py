@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -136,6 +138,28 @@ def archive_factory(tmp_path: Path) -> Callable[..., Path]:
         return write_archive(path, df, meta)
 
     return _write
+
+
+SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+
+
+@pytest.fixture(scope="module")
+def demo_archives(tmp_path_factory) -> tuple[Path, Path]:
+    """The two README demo archives, built by the script that ships them."""
+    spec = importlib.util.spec_from_file_location(
+        "make_demo_archive", SCRIPTS / "make_demo_archive.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["make_demo_archive"] = module
+    spec.loader.exec_module(module)
+    out = tmp_path_factory.mktemp("demo")
+    flow, flow_meta = module.build_fic101()
+    temp, temp_meta = module.build_tic101(flow)
+    return (
+        write_tag(out / "fic101_demo.parquet", flow, flow_meta, overwrite=True),
+        write_tag(out / "tic101_demo.parquet", temp, temp_meta, overwrite=True),
+    )
 
 
 @pytest.fixture()

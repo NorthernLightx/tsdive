@@ -9,7 +9,9 @@ to parse text back out of a report.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -43,27 +45,86 @@ from tsdive.store.tagstore import (
     archive_extent,
     meta_from_dict,
     meta_from_parquet,
+    safe_filename,
     write_tag,
 )
 
+_WINDOW_FORMS = (
+    "window must be <START>/<END>, <START>/<DURATION>, <DURATION>/<END> "
+    "or <DATE> in ISO 8601 UTC"
+)
+_BARE_DATE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+_DURATION = re.compile(
+    r"P(?:(?P<days>\d+(?:\.\d+)?)D)?"
+    r"(?:T(?:(?P<hours>\d+(?:\.\d+)?)H)?"
+    r"(?:(?P<minutes>\d+(?:\.\d+)?)M)?"
+    r"(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?\Z"
+)
+
+
+def _window_bound(name: str, text: str) -> pd.Timestamp:
+    """Parse one window bound; a bare date is 00:00:00 UTC of that day."""
+    if _BARE_DATE.match(text):
+        return cast(pd.Timestamp, pd.Timestamp(text, tz="UTC"))
+    try:
+        ts = pd.Timestamp(text)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(_WINDOW_FORMS) from exc
+    if ts.tz is None:
+        raise ValueError(
+            f"window {name} is naive ({ts}); append 'Z' or '+00:00' - "
+            "tsdive stores UTC only"
+        )
+    return cast(pd.Timestamp, ts)
+
+
+def _window_duration(text: str) -> pd.Timedelta:
+    """Parse an ISO 8601 duration in days, hours, minutes and seconds.
+
+    Months and years are refused rather than approximated, and P1M is the
+    reason the units are read here instead of by ``pd.Timedelta``: pandas
+    reads P1M as one minute, so a caller who means a month would get a
+    60-second window and no warning.
+    """
+    match = _DURATION.match(text)
+    parts = {k: float(v) for k, v in match.groupdict().items() if v} if match else {}
+    if not parts:
+        raise ValueError(
+            f"window duration {text} is not days, hours, minutes and seconds; "
+            "write it like PT5H or P2DT6H"
+        )
+    return pd.Timedelta(dt.timedelta(**parts))
+
 
 def parse_window(spec: str) -> tuple[pd.Timestamp, pd.Timestamp]:
-    """Parse ``START/END`` into two UTC-aware timestamps.
+    """Parse an ISO 8601 interval into two UTC-aware timestamps.
 
-    Naive bounds are rejected: a window whose offset is unstated is not a
-    window, and tsdive stores UTC only.
+    ``START/END``, ``START/DURATION``, ``DURATION/END`` and a bare date
+    standing for one UTC day all name a window. Naive bounds are
+    rejected: a window whose offset is unstated is not a window, and
+    tsdive stores UTC only.
     """
     if "/" not in spec:
-        raise ValueError("window must be <START>/<END> in ISO 8601 UTC")
-    start_s, end_s = spec.split("/", maxsplit=1)
-    start = pd.Timestamp(start_s)
-    end = pd.Timestamp(end_s)
-    for name, ts in (("START", start), ("END", end)):
-        if ts.tz is None:
-            raise ValueError(
-                f"window {name} is naive ({ts}); append 'Z' or '+00:00' - "
-                "tsdive stores UTC only"
-            )
+        if _BARE_DATE.match(spec):
+            day = _window_bound("START", spec)
+            return day, cast(pd.Timestamp, day + dt.timedelta(days=1))
+        raise ValueError(_WINDOW_FORMS)
+    left, right = spec.split("/", maxsplit=1)
+    left_is_duration = left.startswith("P")
+    right_is_duration = right.startswith("P")
+    if left_is_duration and right_is_duration:
+        raise ValueError(_WINDOW_FORMS)
+    if right_is_duration:
+        start = _window_bound("START", left)
+        end = start + _window_duration(right)
+    elif left_is_duration:
+        end = _window_bound("END", right)
+        start = end - _window_duration(left)
+    else:
+        start = _window_bound("START", left)
+        end = _window_bound("END", right)
+    if end <= start:
+        raise ValueError("window END is not after START")
     return cast(pd.Timestamp, start), cast(pd.Timestamp, end)
 
 
@@ -177,6 +238,13 @@ def read_meta_json(path: str | Path) -> TagMeta:
         raise SchemaError(f"{Path(path).name}: not valid JSON ({e})") from e
     if not isinstance(payload, dict):
         raise SchemaError(f"{Path(path).name}: expected a JSON object of tag metadata")
+    severities = {s.value for s in Severity}
+    for code, declared in (payload.get("quality_codes") or {}).items():
+        if not isinstance(declared, str) or declared.strip().upper() not in severities:
+            raise SchemaError(
+                f"{Path(path).name}: quality_codes maps {code!r} to {declared!r}; "
+                f"expected one of {', '.join(sorted(severities))}"
+            )
     return meta_from_dict(payload)
 
 
@@ -249,6 +317,66 @@ def _to_utc(raw: pd.Series, tz: str | None, column: str) -> pd.Series:
     return cast(pd.Series, localised.dt.tz_convert("UTC"))
 
 
+def _resolve_quality(
+    frame: pd.DataFrame,
+    *,
+    label: str,
+    quality_col: str | None,
+    assume_quality: str | None,
+) -> tuple[pd.Series, bool]:
+    """The quality column to archive, and whether tsdive wrote it.
+
+    Returns the source's own column when ``quality_col`` names one, else a
+    constant column of ``assume_quality``. Raises SchemaError when both
+    are present, when neither is, or when ``assume_quality`` names no
+    severity.
+    """
+    if quality_col is not None and quality_col in frame.columns:
+        if assume_quality is not None:
+            raise SchemaError(
+                f"{label}: --assume-quality was given but {quality_col!r} exists; "
+                "refusing to overwrite the source's own quality codes"
+            )
+        return frame[quality_col], False
+    if assume_quality is None:
+        raise SchemaError(
+            f"{label}: no quality column {quality_col!r}. A value without a "
+            "quality code is not a measurement; name the right column with "
+            "--quality-col, or state --assume-quality GOOD|UNCERTAIN|BAD, which "
+            "is recorded on the archive and reported in every profile"
+        )
+    declared = assume_quality.strip().upper()
+    if declared not in {s.value for s in Severity}:
+        raise SchemaError(
+            f"--assume-quality {assume_quality!r} is not a severity; "
+            f"expected one of {', '.join(s.value for s in Severity)}"
+        )
+    return pd.Series([declared] * len(frame), index=frame.index), True
+
+
+def _prepare_archive(
+    *,
+    timestamps: pd.Series,
+    values: pd.Series,
+    quality: pd.Series,
+    assumed: bool,
+    meta: TagMeta,
+) -> tuple[pd.DataFrame, TagMeta]:
+    """Assemble one archive frame and check it, without writing."""
+    out_frame = pd.DataFrame(
+        {"timestamp": timestamps, "value": values, "quality": quality}
+    ).reset_index(drop=True)
+    stamped = replace(meta, quality_assumed=assumed or meta.quality_assumed)
+    # Refuse a bad export here rather than at read time: everything the
+    # read path checks about values is checkable now.
+    null_digital_state_values(
+        annotate_severity(out_frame, stamped.quality_codes),
+        role=stamped.role,
+        tag=stamped.identity,
+    )
+    return out_frame, stamped
+
+
 def ingest(
     source: str | Path,
     *,
@@ -285,48 +413,274 @@ def ingest(
                 f"{src.name}: no {name} column {column!r}; columns are "
                 f"{', '.join(map(str, frame.columns))}"
             )
-    if quality_col in frame.columns:
-        quality = frame[quality_col]
-        if assume_quality is not None:
-            raise SchemaError(
-                f"{src.name}: --assume-quality was given but {quality_col!r} exists; "
-                "refusing to overwrite the source's own quality codes"
-            )
-        assumed = False
-    else:
-        if assume_quality is None:
-            raise SchemaError(
-                f"{src.name}: no quality column {quality_col!r}. A value without a "
-                "quality code is not a measurement; name the right column with "
-                "--quality-col, or state --assume-quality GOOD|UNCERTAIN|BAD, which "
-                "is recorded on the archive and reported in every profile"
-            )
-        declared = assume_quality.strip().upper()
-        if declared not in {s.value for s in Severity}:
-            raise SchemaError(
-                f"--assume-quality {assume_quality!r} is not a severity; "
-                f"expected one of {', '.join(s.value for s in Severity)}"
-            )
-        quality = pd.Series([declared] * len(frame), index=frame.index)
-        assumed = True
-
-    out_frame = pd.DataFrame(
-        {
-            "timestamp": _to_utc(frame[timestamp_col], tz, timestamp_col),
-            "value": frame[value_col],
-            "quality": quality,
-        }
-    ).reset_index(drop=True)
-
-    stamped = replace(meta, quality_assumed=assumed or meta.quality_assumed)
-    # Refuse a bad export here rather than at read time: everything the
-    # read path checks about values is checkable now.
-    null_digital_state_values(
-        annotate_severity(out_frame, stamped.quality_codes),
-        role=stamped.role,
-        tag=stamped.identity,
+    quality, assumed = _resolve_quality(
+        frame, label=src.name, quality_col=quality_col, assume_quality=assume_quality
+    )
+    out_frame, stamped = _prepare_archive(
+        timestamps=_to_utc(frame[timestamp_col], tz, timestamp_col),
+        values=frame[value_col],
+        quality=quality,
+        assumed=assumed,
+        meta=meta,
     )
     return write_tag(out, out_frame, stamped, overwrite=overwrite)
+
+
+def _wide_columns(
+    frame: pd.DataFrame,
+    *,
+    label: str,
+    timestamp_col: str,
+    tags: Sequence[str] | None,
+    quality_suffix: str | None,
+) -> list[str]:
+    """The tag columns of a wide export, each checked to exist."""
+    columns = [str(c) for c in frame.columns]
+    listed = ", ".join(columns)
+    if timestamp_col not in columns:
+        raise SchemaError(
+            f"{label}: no timestamp column {timestamp_col!r}; columns are {listed}"
+        )
+    if tags is not None:
+        chosen = list(dict.fromkeys(str(t) for t in tags))
+        for tag in chosen:
+            if tag not in columns:
+                raise SchemaError(
+                    f"{label}: no column {tag!r} named in --tags; columns are {listed}"
+                )
+    else:
+        quality_cols = {f"{c}{quality_suffix}" for c in columns} if quality_suffix else set()
+        chosen = [c for c in columns if c != timestamp_col and c not in quality_cols]
+    if not chosen:
+        raise SchemaError(f"{label}: no tag columns besides {timestamp_col!r}")
+    return chosen
+
+
+def _wide_quality_columns(
+    frame: pd.DataFrame,
+    chosen: Sequence[str],
+    *,
+    label: str,
+    quality_suffix: str | None,
+) -> dict[str, str | None]:
+    """Each tag's quality column, ``None`` for every tag when there is no suffix."""
+    quality_cols: dict[str, str | None] = {}
+    for tag in chosen:
+        qcol = f"{tag}{quality_suffix}" if quality_suffix is not None else None
+        if qcol is not None and qcol not in frame.columns:
+            raise SchemaError(
+                f"{label}: no quality column {qcol!r} for tag {tag!r}; columns are "
+                f"{', '.join(map(str, frame.columns))}"
+            )
+        quality_cols[tag] = qcol
+    return quality_cols
+
+
+def _check_distinct_filenames(names: Sequence[str], *, what: str) -> None:
+    """Raise ValueError when two names share one :func:`safe_filename`."""
+    seen: dict[str, str] = {}
+    for name in names:
+        key = safe_filename(name)
+        if key in seen:
+            if seen[key] == name:
+                raise ValueError(f"{what} {name!r} appears twice; each needs its own file")
+            raise ValueError(
+                f"{what} {seen[key]!r} and {name!r} both map to the file name {key!r}; "
+                "rename one of them"
+            )
+        seen[key] = name
+
+
+def ingest_wide(
+    source: str | Path,
+    *,
+    out_dir: str | Path,
+    meta_dir: str | Path,
+    timestamp_col: str = "timestamp",
+    tags: Sequence[str] | None = None,
+    quality_suffix: str | None = None,
+    tz: str | None = None,
+    assume_quality: str | None = None,
+    overwrite: bool = False,
+) -> list[Path]:
+    """Turn a wide export, one column per tag, into one archive per tag.
+
+    The file is read once. Tag columns are ``tags`` when given, else every
+    column that is not ``timestamp_col`` and not a quality column; with
+    ``quality_suffix`` a tag's quality column is ``f"{tag}{quality_suffix}"``.
+    Metadata for a tag comes from ``meta_dir / f"{safe_filename(tag)}.json"``
+    and its archive goes to ``out_dir / f"{safe_filename(point_id)}.parquet"``.
+    Every check runs before the first archive is written, so a refusal
+    leaves ``out_dir`` as it was.
+
+    Raises:
+        SchemaError: unreadable input; a missing timestamp, tag, quality
+            or metadata file; naive timestamps without ``tz``; or
+            ``quality_suffix`` given together with ``assume_quality``.
+        ValueError: two tags or two point ids that share one file name.
+        FileExistsError: an archive exists and ``overwrite`` is False.
+    """
+    src = Path(source)
+    frame = _read_source(src)
+    label = src.name
+    chosen = _wide_columns(
+        frame,
+        label=label,
+        timestamp_col=timestamp_col,
+        tags=tags,
+        quality_suffix=quality_suffix,
+    )
+    _check_distinct_filenames(chosen, what="tags")
+    if quality_suffix is not None and assume_quality is not None:
+        raise SchemaError(
+            f"{label}: --assume-quality was given with --quality-suffix "
+            f"{quality_suffix!r}; the export carries its own quality codes, so "
+            "drop one of the two"
+        )
+    if quality_suffix is None and assume_quality is None:
+        raise SchemaError(
+            f"{label}: no --quality-suffix and no --assume-quality; name the suffix "
+            "of the per-tag quality columns with --quality-suffix, or state "
+            "--assume-quality GOOD|UNCERTAIN|BAD, which is recorded on every "
+            "archive and reported in every profile"
+        )
+    quality_cols = _wide_quality_columns(
+        frame, chosen, label=label, quality_suffix=quality_suffix
+    )
+    meta_root = Path(meta_dir)
+    metas: dict[str, TagMeta] = {}
+    for tag in chosen:
+        meta_path = meta_root / f"{safe_filename(tag)}.json"
+        if not meta_path.exists():
+            raise SchemaError(
+                f"tag {tag!r}: no metadata file {meta_path.as_posix()}; write it by "
+                "hand or with --init-meta"
+            )
+        metas[tag] = read_meta_json(meta_path)
+    _check_distinct_filenames(
+        [m.identity.point_id for m in metas.values()], what="point ids"
+    )
+    root = Path(out_dir)
+    targets = {
+        tag: root / f"{safe_filename(metas[tag].identity.point_id)}.parquet"
+        for tag in chosen
+    }
+    if not overwrite:
+        for target in targets.values():
+            if target.exists():
+                raise FileExistsError(
+                    f"{target} already exists; pass overwrite=True to replace it"
+                )
+    timestamps = _to_utc(frame[timestamp_col], tz, timestamp_col)
+    prepared: list[tuple[Path, pd.DataFrame, TagMeta]] = []
+    for tag in chosen:
+        quality, assumed = _resolve_quality(
+            frame, label=label, quality_col=quality_cols[tag], assume_quality=assume_quality
+        )
+        out_frame, stamped = _prepare_archive(
+            timestamps=timestamps,
+            values=frame[tag],
+            quality=quality,
+            assumed=assumed,
+            meta=metas[tag],
+        )
+        prepared.append((targets[tag], out_frame, stamped))
+    return [
+        write_tag(target, out_frame, stamped, overwrite=overwrite)
+        for target, out_frame, stamped in prepared
+    ]
+
+
+# The keys of a metadata template, in the order docs/SCHEMA.md lists them.
+_META_TEMPLATE_KEYS = (
+    "unit_raw",
+    "unit_canonical",
+    "eng_range_zero",
+    "eng_range_span",
+    "sample_rate_s",
+    "asset",
+    "loop_id",
+    "role",
+    "quality_codes",
+    "quality_assumed",
+)
+
+
+def _quality_code_template(raw_codes: pd.Series) -> dict[str, str | None]:
+    """One entry per distinct raw quality value, filled only where the value names a severity."""
+    severities = {s.value for s in Severity}
+    template: dict[str, str | None] = {}
+    for raw in sorted({str(v) for v in raw_codes.dropna()}):
+        folded = raw.strip().upper()
+        template[raw] = folded if folded in severities else None
+    return template
+
+
+def init_meta(
+    source: str | Path,
+    *,
+    out_dir: str | Path,
+    source_id: str,
+    timestamp_col: str = "timestamp",
+    tags: Sequence[str] | None = None,
+    quality_suffix: str | None = None,
+    overwrite: bool = False,
+) -> list[Path]:
+    """Write one metadata template per tag column of a wide export.
+
+    Each template at ``out_dir / f"{safe_filename(tag)}.json"`` carries
+    ``identity`` (``source_id`` and the column name as ``point_id``),
+    ``name`` (the column name) and every optional key of ``tsdive.meta``
+    set to ``null``. Nothing about units, ranges or sample rate is read
+    off the data. With ``quality_suffix``, ``quality_codes`` lists every
+    distinct raw value of the tag's quality column, mapped to a severity
+    only where the value spells ``GOOD``, ``UNCERTAIN`` or ``BAD``
+    itself; every other code stays ``null`` for the reader to fill, and
+    :func:`read_meta_json` refuses the file until they are.
+
+    Raises:
+        SchemaError: unreadable input, or a missing timestamp, tag or
+            quality column.
+        ValueError: two tags that share one file name.
+        FileExistsError: a template exists and ``overwrite`` is False.
+    """
+    src = Path(source)
+    frame = _read_source(src)
+    chosen = _wide_columns(
+        frame,
+        label=src.name,
+        timestamp_col=timestamp_col,
+        tags=tags,
+        quality_suffix=quality_suffix,
+    )
+    _check_distinct_filenames(chosen, what="tags")
+    quality_cols = _wide_quality_columns(
+        frame, chosen, label=src.name, quality_suffix=quality_suffix
+    )
+    root = Path(out_dir)
+    targets = {tag: root / f"{safe_filename(tag)}.json" for tag in chosen}
+    if not overwrite:
+        for target in targets.values():
+            if target.exists():
+                raise FileExistsError(
+                    f"{target} already exists; pass overwrite=True to replace it"
+                )
+    root.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for tag in chosen:
+        payload: dict[str, object] = {
+            "identity": {"source_id": source_id, "point_id": tag},
+            "name": tag,
+            **dict.fromkeys(_META_TEMPLATE_KEYS),
+        }
+        qcol = quality_cols[tag]
+        if qcol is not None:
+            payload["quality_codes"] = _quality_code_template(frame[qcol])
+        targets[tag].write_text(
+            json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+        written.append(targets[tag])
+    return written
 
 
 @dataclass(frozen=True)

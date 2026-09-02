@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from itertools import takewhile
 
 import pandas as pd
 import pytest
 
 from conftest import EngRange, make_meta, write_archive
-from tsdive.cli import cmd_run
+from tsdive.cli import cmd_compare, cmd_run
 
 ALL_FIVE = """\
 archives = ["plant1/*.parquet"]
@@ -189,6 +190,30 @@ def test_report_html_carries_the_findings(tmp_path):
     assert "<h3>mspc - plant1:FIC101.PV, plant1:TIC101.PV</h3>" in html_text
 
 
+def test_report_html_draws_the_screen_and_spc_results_over_each_plot(tmp_path):
+    _two_archives(tmp_path)
+    plan = _plan(tmp_path, ALL_FIVE)
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 0
+    html_text = (out / "report.html").read_text(encoding="utf-8")
+    figures = re.findall(r"<svg .*?</svg>", html_text)
+    assert len(figures) == 2
+    assert html_text.index("<h2>Plots</h2>") < html_text.index("<h2>Window profiles</h2>")
+    findings = _ledger(out)["findings"]
+    for figure, tag in zip(figures, ["plant1:FIC101.PV", "plant1:TIC101.PV"], strict=True):
+        assert f"<title>{tag}  " in figure
+        by_step = {f["step"]: f["text"] for f in findings if f["tags"] == tag}
+        flagged = re.search(r"flagged (\d+) of", by_step["screen"])
+        hits = re.search(r"(\d+) rule hits? in", by_step["spc"])
+        assert flagged is not None and hits is not None
+        assert figure.count('class="flag"') == int(flagged.group(1))
+        assert figure.count('class="hit"') == int(hits.group(1))
+        assert figure.count('class="center"') == 1
+        assert figure.count('class="limit"') == 2
+    headline = (out / "ledger.txt").read_text(encoding="utf-8").splitlines()[0]
+    assert headline.startswith("run plan.toml   2 archives   5 steps   profiles 2")
+
+
 def test_a_censored_baseline_refuses_that_tag_and_the_run_continues(tmp_path):
     _archive(tmp_path, "FIC101.PV", [50.0 + (i % 5) for i in range(121)])
     censored = [50.0 + (i % 5) for i in range(121)]
@@ -213,6 +238,12 @@ steps    = ["profile", "screen", "spc"]
         "plant1:FIC101.PV",
         "plant1:FIC101.PV",
     ]
+    # the refused tag keeps its plot from the profile step, with nothing drawn over it
+    figures = re.findall(r"<svg .*?</svg>", (out / "report.html").read_text(encoding="utf-8"))
+    assert len(figures) == 2
+    assert figures[0].count('class="center"') == 1
+    assert figures[1].count('class="center"') == 0
+    assert figures[1].count('class="flag"') == 0
     assert len(ledger["refusals"]) == 2
     for row, step in zip(ledger["refusals"], ("screen", "spc"), strict=True):
         assert row.startswith(f"[InsufficientQuality] {step} plant1:TIC101.PV: ")
@@ -229,7 +260,7 @@ def test_unknown_step_refuses_before_anything_runs(tmp_path, capsys):
     assert cmd_run([str(plan), "-o", str(out)]) == 2
     err = capsys.readouterr().err
     assert err.strip() == (
-        "error: unknown step(s): narrate; known: profile, segment, screen, spc, mspc"
+        "error: unknown step(s): narrate; known: profile, segment, screen, spc, mspc, compare"
     )
     assert not out.exists()
 
@@ -357,6 +388,83 @@ steps    = ["spc"]
         "[ValueError] spc plant1:FIC101.PV: the plan sets no 'baseline', which "
         "spc requires"
     ]
+
+
+BEFORE = "2024-03-01T00:00:00Z/2024-03-01T00:59:00Z"
+AFTER = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+
+
+def test_before_and_after_run_compare_over_every_archive_at_once(tmp_path, capsys):
+    flow, temp = _two_archives(tmp_path)
+    plan = _plan(
+        tmp_path,
+        f"""\
+archives = ["plant1/*.parquet"]
+window   = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+baseline = "2024-03-01T00:00:00Z/2024-03-01T00:59:00Z"
+before   = "{BEFORE}"
+after    = "{AFTER}"
+steps    = ["compare", "profile", "screen"]
+
+[options.compare]
+top = 1
+""",
+    )
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 0
+    ledger = _ledger(out)
+    assert ledger["refusals"] == []
+    # compare runs once over both archives, after the per-tag steps.
+    assert [(f["step"], f["tags"]) for f in ledger["findings"]] == [
+        ("screen", "plant1:FIC101.PV"),
+        ("screen", "plant1:TIC101.PV"),
+        ("compare", "plant1:FIC101.PV, plant1:TIC101.PV"),
+    ]
+    capsys.readouterr()
+    argv = [str(flow), str(temp), "--before", BEFORE, "--after", AFTER, "--top", "1"]
+    assert cmd_compare(argv) == 0
+    assert ledger["findings"][-1]["text"] == capsys.readouterr().out.rstrip("\n")
+
+
+def test_compare_without_before_and_after_is_a_refusal_row(tmp_path):
+    _two_archives(tmp_path)
+    plan = _plan(
+        tmp_path,
+        """\
+archives = ["plant1/*.parquet"]
+window   = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+baseline = "2024-03-01T00:00:00Z/2024-03-01T00:59:00Z"
+steps    = ["compare"]
+""",
+    )
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 2
+    assert _ledger(out)["refusals"] == [
+        "[ValueError] compare plant1:FIC101.PV, plant1:TIC101.PV: the plan sets no "
+        "'before' and 'after', which compare requires"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("given", "missing"), [("before", "after"), ("after", "before")]
+)
+def test_one_period_without_the_other_refuses_the_plan(tmp_path, capsys, given, missing):
+    _two_archives(tmp_path)
+    plan = _plan(
+        tmp_path,
+        f"""\
+archives = ["plant1/*.parquet"]
+{given} = "{BEFORE}"
+steps = ["profile"]
+""",
+    )
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith(
+        f"error: the plan sets '{given}' without '{missing}'; compare needs both"
+    )
+    assert not out.exists()
 
 
 def test_the_default_output_directory_sits_beside_the_plan(tmp_path):

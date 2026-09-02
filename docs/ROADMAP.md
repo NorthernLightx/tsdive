@@ -97,12 +97,12 @@ the change, and prints only the pairs whose interval excludes 0. Table 3
 fits one PCA on the before period and reads it on the after one. A tag
 changed and a pair decoupled. Neither word names a cause.
 
-`tsdive run` does not reach `compare`. A plan states one window and one
-baseline, and `compare` monitors two periods, so the plan format has to
-grow a second window first.
+Shipped: a plan that sets `before` and `after` runs `compare` over all its
+archives at once, as the last step.
 
-Owed: the hand-off from `segment` to `screen --mode`. Nothing turns
-segments into regime labels today, so a person reads the segmentation.
+Shipped: `segment --mode-out FILE` writes the segments as a MODE archive,
+one label (`S1`, `S2`, ...) per sample the window read, and `screen --mode
+FILE` builds one baseline per label from it.
 
 Owed: mutual information between two tags, and per-tag attributions from
 a fitted model. Both wait for a benchmark row showing them find something

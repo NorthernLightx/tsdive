@@ -4,14 +4,16 @@ The working loop a new archive walks:
 
     ingest -> profile -> segment -> screen -> spc -> mspc
 
-Every command after ``ingest`` takes the same ``START/END`` window
-syntax and refuses the same way: ``[ErrorName] message`` on stderr, exit
-2. On ``profile`` an omitted window means the archive's whole extent,
-which the report states like any other window.
+Every command after ``ingest`` takes the same window syntax
+(``START/END``, ``START/PT5H``, ``PT5H/END``, or a date for one UTC day)
+and refuses the same way: ``[ErrorName] message`` on stderr, exit 2. On
+``profile`` an omitted window means the archive's whole extent, which
+the report states like any other window.
 
 Argument parsing, printing and exit codes live here; the profiling flow
-itself is :func:`tsdive.api.profile`, so the library and the CLI can
-never disagree about what a profile is.
+itself is :func:`tsdive.api.profile` and the other analyses are the
+functions in :mod:`tsdive.analyses`, so the library and the CLI can
+never disagree about what a result is.
 """
 
 from __future__ import annotations
@@ -20,128 +22,62 @@ import argparse
 import json
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import cast
 
 import pandas as pd
 from pyarrow import parquet
 
-from tsdive import __version__
-from tsdive.api import Profile, ingest, parse_window, profile, read_meta_json
-from tsdive.baselines.provisional import (
-    ProvisionalBaseline,
-    ScreenResult,
-    mad_baseline,
-    moving_range_baseline,
-    screen,
+from tsdive import __version__, analyses
+from tsdive.analyses import (
+    CompareAnalysis,
+    MspcAnalysis,
+    ScreenAnalysis,
+    SegmentAnalysis,
+    SpcAnalysis,
 )
-from tsdive.baselines.regime import RegimeBaseline, regime_baselines, screen_regime
-from tsdive.changepoints import DEFAULT_PENALTY_MULTIPLIER, segment_window
-from tsdive.changepoints.pelt import Segmentation
-from tsdive.compare import (
-    NO_INTERVAL,
-    CompareResult,
-    JointStructure,
-    PairChange,
-    PairTable,
-    TagChange,
-    compare,
+from tsdive.analyses_render import window_json
+from tsdive.api import (
+    Profile,
+    ingest,
+    ingest_wide,
+    init_meta,
+    parse_window,
+    profile,
+    read_meta_json,
 )
+from tsdive.changepoints import DEFAULT_PENALTY_MULTIPLIER
 from tsdive.detectors.flatline import FlatlineVerdict
-from tsdive.errors import InsufficientQuality, SchemaError, TSDiveError
+from tsdive.errors import TSDiveError
 from tsdive.features.window_features import compute_stats
-from tsdive.mspc.pca import (
-    AlignedMatrix,
-    MspcDetection,
-    PcaModel,
-    align_windows,
-    common_rate,
-    detect,
-    fit_pca,
-)
 from tsdive.report import (
-    MAX_WIDTH,
     SEP,
-    continued,
-    fits,
-    fmt_duration,
-    fmt_num,
     fmt_span,
-    fmt_ts,
-    indent,
     label_line,
-    more_line,
     plural,
     render_window_report,
-    wrapped,
-    yes_no,
 )
-from tsdive.spc.charts import ControlLimits, RuleHit, apply_rules, individuals_limits
-from tsdive.store.clipping import assert_usable_baseline
 from tsdive.store.gaps import DATA_LOSS_CLASSES
 from tsdive.store.quality import Severity
 from tsdive.store.sampling_contract import (
-    AggregateType,
     CalculationBasis,
     RetrievalMode,
     SamplingContract,
 )
 from tsdive.store.tagstore import (
     SingleFileStore,
-    Window,
     archive_extent,
     meta_from_parquet,
 )
 from tsdive.ui.jsonout import to_jsonable
-from tsdive.ui.term import colour_enabled, colourise, red, rule
-
-# Enough flagged timestamps to see where the screen fired without pasting
-# a monitored window back at the caller.
-FLAGGED_SHOWN = 3
-HITS_SHOWN = 5
-
-# The rule set apply_rules emits, in report order. A rule with no hits
-# prints a zero count, so the report states which rules ran.
-SPC_RULES = ("BEYOND_3SIGMA", "RUN_9_SAMESIDE", "TREND_6")
-
-# MspcDetection.top_contributors keeps this many tags, so a model holding
-# no more than that names all of them on every breach and ranks nothing.
-CONTRIBUTORS_KEPT = 3
-
-# compare's table 1: the fixed columns, as (header, minimum width,
-# right-aligned). The tag column is elastic and comes first.
-_CHANGE_COLUMNS = (
-    ("quality", 8, False),
-    ("sigma", 5, True),
-    ("spread", 6, True),
-    ("flagged", 7, True),
-    ("changed at", 20, False),
-)
-
-# What the tag column takes when the fixed columns leave it the room: 16
-# characters, until a quality value as wide as "UNCERTAIN 100%" claims
-# some of it. Below TAG_COLUMN_MIN a truncated tag names nothing.
-TAG_COLUMN_MAX = 16
-TAG_COLUMN_MIN = 8
-
-# compare's table 2, same shape; its elastic column holds two tag labels
-# and the tilde between them.
-_PAIR_COLUMNS = (
-    ("before", 6, True),
-    ("after", 6, True),
-    ("delta", 6, True),
-    ("interval", 14, False),
-)
-PAIR_COLUMN_MAX = 2 * TAG_COLUMN_MAX + 3
-
-PAIR_METHOD = "(Pearson on first differences, 95% block bootstrap)"
+from tsdive.ui.term import colour_enabled, colourise, red
 
 MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time series
 
 commands, in the order an archive walks them:
   ingest <csv|parquet> --out ARCHIVE --meta META.json
                                           build an archive from an export
+  ingest <csv|parquet> --wide --out DIR --meta-dir DIR
+                                          one archive per column of a wide export
   profile <parquet> [--window START/END]  data physics and statistics for a window
   segment <parquet> [--window START/END]  regimes read off the samples themselves,
                                           for a tag with no MODE tag to key them
@@ -166,6 +102,9 @@ options, on every command:
                                           text (the analysis commands)
   --no-color                              plain text; NO_COLOR does the same
   --version                               print the tsdive version
+
+windows, wherever START/END appears above:
+  START/END, START/PT5H, PT5H/END, or a date for one whole UTC day
 """
 
 
@@ -235,180 +174,17 @@ def _combined_extent(paths: Sequence[str]) -> tuple[pd.Timestamp, pd.Timestamp]:
     return min(e[0] for e in extents), max(e[1] for e in extents)
 
 
-def _n_good(window: Window) -> int:
-    """Rows the window read judged trustworthy *and* usable."""
-    return int(window.frame["valid"].sum())
-
-
-def _window_json(window: Window) -> dict[str, object]:
-    """The span a step read, as a program wants it."""
-    return {
-        "start": window.start,
-        "end": window.end,
-        "duration_s": (window.end - window.start).total_seconds(),
-    }
-
-
-def _baseline_line(window: Window) -> str:
-    """States the censoring verdict the baseline was admitted on."""
-    return label_line(
-        "baseline",
-        f"{fmt_span(window.start, window.end)}{SEP}GOOD {_n_good(window)}{SEP}"
-        f"censored {yes_no(window.physics.clipping.censored)}",
-    )
-
-
-def _window_line(window: Window) -> str:
-    return label_line("window", fmt_span(window.start, window.end))
-
-
-def _baseline_json(window: Window) -> dict[str, object]:
-    return {
-        **_window_json(window),
-        "n_good": _n_good(window),
-        "censored": window.physics.clipping.censored,
-    }
-
-
-def _baseline_and_monitor(
-    path: str,
-    baseline: str,
-    window: str,
-    *,
-    basis: str,
-    stepped: bool,
-) -> tuple[Window, Window]:
-    """Read a baseline window and a monitored window from one archive.
-
-    Two refusals live here rather than in the baseline, SPC and MSPC
-    library calls, which are handed frames and never see where those
-    frames came from: a baseline overlapping the monitored window grades
-    those samples against themselves, and a censored baseline carries no
-    information about normal operation (:func:`assert_usable_baseline`).
-    """
-    b_start, b_end = parse_window(baseline)
-    m_start, m_end = parse_window(window)
-    # Touching bounds are not an overlap, but reads are inclusive at both
-    # ends, so an adjacent pair would share the sample on the boundary.
-    # It is given to the monitored window and dropped from the baseline
-    # frame below.
-    if b_start < m_end and m_start < b_end:
-        raise ValueError("baseline and window overlap")
-    store = SingleFileStore(Path(path))
-    meta = meta_from_parquet(store.path)
-    contract = SamplingContract(
-        calculation_basis=CalculationBasis(basis),
-        retrieval_mode=RetrievalMode.RECORDED,
-        aggregate_type=AggregateType.NONE,
-        stepped=stepped,
-    )
-    reads = [
-        store.read_window(meta.identity, s.to_pydatetime(), e.to_pydatetime(), contract)
-        for s, e in ((b_start, b_end), (m_start, m_end))
-    ]
-    base, monitor = reads
-    assert_usable_baseline(meta, base.physics.clipping)
-    if b_end == m_start:
-        # The frame loses the boundary sample; the physics block keeps
-        # it, so the censoring verdict the baseline was admitted on is
-        # still the one taken over the whole read - the conservative side.
-        base = replace(base, frame=base.frame[base.frame["timestamp"] < m_start])
-    return base, monitor
-
-
-def _aligned_modes(
-    frame: pd.DataFrame, modes: Window, label: str
-) -> tuple[pd.DataFrame, pd.Series, int]:
-    """Inner-join a frame to its MODE rows on the exact timestamp.
-
-    Exact only: a regime label carried over from a neighbouring second is
-    a guess about what the plant was doing. Rows with no mode sample of
-    their own are dropped and counted, and a window that loses more than
-    half of them is refused rather than screened against a fragment.
-    """
-    usable = modes.frame.loc[modes.frame["valid"], ["timestamp", "value"]]
-    if bool(usable["timestamp"].duplicated().any()):
-        raise SchemaError(
-            f"{modes.identity}: duplicate timestamps in the mode archive; joining "
-            f"them would multiply {label} rows"
-        )
-    joined = frame.merge(
-        usable.rename(columns={"value": "mode"}), on="timestamp", how="inner"
-    ).reset_index(drop=True)
-    dropped = len(frame) - len(joined)
-    if dropped * 2 > len(frame):
-        raise InsufficientQuality(
-            f"{dropped} of {len(frame)} {label} rows carry no mode sample at their "
-            "own timestamp; more than half the window would be screened blind"
-        )
-    return joined, cast(pd.Series, joined["mode"].astype(str)), dropped
-
-
-@dataclass(frozen=True)
-class _Alignment:
-    """Rows that carried a mode sample of their own, over rows read."""
-
-    kept: int
-    total: int
-
-
-@dataclass(frozen=True)
-class _SegmentRun:
-    window: Window
-    found: Segmentation
-    penalty_is_default: bool
-
-
-@dataclass(frozen=True)
-class _ScreenRun:
-    """One screen, whether it used one baseline or one per regime.
-
-    ``provisional`` and ``regimes`` are the two ways a baseline is built;
-    exactly one is populated, and both the text and the JSON read the same
-    object rather than screening the window twice.
-    """
-
-    baseline: Window
-    monitor: Window
-    result: ScreenResult
-    k: float
-    mode_path: str | None = None
-    provisional: ProvisionalBaseline | None = None
-    regimes: dict[str, RegimeBaseline] | None = None
-    alignment: tuple[_Alignment, _Alignment] | None = None
-
-
-@dataclass(frozen=True)
-class _SpcRun:
-    baseline: Window
-    monitor: Window
-    limits: ControlLimits
-    sigma: float
-    n_monitored: int
-    hits: list[RuleHit]
-
-
-@dataclass(frozen=True)
-class _MspcRun:
-    baseline: Window
-    monitor: Window
-    tags: list[str]
-    rate_s: int
-    rate_source: str
-    quantile: float
-    train: AlignedMatrix
-    test: AlignedMatrix
-    model: PcaModel
-    found: MspcDetection
-
-    @property
-    def ranked(self) -> bool:
-        """True when the model holds more tags than a top-N list would name."""
-        return len(self.model.columns) > CONTRIBUTORS_KEPT
-
-
 StepRunner = Callable[[argparse.Namespace], list[str]]
 StepJson = Callable[[argparse.Namespace], dict[str, object]]
+
+
+def _lines(text: str) -> list[str]:
+    """A rendered report back as the lines it was joined from.
+
+    ``render()`` joins its lines with newlines and carries no trailing
+    one, so splitting on newlines is exact.
+    """
+    return text.split("\n")
 
 
 def _no_color(args: argparse.Namespace) -> bool:
@@ -463,7 +239,7 @@ def _report_and_exit(
     except TSDiveError as e:
         _print_refusal(f"[{type(e).__name__}]", str(e), args)
         return 2
-    except (ValueError, FileNotFoundError) as e:
+    except (ValueError, FileNotFoundError, FileExistsError) as e:
         _print_refusal("error:", str(e), args)
         return 2
 
@@ -496,152 +272,26 @@ def _parser_screen() -> argparse.ArgumentParser:
     return _add_output_flags(parser)
 
 
-def _screen_run(args: argparse.Namespace) -> _ScreenRun:
-    """Read both windows, build the baseline(s), and screen the monitored one."""
-    base_w, monitor_w = _baseline_and_monitor(
-        args.parquet, args.baseline, args.window, basis=args.basis, stepped=args.stepped
-    )
-    if not args.mode:
-        base = (
-            mad_baseline(base_w.frame)
-            if args.method == "mad"
-            else moving_range_baseline(base_w.frame)
-        )
-        return _ScreenRun(
-            baseline=base_w,
-            monitor=monitor_w,
-            result=screen(base, monitor_w.frame, k=args.k),
-            k=args.k,
-            provisional=base,
-        )
-    mode_base, mode_monitor = _baseline_and_monitor(
-        args.mode, args.baseline, args.window, basis=args.basis, stepped=args.stepped
-    )
-    b_frame, b_modes, b_dropped = _aligned_modes(base_w.frame, mode_base, "baseline")
-    m_frame, m_modes, m_dropped = _aligned_modes(monitor_w.frame, mode_monitor, "window")
-    regimes = regime_baselines(b_frame, b_modes)
-    return _ScreenRun(
-        baseline=base_w,
-        monitor=monitor_w,
-        result=screen_regime(regimes, m_frame, m_modes, k=args.k),
+def _screen_run(args: argparse.Namespace) -> ScreenAnalysis:
+    return analyses.screen(
+        args.parquet,
+        args.baseline,
+        args.window,
+        method=args.method,
         k=args.k,
-        mode_path=args.mode,
-        regimes=regimes,
-        alignment=(
-            _Alignment(len(b_frame), len(b_frame) + b_dropped),
-            _Alignment(len(m_frame), len(m_frame) + m_dropped),
-        ),
+        mode=args.mode or None,
+        basis=args.basis,
+        stepped=args.stepped,
     )
-
-
-def _flagged_share(result: ScreenResult) -> str:
-    if not result.n_screened:
-        return "n/a"
-    return f"{100.0 * result.n_flagged / result.n_screened:.1f}%"
 
 
 def run_screen(args: argparse.Namespace) -> list[str]:
     """Screen a window against a baseline: MAD, or regime-keyed with --mode."""
-    run = _screen_run(args)
-    result = run.result
-    lines = [
-        f"{run.baseline.identity}  flagged {result.n_flagged} of "
-        f"{result.n_screened} ({_flagged_share(result)})",
-        "",
-        _baseline_line(run.baseline),
-        _window_line(run.monitor),
-    ]
-    if run.mode_path is not None:
-        lines.append(label_line("mode", run.mode_path))
-    if run.alignment is not None:
-        base_a, monitor_a = run.alignment
-        lines.append(
-            label_line(
-                "alignment",
-                f"baseline {base_a.kept}/{base_a.total}{SEP}"
-                f"window {monitor_a.kept}/{monitor_a.total}",
-            )
-        )
-    if run.regimes is not None:
-        lines.append(label_line("method", f"REGIME_MAD{SEP}k {run.k}"))
-        lines.extend(
-            rule("Regimes")
-            + indent(
-                f"regime {name}{SEP}center {fmt_num(r.center)}{SEP}"
-                f"scale {fmt_num(r.scale)}{SEP}n {r.n_good}"
-                for name, r in run.regimes.items()
-            )
-        )
-    else:
-        base = run.provisional
-        assert base is not None
-        lo, hi = base.limits(run.k)
-        lines.append(
-            label_line(
-                "method",
-                f"{base.kind}{SEP}center {fmt_num(base.center)}{SEP}"
-                f"scale {fmt_num(base.scale)}{SEP}k {run.k}{SEP}"
-                f"limits [{fmt_num(lo)}, {fmt_num(hi)}]",
-            )
-        )
-        lines.append(label_line("caveat", base.caveat))
-    if result.flagged_timestamps:
-        # Regime screening walks regime by regime, so its timestamps come
-        # back grouped rather than in time order; "first" has to mean first.
-        stamps = sorted(result.flagged_timestamps)
-        lines.extend(rule("Flagged"))
-        lines.extend(indent(fmt_ts(t) for t in stamps[:FLAGGED_SHOWN]))
-        lines.extend(more_line(len(stamps) - FLAGGED_SHOWN))
-    return lines
+    return _lines(_screen_run(args).render())
 
 
 def json_screen(args: argparse.Namespace) -> dict[str, object]:
-    run = _screen_run(args)
-    result = run.result
-    base = run.provisional
-    return {
-        "tag": str(run.baseline.identity),
-        "mode": run.mode_path,
-        "baseline": _baseline_json(run.baseline),
-        "window": _window_json(run.monitor),
-        "method": result.kind,
-        "k": run.k,
-        "center": None if base is None else base.center,
-        "scale": None if base is None else base.scale,
-        "limits": None if base is None else list(base.limits(run.k)),
-        "caveat": None if base is None else base.caveat,
-        "regimes": (
-            None
-            if run.regimes is None
-            else [
-                {
-                    "regime": name,
-                    "center": r.center,
-                    "scale": r.scale,
-                    "n_good": r.n_good,
-                    "method": r.method,
-                }
-                for name, r in run.regimes.items()
-            ]
-        ),
-        "alignment": (
-            None
-            if run.alignment is None
-            else {
-                "baseline": {
-                    "kept": run.alignment[0].kept,
-                    "total": run.alignment[0].total,
-                },
-                "window": {
-                    "kept": run.alignment[1].kept,
-                    "total": run.alignment[1].total,
-                },
-            }
-        ),
-        "n_screened": result.n_screened,
-        "n_flagged": result.n_flagged,
-        "flagged": sorted(result.flagged_timestamps),
-    }
+    return _screen_run(args).to_dict()
 
 
 def cmd_screen(argv: Sequence[str] | None = None) -> int:
@@ -678,115 +328,56 @@ def _parser_segment() -> argparse.ArgumentParser:
     parser.add_argument(
         "--stepped", action="store_true", help="stepped interpolation between samples"
     )
+    parser.add_argument(
+        "--mode-out",
+        default=None,
+        metavar="FILE",
+        help="write the segments as a MODE archive, one label per sample, for screen --mode",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="replace an existing archive at --mode-out",
+    )
     return _add_output_flags(parser)
 
 
-def _segment_run(args: argparse.Namespace) -> _SegmentRun:
-    """Read the window and cut it into piecewise-constant segments."""
-    store = SingleFileStore(Path(args.parquet))
-    meta = meta_from_parquet(store.path)
-    start, end = parse_window(args.window) if args.window else archive_extent(store.path)
-    contract = SamplingContract(
-        calculation_basis=CalculationBasis(args.basis),
-        retrieval_mode=RetrievalMode.RECORDED,
-        aggregate_type=AggregateType.NONE,
+def _segment_run(args: argparse.Namespace) -> SegmentAnalysis:
+    return analyses.segment(
+        args.parquet,
+        args.window,
+        penalty=args.penalty,
+        min_size=args.min_size,
+        basis=args.basis,
         stepped=args.stepped,
     )
-    window = store.read_window(
-        meta.identity, start.to_pydatetime(), end.to_pydatetime(), contract
-    )
-    return _SegmentRun(
-        window=window,
-        found=segment_window(window, penalty=args.penalty, min_size=args.min_size),
-        penalty_is_default=args.penalty is None,
-    )
 
 
-# Minimum width of each segment-table column, so the table keeps its shape
-# on a short archive and widens only for a value that does not fit.
-_SEGMENT_COLUMNS = (("#", 1, True), ("start", 20, False), ("end", 20, False),
-                    ("n", 3, True), ("median", 7, True), ("mad", 6, True))
-
-
-def _segment_table(found: Segmentation) -> list[str]:
-    """The segment table: one row per segment, numbers right-aligned."""
-    rows = [
-        (
-            str(i),
-            fmt_ts(s.start),
-            fmt_ts(s.end),
-            str(s.n),
-            fmt_num(s.median),
-            fmt_num(s.mad),
-        )
-        for i, s in enumerate(found.segments, start=1)
-    ]
-    headers = tuple(c[0] for c in _SEGMENT_COLUMNS)
-    widths = [
-        max(minimum, len(head), *(len(r[i]) for r in rows))
-        for i, (head, minimum, _) in enumerate(_SEGMENT_COLUMNS)
-    ]
-    def line(cells: tuple[str, ...]) -> str:
-        return "  " + "  ".join(
-            cell.rjust(w) if right else cell.ljust(w)
-            for cell, w, (_, _, right) in zip(cells, widths, _SEGMENT_COLUMNS, strict=True)
-        )
-
-    return ["", line(headers), *(line(r) for r in rows)]
+def _segment_mode_out(analysis: SegmentAnalysis, args: argparse.Namespace) -> str | None:
+    """Write ``--mode-out`` when asked and return the path written, as posix."""
+    mode_out = getattr(args, "mode_out", None)
+    if mode_out is None:
+        return None
+    return analysis.write_mode_archive(mode_out, overwrite=args.overwrite).as_posix()
 
 
 def run_segment(args: argparse.Namespace) -> list[str]:
     """Segment a window into regimes the samples themselves show."""
-    run = _segment_run(args)
-    window, found = run.window, run.found
-    default_note = (
-        f" ({DEFAULT_PENALTY_MULTIPLIER:g}*log n)" if run.penalty_is_default else ""
-    )
-    return [
-        f"{window.identity}  {plural(len(found.segments), 'segment')}{SEP}"
-        f"{plural(len(found.breakpoints), 'breakpoint')}{SEP}"
-        # Not a refusal - a segment table is not a baseline - but a
-        # segment pinned at full scale is a saturation, not a regime.
-        f"censored {yes_no(window.physics.clipping.censored)}",
-        "",
-        label_line(
-            "window",
-            f"{fmt_span(window.start, window.end)}{SEP}usable {found.n_used}",
-        ),
-        label_line(
-            "method",
-            f"{found.method}{SEP}penalty {fmt_num(found.penalty)}{default_note}"
-            f"{SEP}min-size {found.min_size}",
-        ),
-        *_segment_table(found),
-    ]
+    analysis = _segment_run(args)
+    lines = _lines(analysis.render())
+    written = _segment_mode_out(analysis, args)
+    if written is not None:
+        lines += ["", label_line("wrote", written)]
+    return lines
 
 
 def json_segment(args: argparse.Namespace) -> dict[str, object]:
-    run = _segment_run(args)
-    found = run.found
-    return {
-        "tag": str(run.window.identity),
-        "window": _window_json(run.window),
-        "censored": run.window.physics.clipping.censored,
-        "usable": found.n_used,
-        "method": found.method,
-        "penalty": found.penalty,
-        "penalty_is_default": run.penalty_is_default,
-        "min_size": found.min_size,
-        "breakpoints": list(found.breakpoints),
-        "segments": [
-            {
-                "index": i,
-                "start": s.start,
-                "end": s.end,
-                "n": s.n,
-                "median": s.median,
-                "mad": s.mad,
-            }
-            for i, s in enumerate(found.segments, start=1)
-        ],
-    }
+    analysis = _segment_run(args)
+    doc = analysis.to_dict()
+    written = _segment_mode_out(analysis, args)
+    if written is not None:
+        doc["mode_out"] = written
+    return doc
 
 
 def cmd_segment(argv: Sequence[str] | None = None) -> int:
@@ -816,81 +407,19 @@ def _parser_spc() -> argparse.ArgumentParser:
     return _add_output_flags(parser)
 
 
-def _spc_run(args: argparse.Namespace) -> _SpcRun:
-    """Fit individuals limits on the baseline and run every rule over the window."""
-    base_w, monitor_w = _baseline_and_monitor(
+def _spc_run(args: argparse.Namespace) -> SpcAnalysis:
+    return analyses.spc(
         args.parquet, args.baseline, args.window, basis=args.basis, stepped=args.stepped
-    )
-    base = mad_baseline(base_w.frame)
-    limits = individuals_limits(base.center, base.scale)
-    good = monitor_w.frame[monitor_w.frame["valid"]]
-    return _SpcRun(
-        baseline=base_w,
-        monitor=monitor_w,
-        limits=limits,
-        sigma=base.scale,
-        n_monitored=len(good),
-        hits=apply_rules(
-            good["timestamp"], cast(pd.Series, good["value"].astype(float)), limits
-        ),
     )
 
 
 def run_spc(args: argparse.Namespace) -> list[str]:
     """Chart a window against baseline control limits."""
-    run = _spc_run(args)
-    limits = run.limits
-    lines = [
-        f"{run.baseline.identity}  {plural(len(run.hits), 'rule hit')} in "
-        f"{plural(run.n_monitored, 'sample')}",
-        "",
-        _baseline_line(run.baseline),
-        _window_line(run.monitor),
-        label_line(
-            "limits",
-            f"center {fmt_num(limits.center)}{SEP}sigma {fmt_num(run.sigma)}{SEP}"
-            f"lcl {fmt_num(limits.lcl)}{SEP}ucl {fmt_num(limits.ucl)}",
-        ),
-        label_line("basis", limits.basis),
-    ]
-    for name in SPC_RULES:
-        fired = [h for h in run.hits if h.rule == name]
-        lines.extend(rule(name, str(len(fired))))
-        lines.extend(
-            indent(f"{fmt_ts(h.timestamp)}{SEP}{h.detail}" for h in fired[:HITS_SHOWN])
-        )
-        lines.extend(more_line(len(fired) - HITS_SHOWN))
-    return lines
+    return _lines(_spc_run(args).render())
 
 
 def json_spc(args: argparse.Namespace) -> dict[str, object]:
-    run = _spc_run(args)
-    return {
-        "tag": str(run.baseline.identity),
-        "baseline": _baseline_json(run.baseline),
-        "window": _window_json(run.monitor),
-        "limits": {
-            "center": run.limits.center,
-            "sigma": run.sigma,
-            "lcl": run.limits.lcl,
-            "ucl": run.limits.ucl,
-            "basis": run.limits.basis,
-        },
-        "n_monitored": run.n_monitored,
-        "n_hits": len(run.hits),
-        "rules": [
-            {
-                "rule": name,
-                "n": sum(1 for h in run.hits if h.rule == name),
-                "hits": [
-                    {"timestamp": h.timestamp, "detail": h.detail}
-                    for h in run.hits
-                    if h.rule == name
-                ],
-            }
-            for name in SPC_RULES
-        ],
-    }
+    return _spc_run(args).to_dict()
 
 
 def cmd_spc(argv: Sequence[str] | None = None) -> int:
@@ -936,148 +465,25 @@ def _parser_mspc() -> argparse.ArgumentParser:
     return _add_output_flags(parser)
 
 
-def _mspc_run(args: argparse.Namespace) -> _MspcRun:
-    """Align every archive on one grid, fit PCA on the baseline, monitor the window."""
-    pairs = [
-        _baseline_and_monitor(
-            path, args.baseline, args.window, basis="TIME_WEIGHTED", stepped=False
-        )
-        for path in args.parquet
-    ]
-    bases = [b for b, _ in pairs]
-    monitors = [m for _, m in pairs]
-    rate = args.rate_s if args.rate_s is not None else common_rate(bases)
-    train = align_windows(bases, rate_s=rate, min_coverage=args.min_coverage)
-    model = fit_pca(train, variance_threshold=args.variance, limit_quantile=args.quantile)
-    test = align_windows(monitors, rate_s=rate, min_coverage=args.min_coverage)
-    return _MspcRun(
-        baseline=bases[0],
-        monitor=monitors[0],
-        tags=[str(b.identity) for b in bases],
-        rate_s=rate,
-        rate_source="declared" if args.rate_s is None else "--rate-s",
+def _mspc_run(args: argparse.Namespace) -> MspcAnalysis:
+    return analyses.mspc(
+        args.parquet,
+        args.baseline,
+        args.window,
+        rate_s=args.rate_s,
+        variance=args.variance,
         quantile=args.quantile,
-        train=train,
-        test=test,
-        model=model,
-        found=detect(model, test),
+        min_coverage=args.min_coverage,
     )
-
-
-def _mspc_headline(run: _MspcRun) -> tuple[str, list[str]]:
-    """The headline, and the ``tags`` lines it needs when the list will not fit."""
-    found = run.found
-    counts = (
-        f"T2 breaches {len(found.t2_breaches)}{SEP}"
-        f"SPE breaches {len(found.spe_breaches)}{SEP}"
-        f"of {plural(len(run.test.index), 'row')}"
-    )
-    listed = ", ".join(run.tags)
-    if fits(f"{listed}  {counts}"):
-        return f"{listed}  {counts}", []
-    headline = f"{plural(len(run.tags), 'tag')}  {counts}"
-    if fits(label_line("tags", listed)):
-        return headline, [label_line("tags", listed)]
-    return headline, [
-        label_line("tags", run.tags[0]),
-        *(continued(tag) for tag in run.tags[1:]),
-    ]
-
-
-def _breach_lines(run: _MspcRun, stamps: list[pd.Timestamp]) -> list[str]:
-    """Up to HITS_SHOWN breach timestamps, with contributors only when they rank."""
-    lines: list[str] = []
-    for ts in stamps[:HITS_SHOWN]:
-        text = fmt_ts(ts)
-        if run.ranked:
-            named = ", ".join(run.found.top_contributors[ts.isoformat()])
-            text += f"{SEP}contributors {named}"
-        lines.extend(wrapped(text))
-    return lines + more_line(len(stamps) - HITS_SHOWN)
 
 
 def run_mspc(args: argparse.Namespace) -> list[str]:
     """Detect multivariate departures with PCA T2 and SPE."""
-    run = _mspc_run(args)
-    model = run.model
-    headline, tag_lines = _mspc_headline(run)
-    lines = [headline, "", *tag_lines]
-    lines.extend(
-        [
-            label_line(
-                "baseline",
-                f"{fmt_span(run.baseline.start, run.baseline.end)}{SEP}"
-                f"rows {len(run.train.index)}{SEP}"
-                f"coverage {fmt_num(run.train.coverage)}",
-            ),
-            label_line(
-                "window",
-                f"{fmt_span(run.monitor.start, run.monitor.end)}{SEP}"
-                f"rows {len(run.test.index)}{SEP}"
-                f"coverage {fmt_num(run.test.coverage)}",
-            ),
-            label_line(
-                "model",
-                f"rate {run.rate_s} s ({run.rate_source}){SEP}"
-                f"components {len(model.components)} of {len(model.columns)}{SEP}"
-                f"explained {', '.join(fmt_num(v) for v in model.explained_variance)}",
-            ),
-            label_line(
-                "limits",
-                f"T2 {fmt_num(model.t2_limit)}{SEP}SPE {fmt_num(model.spe_limit)}"
-                f"{SEP}(empirical q{run.quantile})",
-            ),
-        ]
-    )
-    if not run.ranked:
-        lines.append(
-            label_line(
-                "contributors",
-                f"not ranked ({plural(len(model.columns), 'tag')}; "
-                f"top-{CONTRIBUTORS_KEPT} would list every one)",
-            )
-        )
-    for name, breaches in (
-        ("T2 breaches", run.found.t2_breaches),
-        ("SPE breaches", run.found.spe_breaches),
-    ):
-        lines.extend(rule(name, str(len(breaches))))
-        lines.extend(_breach_lines(run, breaches))
-    return lines
+    return _lines(_mspc_run(args).render())
 
 
 def json_mspc(args: argparse.Namespace) -> dict[str, object]:
-    run = _mspc_run(args)
-    model = run.model
-    return {
-        "tags": run.tags,
-        "rate_s": run.rate_s,
-        "rate_source": run.rate_source,
-        "baseline": {
-            **_window_json(run.baseline),
-            "rows": len(run.train.index),
-            "coverage": run.train.coverage,
-        },
-        "window": {
-            **_window_json(run.monitor),
-            "rows": len(run.test.index),
-            "coverage": run.test.coverage,
-        },
-        "model": {
-            "components": len(model.components),
-            "n_columns": len(model.columns),
-            "explained_variance": list(model.explained_variance),
-        },
-        "limits": {
-            "t2": model.t2_limit,
-            "spe": model.spe_limit,
-            "quantile": run.quantile,
-        },
-        "contributors_ranked": run.ranked,
-        "t2_breaches": run.found.t2_breaches,
-        "spe_breaches": run.found.spe_breaches,
-        "contributors": run.found.top_contributors if run.ranked else {},
-    }
+    return _mspc_run(args).to_dict()
 
 
 def cmd_mspc(argv: Sequence[str] | None = None) -> int:
@@ -1111,294 +517,19 @@ def _parser_compare() -> argparse.ArgumentParser:
     return _add_output_flags(parser)
 
 
-def _compared(args: argparse.Namespace) -> CompareResult:
-    return compare(args.parquet, args.before, args.after, rate_s=args.rate_s)
-
-
-def _clip(text: str, width: int) -> str:
-    """``text`` inside ``width`` columns, the cut marked with ``..``."""
-    return text if len(text) <= width else f"{text[: width - 2]}.."
-
-
-def _table(
-    head: str,
-    rows: Sequence[tuple[str, ...]],
-    columns: Sequence[tuple[str, int, bool]],
-    *,
-    elastic_max: int,
-) -> list[str]:
-    """A header row and its rows, the first column shrunk to fit 80 columns."""
-    widths = [
-        max(minimum, len(header), *(len(r[i + 1]) for r in rows))
-        for i, (header, minimum, _) in enumerate(columns)
-    ]
-    fixed = sum(2 + w for w in widths)
-    wanted = max(len(head), *(len(r[0]) for r in rows))
-    first = max(TAG_COLUMN_MIN, min(elastic_max, wanted, MAX_WIDTH - 3 - fixed))
-
-    def line(cells: tuple[str, ...]) -> str:
-        out = "  " + _clip(cells[0], first).ljust(first)
-        for cell, w, (_, _, right) in zip(cells[1:], widths, columns, strict=True):
-            out += "  " + (cell.rjust(w) if right else cell.ljust(w))
-        return out.rstrip()
-
-    return [line((head, *(c[0] for c in columns))), *(line(r) for r in rows)]
-
-
-def _share(value: float | None) -> str:
-    return "n/a" if value is None else f"{100.0 * value:.0f}%"
-
-
-def _changed_at(change: TagChange) -> str:
-    if change.changed_at is not None:
-        return fmt_ts(change.changed_at)
-    return "n/a" if change.changed_at_reason else "none"
-
-
-def _change_row(change: TagChange) -> tuple[str, ...]:
-    return (
-        change.label,
-        change.quality,
-        "n/a" if change.level_shift_sigma is None else f"{change.level_shift_sigma:+.1f}",
-        "n/a" if change.spread_ratio is None else f"x{change.spread_ratio:.1f}",
-        _share(change.flagged_fraction),
-        _changed_at(change),
-    )
-
-
-def _more_changes(hidden: Sequence[TagChange]) -> list[str]:
-    """``(+N more within X sigma)``, X being the largest shift left out."""
-    if not hidden:
-        return []
-    shifts = [abs(c.level_shift_sigma) for c in hidden if c.level_shift_sigma is not None]
-    if not shifts:
-        return [f"  (+{len(hidden)} more)"]
-    return [f"  (+{len(hidden)} more within {max(shifts):.1f} sigma)"]
-
-
-def _changed_section(result: CompareResult, top: int) -> list[str]:
-    shown = result.tags[:top]
-    return (
-        rule("Tags that changed")
-        + _table(
-            "tag",
-            [_change_row(c) for c in shown],
-            _CHANGE_COLUMNS,
-            elastic_max=TAG_COLUMN_MAX,
-        )
-        + _more_changes(result.tags[top:])
-    )
-
-
-def _pair_row(pair: PairChange) -> tuple[str, ...]:
-    # Each side is clipped on its own, so a long pair keeps both names
-    # rather than spending the column on the first one.
-    return (
-        f"{_clip(pair.left, TAG_COLUMN_MAX)} ~ {_clip(pair.right, TAG_COLUMN_MAX)}",
-        f"{pair.pearson_before:.2f}",
-        f"{pair.pearson_after:.2f}",
-        f"{pair.delta:+.2f}",
-        "n/a" if pair.lo is None or pair.hi is None else f"[{pair.lo:+.2f}, {pair.hi:+.2f}]",
-    )
-
-
-def _pairs_section(table: PairTable, top: int) -> list[str]:
-    if table.reason is not None:
-        return rule("Pairs that decoupled") + wrapped(table.reason)
-    clearing = table.clearing
-    shown = clearing[:top]
-    lines = rule("Pairs that decoupled", PAIR_METHOD)
-    # A header row over no rows states the columns of a table that has
-    # none; the count below says everything there is to say.
-    if shown:
-        lines.extend(
-            _table(
-                "pair",
-                [_pair_row(p) for p in shown],
-                _PAIR_COLUMNS,
-                elastic_max=PAIR_COLUMN_MAX,
-            )
-        )
-    left = table.n_pairs - len(shown)
-    if left:
-        beyond = len(clearing) - len(shown)
-        tail = (
-            f"{beyond} clearing the interval"
-            if beyond
-            else "none clearing the interval"
-        )
-        lines.append(f"  (+{plural(left, 'more pair')}, {tail})")
-    if table.n_undefined:
-        lines.extend(
-            wrapped(
-                f"{plural(table.n_undefined, 'pair')} hold a tag with no spread in "
-                "one period, where a correlation is undefined"
-            )
-        )
-    if table.n_no_interval:
-        lines.extend(
-            wrapped(
-                f"{plural(table.n_no_interval, 'pair')} carry a delta and no "
-                f"interval: {NO_INTERVAL}. --json states them"
-            )
-        )
-    return lines
-
-
-def _joint_section(joint: JointStructure) -> list[str]:
-    if joint.reason is not None:
-        return rule("Joint structure") + wrapped(joint.reason)
-    body = [
-        f"components {joint.n_components} of {joint.n_aligned}{SEP}"
-        f"explained {fmt_num(joint.explained_before)} -> "
-        f"{fmt_num(joint.explained_after)} on after",
-        f"rows {joint.rows}{SEP}T2 breaches {joint.t2_breaches}{SEP}"
-        f"SPE breaches {joint.spe_breaches}",
-    ]
-    named = SEP.join(f"{name} {_share(share)}" for name, share in joint.contributors)
-    if joint.other_share is not None:
-        named += f"{SEP}other {_share(joint.other_share)}"
-    header = rule(
-        "Joint structure",
-        f"(PCA fitted on before, {joint.n_aligned} of {joint.n_offered} tags aligned)",
-    )
-    lines = header + indent(body)
-    if named:
-        lines.extend(wrapped(f"SPE contributors{SEP}{named}"))
-    else:
-        lines.extend(indent(["SPE contributors   none (no SPE breach)"]))
-    return lines
-
-
-def _compare_headline(result: CompareResult) -> str:
-    table = result.pairs
-    pairs = (
-        "pairs refused"
-        if table.reason is not None
-        else f"pairs {len(table.clearing)} of {table.n_pairs} clearing"
-    )
-    counts = f"refused {result.n_refused}{SEP}{pairs}"
-    tags = plural(len(result.tags), "tag")
-    if result.source_id is None:
-        return f"{tags}  {counts}"
-    return f"{result.source_id}  {tags}{SEP}{counts}"
-
-
-def _period_line(label: str, span: tuple[pd.Timestamp, pd.Timestamp]) -> str:
-    start, end = span
-    return label_line(
-        label,
-        f"{fmt_span(start, end)}{SEP}({fmt_duration((end - start).total_seconds())})",
+def _compared(args: argparse.Namespace) -> CompareAnalysis:
+    return analyses.compare(
+        args.parquet, args.before, args.after, top=args.top, rate_s=args.rate_s
     )
 
 
 def run_compare(args: argparse.Namespace) -> list[str]:
     """Report what changed between two periods of one unit."""
-    result = _compared(args)
-    table = result.pairs
-    lines = [
-        _compare_headline(result),
-        "",
-        _period_line("before", result.before),
-        _period_line("after", result.after),
-    ]
-    if table.rate_s is not None and table.coverage_before is not None:
-        lines.append(
-            label_line(
-                "grid",
-                f"rate {table.rate_s} s ({table.rate_source}){SEP}"
-                f"coverage {fmt_num(table.coverage_before)} -> "
-                f"{fmt_num(table.coverage_after)}",
-            )
-        )
-    lines.extend(_changed_section(result, args.top))
-    lines.extend(_pairs_section(table, args.top))
-    lines.extend(_joint_section(result.joint))
-    return lines
-
-
-def _span_json(span: tuple[pd.Timestamp, pd.Timestamp]) -> dict[str, object]:
-    start, end = span
-    return {
-        "start": start,
-        "end": end,
-        "duration_s": (end - start).total_seconds(),
-    }
+    return _lines(_compared(args).render())
 
 
 def json_compare(args: argparse.Namespace) -> dict[str, object]:
-    result = _compared(args)
-    table = result.pairs
-    joint = result.joint
-    return {
-        "before": _span_json(result.before),
-        "after": _span_json(result.after),
-        "source_id": result.source_id,
-        "grid": {
-            "rate_s": table.rate_s,
-            "rate_source": table.rate_source,
-            "coverage_before": table.coverage_before,
-            "coverage_after": table.coverage_after,
-        },
-        "tags": [
-            {
-                "tag": c.tag,
-                "quality": c.quality,
-                "refused": c.refused,
-                "level_shift_sigma": c.level_shift_sigma,
-                "level_shift_reason": c.level_shift_reason,
-                "spread_ratio": c.spread_ratio,
-                "spread_reason": c.spread_reason,
-                "flagged_fraction": c.flagged_fraction,
-                "flagged_reason": c.flagged_reason,
-                "changed_at": c.changed_at,
-                "changed_at_reason": c.changed_at_reason,
-            }
-            for c in result.tags
-        ],
-        "pairs": (
-            None
-            if table.reason is not None
-            else [
-                {
-                    "left": p.left,
-                    "right": p.right,
-                    "pearson_before": p.pearson_before,
-                    "pearson_after": p.pearson_after,
-                    "delta": p.delta,
-                    "interval": None if p.lo is None else [p.lo, p.hi],
-                    "interval_reason": None if p.lo is not None else NO_INTERVAL,
-                    "clears": p.clears,
-                    "spearman_before": p.spearman_before,
-                    "spearman_after": p.spearman_after,
-                    "spearman_delta": p.spearman_delta,
-                }
-                for p in table.pairs
-            ]
-        ),
-        "pairs_reason": table.reason,
-        "pairs_undefined": table.n_undefined,
-        "pairs_without_interval": table.n_no_interval,
-        "joint": (
-            None
-            if joint.reason is not None
-            else {
-                "tags_offered": joint.n_offered,
-                "tags_aligned": joint.n_aligned,
-                "components": joint.n_components,
-                "rows": joint.rows,
-                "explained_before": joint.explained_before,
-                "explained_after": joint.explained_after,
-                "t2_breaches": joint.t2_breaches,
-                "spe_breaches": joint.spe_breaches,
-                "spe_contributors": [
-                    {"tag": name, "share": share} for name, share in joint.contributors
-                ],
-                "spe_other_share": joint.other_share,
-            }
-        ),
-        "joint_reason": joint.reason,
-    }
+    return _compared(args).to_dict()
 
 
 def cmd_compare(argv: Sequence[str] | None = None) -> int:
@@ -1452,9 +583,7 @@ def _profiled(args: argparse.Namespace) -> Profile:
 
 def run_profile(args: argparse.Namespace) -> list[str]:
     """Report the data physics and statistics of one window."""
-    # render() joins its own lines and carries no trailing newline, so
-    # splitting it back is exact.
-    return _profiled(args).render().splitlines()
+    return _lines(_profiled(args).render())
 
 
 def _flatline_json(verdict: FlatlineVerdict) -> dict[str, object]:
@@ -1484,7 +613,7 @@ def _profile_json(result: Profile) -> dict[str, object]:
     return {
         "tag": str(window.identity),
         "name": window.meta.name,
-        "window": _window_json(window),
+        "window": window_json(window),
         "contract": {
             "calculation_basis": c.calculation_basis,
             "retrieval_mode": c.retrieval_mode,
@@ -1588,17 +717,79 @@ def cmd_profile(argv: Sequence[str] | None = None) -> int:
     )
 
 
-def cmd_ingest(argv: Sequence[str] | None = None) -> int:
-    """Build an archive from a CSV or parquet export."""
+def _split_tags(text: str | None) -> list[str] | None:
+    return None if text is None else [t.strip() for t in text.split(",") if t.strip()]
+
+
+def _warn_assumed_quality(assume_quality: str | None) -> None:
+    if assume_quality:
+        print(
+            f"warning: quality assumed {assume_quality.strip().upper()} for every "
+            "sample; the archive records this and every profile of it says so",
+            file=sys.stderr,
+        )
+
+
+def _parser_ingest() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tsdive ingest")
-    parser.add_argument("source", help="CSV or parquet export of one tag")
-    parser.add_argument("--out", required=True, help="archive to create")
     parser.add_argument(
-        "--meta", required=True, help="JSON file of tag metadata (the tsdive.meta object)"
+        "source", help="CSV or parquet export: one tag, or one column per tag with --wide"
+    )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="archive to create; with --wide, directory for one archive per tag",
+    )
+    parser.add_argument(
+        "--meta", default=None, help="JSON file of tag metadata (the tsdive.meta object)"
     )
     parser.add_argument("--timestamp-col", default="timestamp")
-    parser.add_argument("--value-col", default="value")
-    parser.add_argument("--quality-col", default="quality")
+    parser.add_argument(
+        "--value-col", default=None, help="value column of a single-tag export (default value)"
+    )
+    parser.add_argument(
+        "--quality-col",
+        default=None,
+        help="quality column of a single-tag export (default quality)",
+    )
+    wide = parser.add_argument_group("wide exports, one column per tag")
+    wide.add_argument(
+        "--wide",
+        action="store_true",
+        help="write one archive per tag column into --out, named by point_id",
+    )
+    wide.add_argument(
+        "--meta-dir",
+        default=None,
+        metavar="DIR",
+        help="directory of <tag>.json metadata files, one per tag column",
+    )
+    wide.add_argument(
+        "--tags",
+        default=None,
+        metavar="A,B,...",
+        help="tag columns to ingest; omitted, every column that is not the "
+        "timestamp or a quality column",
+    )
+    wide.add_argument(
+        "--quality-suffix",
+        default=None,
+        metavar="S",
+        help="each tag's quality column is <tag><S>",
+    )
+    wide.add_argument(
+        "--init-meta",
+        default=None,
+        metavar="DIR",
+        help="write a <tag>.json metadata template per tag column into DIR and stop; "
+        "fill them in, then ingest with --meta-dir DIR",
+    )
+    wide.add_argument(
+        "--source-id",
+        default=None,
+        metavar="ID",
+        help="identity.source_id written into every template (--init-meta)",
+    )
     parser.add_argument(
         "--tz",
         default=None,
@@ -1613,20 +804,104 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
         "the archive and reported by every profile of it",
     )
     parser.add_argument(
-        "--overwrite", action="store_true", help="replace an existing archive at --out"
+        "--overwrite",
+        action="store_true",
+        help="replace an existing archive at --out, or template under --init-meta",
     )
-    _add_output_flags(parser, json_flag=False)
+    return _add_output_flags(parser, json_flag=False)
+
+
+def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject flags that belong to the other ingest form."""
+    single_only = (
+        ("--meta", args.meta),
+        ("--value-col", args.value_col),
+        ("--quality-col", args.quality_col),
+    )
+    wide_only = (
+        ("--meta-dir", args.meta_dir),
+        ("--tags", args.tags),
+        ("--quality-suffix", args.quality_suffix),
+    )
+    init_only = (("--source-id", args.source_id),)
+    ingest_only = (
+        ("--out", args.out),
+        ("--meta-dir", args.meta_dir),
+        ("--tz", args.tz),
+        ("--assume-quality", args.assume_quality),
+    )
+    if args.wide:
+        for flag, value in single_only:
+            if value is not None:
+                parser.error(f"{flag} does not apply with --wide; use --meta-dir")
+        if args.init_meta is not None:
+            for flag, value in ingest_only:
+                if value is not None:
+                    parser.error(f"{flag} does not apply with --init-meta")
+            if args.source_id is None:
+                parser.error("--init-meta requires --source-id")
+        else:
+            for flag, value in init_only:
+                if value is not None:
+                    parser.error(f"{flag} requires --init-meta")
+            if args.out is None:
+                parser.error("the following arguments are required: --out")
+            if args.meta_dir is None:
+                parser.error("--wide requires --meta-dir")
+    else:
+        for flag, value in (*wide_only, ("--init-meta", args.init_meta), *init_only):
+            if value is not None:
+                parser.error(f"{flag} requires --wide")
+        if args.out is None:
+            parser.error("the following arguments are required: --out")
+        if args.meta is None:
+            parser.error("the following arguments are required: --meta")
+
+
+def cmd_ingest(argv: Sequence[str] | None = None) -> int:
+    """Build an archive from a CSV or parquet export."""
+    parser = _parser_ingest()
     args = parser.parse_args(argv)
+    _check_ingest_flags(parser, args)
 
     try:
+        if args.init_meta is not None:
+            templates = init_meta(
+                args.source,
+                out_dir=args.init_meta,
+                source_id=args.source_id,
+                timestamp_col=args.timestamp_col,
+                tags=_split_tags(args.tags),
+                quality_suffix=args.quality_suffix,
+                overwrite=args.overwrite,
+            )
+            _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
+            return 0
+        if args.wide:
+            written = ingest_wide(
+                args.source,
+                out_dir=args.out,
+                meta_dir=args.meta_dir,
+                timestamp_col=args.timestamp_col,
+                tags=_split_tags(args.tags),
+                quality_suffix=args.quality_suffix,
+                tz=args.tz,
+                assume_quality=args.assume_quality,
+                overwrite=args.overwrite,
+            )
+            _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
+            _warn_assumed_quality(args.assume_quality)
+            return 0
+        value_col = args.value_col or "value"
+        quality_col = args.quality_col or "quality"
         meta = read_meta_json(args.meta)
         out = ingest(
             args.source,
             out=args.out,
             meta=meta,
             timestamp_col=args.timestamp_col,
-            value_col=args.value_col,
-            quality_col=args.quality_col,
+            value_col=value_col,
+            quality_col=quality_col,
             tz=args.tz,
             assume_quality=args.assume_quality,
             overwrite=args.overwrite,
@@ -1634,7 +909,7 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
         quality = (
             f"quality assumed {args.assume_quality.strip().upper()}"
             if args.assume_quality
-            else f"quality from column {args.quality_col}"
+            else f"quality from column {quality_col}"
         )
         lines = [
             label_line("wrote", Path(out).as_posix()),
@@ -1647,12 +922,7 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
         if args.tz:
             lines.append(label_line("tz", f"{args.tz} -> UTC"))
         _print_lines(lines, args)
-        if args.assume_quality:
-            print(
-                f"warning: quality assumed {args.assume_quality.strip().upper()} for every "
-                "sample; the archive records this and every profile of it says so",
-                file=sys.stderr,
-            )
+        _warn_assumed_quality(args.assume_quality)
         return 0
     except TSDiveError as e:
         _print_refusal(f"[{type(e).__name__}]", str(e), args)
@@ -1666,6 +936,7 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
     """Render a static HTML evidence snapshot from demo archives."""
     from tsdive.narrate import EvidenceLedger
     from tsdive.ui.static_report import render_static_report, write_static_report
+    from tsdive.ui.svg import window_figure
 
     parser = argparse.ArgumentParser(prog="tsdive report-html")
     parser.add_argument("parquet", nargs="+", help="archive(s) to profile into the report")
@@ -1685,6 +956,7 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
         )
         window_label = f"{start.isoformat()}/{end.isoformat()}"
         profiles: list[str] = []
+        figures: list[str] = []
         refusals: list[str] = []
         contract = SamplingContract(CalculationBasis.TIME_WEIGHTED, RetrievalMode.RECORDED)
         for path in args.parquet:
@@ -1700,6 +972,7 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
                 profiles.append(
                     render_window_report(window, stats=compute_stats(window))
                 )
+                figures.append(window_figure(window))
             except TSDiveError as e:
                 refusals.append(f"[{type(e).__name__}] {e}")
             except OSError as e:
@@ -1716,6 +989,7 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
                 ("ledger", ", ".join(f"{k}={v}" for k, v in ledger.summary_stats().items())),
             ],
             refusal_log=refusals,
+            figures=figures,
         )
         out = write_static_report(html_text, Path(args.out))
         _print_lines(
@@ -1749,10 +1023,28 @@ STEPS: dict[str, tuple[Callable[[], argparse.ArgumentParser], StepRunner]] = {
     "screen": (_parser_screen, run_screen),
     "spc": (_parser_spc, run_spc),
     "mspc": (_parser_mspc, run_mspc),
+    "compare": (_parser_compare, run_compare),
 }
 
-# mspc reads every archive at once; the other steps run once per archive.
-MULTI_TAG_STEPS = frozenset({"mspc"})
+# The same steps returning their analysis objects instead of text, for a
+# caller that draws or inspects a result after rendering it. Each object
+# has ``render()``, and ``STEPS`` prints exactly its lines.
+ANALYSES: dict[str, Callable[[argparse.Namespace], object]] = {
+    "profile": _profiled,
+    "segment": _segment_run,
+    "screen": _screen_run,
+    "spc": _spc_run,
+    "mspc": _mspc_run,
+    "compare": _compared,
+}
+
+# mspc and compare read every archive at once; the other steps run once
+# per archive.
+MULTI_TAG_STEPS = frozenset({"mspc", "compare"})
+
+# compare grades an after period against a before period, so a plan hands
+# it --before and --after and neither --window nor --baseline.
+TWO_PERIOD_STEPS = frozenset({"compare"})
 
 # profile and segment default an omitted window to the archive's own
 # extent. The screen, spc and mspc steps grade one window against another
@@ -1794,9 +1086,9 @@ def cmd_run(argv: Sequence[str] | None = None) -> int:
         # step or an unmatched glob leaves no half-run output directory.
         _print_refusal("error:", str(e), args)
         return 2
-    profiles, findings, refusals = execute(plan)
+    profiles, findings, refusals, figures = execute(plan)
     out_dir = Path(args.out) if args.out else plan_path.parent / "tsdive-run"
-    _, _, lines = write_run(plan, out_dir, profiles, findings, refusals)
+    _, _, lines = write_run(plan, out_dir, profiles, findings, refusals, figures)
     _print_lines(lines, args)
     return 0 if profiles or findings else 2
 

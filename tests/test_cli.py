@@ -265,6 +265,25 @@ def test_report_html_writes_snapshot(tmp_path, capsys):
     assert "profiles=1" in text
 
 
+def test_report_html_draws_one_figure_per_archive(tmp_path, capsys):
+    path, _ = _demo_archive(tmp_path)
+    other = _every_minute(
+        tmp_path,
+        [20.0 + (i % 3) for i in range(61)],
+        ["GOOD"] * 61,
+        meta=make_meta(point_id="TIC101.PV"),
+        name="TIC101.PV",
+    )
+    out = tmp_path / "report.html"
+    rc = cmd_report_html([str(path), str(other), "--window", WINDOW, "-o", str(out)])
+    assert rc == 0
+    assert "profiles  2   refusals 0" in capsys.readouterr().out
+    text = out.read_text(encoding="utf-8")
+    assert text.count("<svg") == 2
+    assert text.count("<h2>Plots</h2>") == 1
+    assert text.index("<h2>Plots</h2>") < text.index("<h2>Window profiles</h2>")
+
+
 def test_report_html_reports_bad_window_without_traceback(tmp_path, capsys):
     path, _ = _demo_archive(tmp_path)
     naive = "2024-03-01T00:00:00/2024-03-01T01:00:00"
@@ -1424,3 +1443,155 @@ def test_profile_flatline_optin(tmp_path, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert out.splitlines()[-2] == "Flatline"
+
+
+def _wide_fixture(tmp_path):
+    """A 3-tag wide CSV with ``_q`` quality columns and a meta dir for it."""
+    tags = ("FIC101.PV", "TIC201.PV", "PIC301.PV")
+    stamps = pd.date_range("2024-03-01T00:00:00Z", periods=4, freq="60s")
+    rows: dict[str, list] = {"ts": [s.isoformat() for s in stamps]}
+    meta_dir = tmp_path / "meta"
+    meta_dir.mkdir()
+    for i, tag in enumerate(tags):
+        rows[tag] = [10.0 * i + k for k in range(len(stamps))]
+        rows[f"{tag}_q"] = ["Good"] * len(stamps)
+        payload = {
+            "identity": {"source_id": "plant1", "point_id": tag},
+            "name": tag,
+            "sample_rate_s": 60.0,
+            "quality_codes": {"Good": "GOOD"},
+        }
+        (meta_dir / f"{tag}.json").write_text(json.dumps(payload), encoding="utf-8")
+    src = tmp_path / "wide.csv"
+    pd.DataFrame(rows).to_csv(src, index=False)
+    return src, meta_dir, tags
+
+
+def test_ingest_wide_writes_one_archive_per_tag_and_prints_each(tmp_path, capsys):
+    src, meta_dir, tags = _wide_fixture(tmp_path)
+    out_dir = tmp_path / "archive"
+    rc = main(
+        [
+            "ingest",
+            str(src),
+            "--wide",
+            "--out",
+            str(out_dir),
+            "--meta-dir",
+            str(meta_dir),
+            "--timestamp-col",
+            "ts",
+            "--quality-suffix",
+            "_q",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.err == ""
+    assert captured.out.splitlines() == [
+        f"wrote     {(out_dir / f'{tag}.parquet').as_posix()}" for tag in tags
+    ]
+    assert all((out_dir / f"{tag}.parquet").exists() for tag in tags)
+    assert cmd_profile([str(out_dir / "TIC201.PV.parquet")]) == 0
+    assert "GOOD 4   UNCERTAIN 0   BAD 0" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("extra", "named"),
+    [
+        (["--wide", "--meta", "m.json"], "--meta"),
+        (["--wide"], "--meta-dir"),
+        (["--meta", "m.json", "--meta-dir", "meta"], "--meta-dir"),
+        (["--meta", "m.json", "--tags", "A,B"], "--tags"),
+        (["--meta", "m.json", "--quality-suffix", "_q"], "--quality-suffix"),
+    ],
+)
+def test_ingest_rejects_flags_of_the_other_form(tmp_path, capsys, extra, named):
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ingest", "export.csv", "--out", str(tmp_path / "x"), *extra])
+    err = capsys.readouterr().err
+    assert exit_info.value.code == 2
+    assert named in err
+    assert "Traceback" not in err
+
+
+def test_ingest_init_meta_writes_templates_and_stops(tmp_path, capsys):
+    src, _, tags = _wide_fixture(tmp_path)
+    out_dir = tmp_path / "templates"
+    rc = main(
+        [
+            "ingest",
+            str(src),
+            "--wide",
+            "--init-meta",
+            str(out_dir),
+            "--source-id",
+            "plant1",
+            "--timestamp-col",
+            "ts",
+            "--quality-suffix",
+            "_q",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.err == ""
+    assert captured.out.splitlines() == [
+        f"wrote     {(out_dir / f'{tag}.json').as_posix()}" for tag in tags
+    ]
+    payload = json.loads((out_dir / "PIC301.PV.json").read_text(encoding="utf-8"))
+    assert payload["identity"] == {"source_id": "plant1", "point_id": "PIC301.PV"}
+    assert payload["quality_codes"] == {"Good": "GOOD"}
+    assert not any(tmp_path.glob("**/*.parquet"))
+
+
+@pytest.mark.parametrize(
+    ("extra", "named"),
+    [
+        (["--wide", "--init-meta", "t"], "--source-id"),
+        (["--wide", "--init-meta", "t", "--source-id", "p", "--out", "a"], "--out"),
+        (["--wide", "--init-meta", "t", "--source-id", "p", "--meta-dir", "m"], "--meta-dir"),
+        (["--init-meta", "t", "--source-id", "p"], "--init-meta"),
+    ],
+)
+def test_ingest_init_meta_rejects_conflicting_flags(capsys, extra, named):
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ingest", "export.csv", *extra])
+    err = capsys.readouterr().err
+    assert exit_info.value.code == 2
+    assert named in err
+    assert "Traceback" not in err
+
+
+def test_profile_reads_a_bare_date_as_one_utc_day(tmp_path, capsys):
+    path, meta = _demo_archive(tmp_path)
+    assert cmd_profile([str(path), "--window", "2024-03-01"]) == 0
+    by_date = capsys.readouterr().out
+    explicit = "2024-03-01T00:00:00Z/2024-03-02T00:00:00Z"
+    assert cmd_profile([str(path), "--window", explicit]) == 0
+    assert capsys.readouterr().out == by_date
+    assert by_date.splitlines()[0] == f"{meta.identity}  {meta.name}"
+
+
+def test_segment_mode_out_writes_the_archive_and_names_it(archive_factory, tmp_path, capsys):
+    path = _stepped_archive(archive_factory)
+    out = tmp_path / "seg.parquet"
+    assert cmd_segment([str(path)]) == 0
+    plain = capsys.readouterr().out
+    assert cmd_segment([str(path), "--mode-out", str(out)]) == 0
+    assert capsys.readouterr().out == f"{plain}\nwrote     {out.as_posix()}\n"
+    assert pd.read_parquet(out)["value"].tolist() == ["S1"] * 60 + ["S2"] * 60
+    assert cmd_segment([str(path), "--mode-out", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("error:") and "already exists" in err
+    assert cmd_segment([str(path), "--mode-out", str(out), "--overwrite"]) == 0
+
+
+def test_segment_json_mode_out_stays_one_object(archive_factory, tmp_path, capsys):
+    path = _stepped_archive(archive_factory)
+    out = tmp_path / "seg.parquet"
+    assert cmd_segment([str(path), "--json", "--mode-out", str(out)]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["mode_out"] == out.as_posix()
+    assert len(doc["segments"]) == 2
+    assert out.exists()

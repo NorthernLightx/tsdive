@@ -51,8 +51,9 @@ same arguments give the same fields as the command line.
 `archive` is the path to one single-tag parquet archive. `compare` takes
 a list of them in `archives`.
 
-Windows are ISO 8601 START/END in UTC, written
-`2024-03-01T00:00:00Z/2024-03-01T01:00:00Z`. `screen` and `spc` take a
+Windows are ISO 8601 in UTC: START/END written
+`2024-03-01T00:00:00Z/2024-03-01T01:00:00Z`, START/PT1H, PT1H/END, or a
+date for one whole UTC day. `screen` and `spc` take a
 `baseline` window and a `window` to monitor. `compare` takes `before`
 and `after`. An option left out takes the default the command line
 declares, so `k` is 3.0, `min_size` is 10 and `top` is 10.
@@ -101,5 +102,5 @@ monitored window raises instead of returning. The client receives
 `isError: true` and the message the command line prints:
 
 ```console
-Error executing tool profile: window must be <START>/<END> in ISO 8601 UTC
+Error executing tool profile: window must be <START>/<END>, <START>/<DURATION>, <DURATION>/<END> or <DATE> in ISO 8601 UTC
 ```

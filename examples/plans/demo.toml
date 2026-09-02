@@ -1,7 +1,9 @@
 archives = ["../../data/demo/*.parquet"]
 window   = "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z"
 baseline = "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z"
-steps    = ["profile", "segment", "screen", "spc", "mspc"]
+before   = "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z"
+after    = "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z"
+steps    = ["profile", "segment", "screen", "spc", "mspc", "compare"]
 
 [options.profile]
 flatline = true

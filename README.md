@@ -34,11 +34,11 @@ under `scripts/` download on request and print their size first.
 
 ## Use
 
-Commands in the order you run them on an archive. `tsdive --help` lists
-them. Every analysis command takes `--json` after the command name and
-prints one JSON object instead of text. `--no-color` and the `NO_COLOR`
-environment variable turn colour off. The transcripts below are trimmed
-to the lines the text reads.
+Commands in the order you run them on an archive. A window is `START/END`,
+`START/PT5H`, `PT5H/END`, or a date for one UTC day. Every analysis
+command takes `--json` after the command name and prints one JSON object
+instead of text. `--no-color` and the `NO_COLOR` environment variable turn
+colour off. The transcripts below are trimmed to the lines the text reads.
 
 ### profile
 
@@ -119,10 +119,10 @@ Flagged
   (+26 more)
 ```
 
-`--mode <parquet>` computes one baseline per regime of a MODE tag.
-`--method moving-range` replaces the MAD scale. A baseline that is
-censored, or that overlaps the window, raises an error in `screen`,
-`spc` and `mspc`.
+`--mode <parquet>` computes one baseline per regime of a MODE tag, such
+as the archive `segment --mode-out` writes. `--method moving-range`
+replaces the MAD scale. A censored baseline, or one that overlaps the
+window, raises an error in `screen`, `spc` and `mspc`.
 
 ### spc
 
@@ -220,28 +220,27 @@ every pair.
 ### run
 
 Runs one TOML plan over many archives and writes `ledger.json`,
-`ledger.txt` and `report.html` to `-o DIR` (default `tsdive-run/`
-beside the plan). Options are the step's own flags: a list repeats the
-flag, `true` is the bare flag. Globs resolve against the plan file.
-`examples/plans/demo.toml`:
+`ledger.txt` and `report.html` (tables and one plot per tag) to
+`-o DIR` (default `tsdive-run/` beside the plan). Options are the
+step's own flags: a list repeats the flag, `true` is the bare flag.
+Globs resolve against the plan file. `examples/plans/demo.toml`:
 
 ```toml
 archives = ["../../data/demo/*.parquet"]
 window   = "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z"
 baseline = "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z"
-steps    = ["profile", "segment", "screen", "spc", "mspc"]
+before   = "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z"
+after    = "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z"
+steps    = ["profile", "segment", "screen", "spc", "mspc", "compare"]
 
 [options.profile]
 flatline = true
 tz = ["Europe/London"]
 ```
 
-The findings go to the files, so stdout carries the counts and the
-refusals.
-
 ```console
 $ tsdive run examples/plans/demo.toml
-run demo.toml   2 archives   5 steps   profiles 2   findings 6   refusals 1
+run demo.toml   2 archives   6 steps   profiles 2   findings 7   refusals 1
 
 REFUSAL  mspc   demo:FIC101.PV, demo:TIC101.PV
   [MspcAlignmentError] aligned coverage 0.867 below required 0.95; refusing to
@@ -253,23 +252,25 @@ wrote     examples/plans/tsdive-run/ledger.json
 ```
 
 Here the baseline holds the 40-minute outage, so the aligned grid covers
-0.867 and `mspc` raises `MspcAlignmentError`. `ledger.txt` opens with
-this text and then carries every finding in full. `tsdive report-html
-<parquet...> --window START/END -o report.html` writes the same HTML
-page for bare archives without a plan.
+0.867 and `mspc` raises `MspcAlignmentError`. `compare` reads `before` and
+`after`. `ledger.txt` opens with this text, then every finding in full.
+`tsdive report-html <parquet...> --window START/END -o report.html` writes
+the same HTML page for bare archives without a plan.
 
 ### ingest
 
-Builds an archive from your own CSV or parquet export.
+A wide export, one column per tag, takes two commands:
 
 ```console
-tsdive ingest export.csv \
-    --out archive/plant1/FIC101.PV.parquet --meta meta.json \
-    --timestamp-col ts --value-col v --quality-col q
+tsdive ingest export.csv --wide --timestamp-col ts --quality-suffix _q \
+    --init-meta meta/ --source-id plant1
+tsdive ingest export.csv --wide --timestamp-col ts --quality-suffix _q \
+    --out archive/plant1/ --meta-dir meta/ --tz Europe/London
 ```
 
-`meta.json` needs `identity` and `name`; the other keys are optional and
-listed in [docs/SCHEMA.md](docs/SCHEMA.md).
+The first writes one template per tag with the optional keys of
+[docs/SCHEMA.md](docs/SCHEMA.md) left null. The second writes one
+archive per tag, reading quality from `<tag>_q`. A filled template:
 
 ```json
 {
@@ -283,8 +284,7 @@ listed in [docs/SCHEMA.md](docs/SCHEMA.md).
 }
 ```
 
-Timestamps without an offset need `--tz Europe/London`. An export with
-no quality column needs `--assume-quality GOOD`.
+A single-tag export uses `--out FILE --meta FILE` (see `tsdive ingest --help`).
 
 ### Python
 
@@ -295,6 +295,10 @@ p = tsdive.profile("data/demo/fic101_demo.parquet",
                    "2024-03-30T20:00:00Z/2024-03-31T06:00:00Z")
 p.physics.coverage.coverage      # 0.933
 p.render()                       # the plain text the CLI prints, no colour
+s = tsdive.screen("data/demo/fic101_demo.parquet",
+                  "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z",   # baseline
+                  "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z")   # window
+s.to_dict()["n_flagged"]         # 29; s.render() is the text tsdive screen prints
 ```
 
 ### MCP

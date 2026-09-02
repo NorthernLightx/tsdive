@@ -8,6 +8,7 @@ Everything user-visible passes through html.escape.
 from __future__ import annotations
 
 import html
+from collections.abc import Sequence
 from pathlib import Path
 
 from tsdive import __version__
@@ -33,6 +34,7 @@ def render_static_report(
     refusal_log: list[str],
     benchmarks_header: tuple[str, ...] | None = None,
     findings: list[tuple[str, str, str]] | None = None,
+    figures: Sequence[str] | None = None,
 ) -> str:
     """Render one self-contained HTML document.
 
@@ -41,8 +43,10 @@ def render_static_report(
     row, because a caller's first row is not a header by assumption.
 
     ``findings`` holds ``(step, tags, text)`` triples from a plan run.
-    Omitted or empty, no section is emitted at all, so a report built
-    without them is byte-identical to one from before they existed.
+    ``figures`` holds rendered ``<svg>`` elements, one per window, and
+    is the one input written unescaped. Omitted or empty, neither emits
+    a section, so a report built without them is byte-identical to one
+    from before they existed.
     """
     parts: list[str] = [
         "<!DOCTYPE html><html><head><meta charset='utf-8'>",
@@ -53,6 +57,10 @@ def render_static_report(
         f"<p>tsdive {html.escape(__version__)}: "
         "static evidence snapshot; regenerate it after the archive changes.</p>"
     )
+
+    if figures:
+        parts.append("<h2>Plots</h2>")
+        parts.extend(figures)
 
     if profiles:
         parts.append("<h2>Window profiles</h2>")
