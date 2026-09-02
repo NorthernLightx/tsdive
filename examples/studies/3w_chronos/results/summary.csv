@@ -1,0 +1,4 @@
+tool,design,variant,n_instances,n_instances_with_threshold,n_instances_refused,roc_auc,pr_auc,n_pre_windows,n_post_windows,ranking_refusal,n_paired,paired_hit_post0,paired_hit_post1,n_pre_at_threshold,false_alarm_rate_pre,n_post0_at_threshold,detection_rate_post0,n_post1_at_threshold,detection_rate_post1,n_detected,n_never_detected,median_delay_windows,n_folds_scored,auc_fold_min,auc_fold_max,far_floor,over_floor
+chronos-bolt-small surprise,onset-aligned,all,48,33,15,0.6747,0.82,33,66,,33,0.9091,0.5455,33,0.1818,33,0.6364,33,0.2727,23,10,0.0,5,0.4688,0.8194,0.25,-0.0682
+clock,onset-aligned,all,48,48,0,0.6259,0.7374,48,96,,48,1.0,1.0,48,1.0,48,1.0,48,1.0,48,0,0.0,5,0.626,0.686,0.25,0.75
+clock (same instances),onset-aligned,all,33,33,0,0.6212,0.7392,33,66,,33,1.0,1.0,33,1.0,33,1.0,33,1.0,33,0,0.0,5,0.6181,0.6758,0.25,0.75

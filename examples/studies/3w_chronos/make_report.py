@@ -309,6 +309,11 @@ def render_report(data: dict) -> str:
         if under_floor
         else "and the forecast surprise's rate is read against the same floor."
     )
+    population_sentence = (
+        f" The detector rows cover 48 instances and this row {n_scored}; the "
+        f"{ref['n_instances_refused']} missing instances are the ones with a refused baseline "
+        "window, so the two false-alarm rates are not over the same instances."
+    )
 
     add = []
     p = add.append
@@ -331,9 +336,9 @@ def render_report(data: dict) -> str:
         f"{fmt(ch['paired_hit_post0'])} at onset and {fmt(ch['paired_hit_post1'])} an hour "
         "later. "
         f"{ref['n_instances_refused']} of {n_all} instances are refusals because at least one "
-        "baseline window lacks 60 minutes of context or holds a constant variable, and the "
-        "48 positives are the first two hours of a transient run-up, so the numbers describe "
-        f"{n_scored} instances and the beginning of a fault; the per-fold table shows the "
+        "baseline window lacks 60 minutes of context or holds a constant variable. The 48 "
+        "positives are the first two hours of a transient run-up, so the numbers describe "
+        f"{n_scored} instances and the beginning of a fault. The per-fold table shows the "
         "spread."
     )
     p("")
@@ -513,15 +518,15 @@ def render_report(data: dict) -> str:
         "Under the same threshold rule the detector "
         f"study's tools fire on {pct(det.loc['spc', 'false_alarm_rate_pre'])} (SPC) to "
         f"{pct(det.loc['iforest', 'false_alarm_rate_pre'])} (IsolationForest) of the pre "
-        f"windows, {floor_sentence}"
+        f"windows, {floor_sentence}{population_sentence}"
     )
     p("")
     p(
         f"One hour later the paired hit rate falls to {fmt(ch['paired_hit_post1'])} and the "
         f"post1 detection rate to {pct(ch['detection_rate_post1'])}. The score is a one-hour "
-        "forecast error, so a post1 window whose context already holds the first fault hour "
-        "is forecast from a series that has begun to move; the model then extrapolates the "
-        "move and the band widens, and the surprise falls back. The clock control takes "
+        "forecast error, and for post1 the context already holds the first fault hour. "
+        "Whether the median forecast tracks the move or the 10-90% band widens is not "
+        "measured here; either lowers the surprise. The clock control takes "
         "both paired hit rates at 1.000 and fires on every window, because under this "
         "design every post window sits later in its record than every baseline window."
     )
@@ -623,28 +628,32 @@ def render_benchmarks_section(data: dict) -> str:
     code = code_cite(run["code"])
     design = "onset-aligned"
     split = (
-        f"no fit; own worst-baseline threshold over 3 baseline windows; "
-        f"{n_scored} of {n_all} evaluable instances scored"
+        "no fit on 3W; own history, 3 baseline windows before onset, label-blind; no group "
+        f"holdout; {n_scored} of {n_all} evaluable instances scored"
     )
     model = run["model"]
+    over = float(ch["false_alarm_rate_pre"]) - rc.far_floor(rc.BASELINE_WINDOWS)
+    same_over = float(same["false_alarm_rate_pre"]) - rc.far_floor(rc.BASELINE_WINDOWS)
+
+    def metric_row(r: pd.Series, over_floor: float) -> str:
+        return (
+            f"AUC {auc_cell(r)}, paired hit {fmt(r['paired_hit_post0'])}/"
+            f"{fmt(r['paired_hit_post1'])}, FAR {pct(r['false_alarm_rate_pre'])} "
+            f"({signed(over_floor)} over the 25.0% floor), detect post1 "
+            f"{pct(r['detection_rate_post1'])}"
+        )
+
     rows = [
         ("none", "Chronos-Bolt small zero-shot: instances scored",
          f"{n_scored} of {n_all} ({pct(n_scored / n_all)})"),
         ("none", "Chronos-Bolt small zero-shot: instances refused",
          f"{n_all - n_scored} of {n_all}; a baseline window with under 60 context minutes "
          "or a constant variable"),
-        ("none", "Chronos-Bolt small zero-shot: forecast surprise, ROC-AUC pooled",
-         auc_cell(ch)),
-        ("none", "Chronos-Bolt small zero-shot: paired hit post0",
-         fmt(ch["paired_hit_post0"])),
-        ("none", "Chronos-Bolt small zero-shot: paired hit post1",
-         fmt(ch["paired_hit_post1"])),
-        ("none", "Chronos-Bolt small zero-shot: FAR on pre at own threshold",
-         pct(ch["false_alarm_rate_pre"])),
-        ("none", "Chronos-Bolt small zero-shot: FAR over the 25.0% floor",
-         signed(float(ch["false_alarm_rate_pre"]) - rc.far_floor(rc.BASELINE_WINDOWS))),
-        ("none", f"**clock control** on the same {n_scored} instances, ROC-AUC",
-         auc_cell(same)),
+        ("none", "Chronos-Bolt small zero-shot forecast surprise (no fit on 3W)",
+         metric_row(ch, over)),
+        ("none", f"**clock control** on the same {n_scored} instances (window position in "
+                 "its own instance, no sensor read)",
+         metric_row(same, same_over)),
     ]
     lines = [
         SECTION_HEADING,
