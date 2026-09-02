@@ -229,19 +229,18 @@ Globs resolve against the plan file. `examples/plans/demo.toml`:
 archives = ["../../data/demo/*.parquet"]
 window   = "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z"
 baseline = "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z"
-steps    = ["profile", "segment", "screen", "spc", "mspc"]
+before   = "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z"
+after    = "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z"
+steps    = ["profile", "segment", "screen", "spc", "mspc", "compare"]
 
 [options.profile]
 flatline = true
 tz = ["Europe/London"]
 ```
 
-The findings go to the files, so stdout carries the counts and the
-refusals.
-
 ```console
 $ tsdive run examples/plans/demo.toml
-run demo.toml   2 archives   5 steps   profiles 2   findings 6   refusals 1
+run demo.toml   2 archives   6 steps   profiles 2   findings 7   refusals 1
 
 REFUSAL  mspc   demo:FIC101.PV, demo:TIC101.PV
   [MspcAlignmentError] aligned coverage 0.867 below required 0.95; refusing to
@@ -253,10 +252,10 @@ wrote     examples/plans/tsdive-run/ledger.json
 ```
 
 Here the baseline holds the 40-minute outage, so the aligned grid covers
-0.867 and `mspc` raises `MspcAlignmentError`. `ledger.txt` opens with
-this text and then carries every finding in full. `tsdive report-html
-<parquet...> --window START/END -o report.html` writes the same HTML
-page for bare archives without a plan.
+0.867 and `mspc` raises `MspcAlignmentError`. `compare` reads `before` and
+`after`. `ledger.txt` opens with this text, then every finding in full.
+`tsdive report-html <parquet...> --window START/END -o report.html` writes
+the same HTML page for bare archives without a plan.
 
 ### ingest
 

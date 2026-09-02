@@ -1023,6 +1023,7 @@ STEPS: dict[str, tuple[Callable[[], argparse.ArgumentParser], StepRunner]] = {
     "screen": (_parser_screen, run_screen),
     "spc": (_parser_spc, run_spc),
     "mspc": (_parser_mspc, run_mspc),
+    "compare": (_parser_compare, run_compare),
 }
 
 # The same steps returning their analysis objects instead of text, for a
@@ -1034,10 +1035,16 @@ ANALYSES: dict[str, Callable[[argparse.Namespace], object]] = {
     "screen": _screen_run,
     "spc": _spc_run,
     "mspc": _mspc_run,
+    "compare": _compared,
 }
 
-# mspc reads every archive at once; the other steps run once per archive.
-MULTI_TAG_STEPS = frozenset({"mspc"})
+# mspc and compare read every archive at once; the other steps run once
+# per archive.
+MULTI_TAG_STEPS = frozenset({"mspc", "compare"})
+
+# compare grades an after period against a before period, so a plan hands
+# it --before and --after and neither --window nor --baseline.
+TWO_PERIOD_STEPS = frozenset({"compare"})
 
 # profile and segment default an omitted window to the archive's own
 # extent. The screen, spc and mspc steps grade one window against another

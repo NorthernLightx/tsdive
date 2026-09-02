@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from conftest import EngRange, make_meta, write_archive
-from tsdive.cli import cmd_run
+from tsdive.cli import cmd_compare, cmd_run
 
 ALL_FIVE = """\
 archives = ["plant1/*.parquet"]
@@ -260,7 +260,7 @@ def test_unknown_step_refuses_before_anything_runs(tmp_path, capsys):
     assert cmd_run([str(plan), "-o", str(out)]) == 2
     err = capsys.readouterr().err
     assert err.strip() == (
-        "error: unknown step(s): narrate; known: profile, segment, screen, spc, mspc"
+        "error: unknown step(s): narrate; known: profile, segment, screen, spc, mspc, compare"
     )
     assert not out.exists()
 
@@ -388,6 +388,83 @@ steps    = ["spc"]
         "[ValueError] spc plant1:FIC101.PV: the plan sets no 'baseline', which "
         "spc requires"
     ]
+
+
+BEFORE = "2024-03-01T00:00:00Z/2024-03-01T00:59:00Z"
+AFTER = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+
+
+def test_before_and_after_run_compare_over_every_archive_at_once(tmp_path, capsys):
+    flow, temp = _two_archives(tmp_path)
+    plan = _plan(
+        tmp_path,
+        f"""\
+archives = ["plant1/*.parquet"]
+window   = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+baseline = "2024-03-01T00:00:00Z/2024-03-01T00:59:00Z"
+before   = "{BEFORE}"
+after    = "{AFTER}"
+steps    = ["compare", "profile", "screen"]
+
+[options.compare]
+top = 1
+""",
+    )
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 0
+    ledger = _ledger(out)
+    assert ledger["refusals"] == []
+    # compare runs once over both archives, after the per-tag steps.
+    assert [(f["step"], f["tags"]) for f in ledger["findings"]] == [
+        ("screen", "plant1:FIC101.PV"),
+        ("screen", "plant1:TIC101.PV"),
+        ("compare", "plant1:FIC101.PV, plant1:TIC101.PV"),
+    ]
+    capsys.readouterr()
+    argv = [str(flow), str(temp), "--before", BEFORE, "--after", AFTER, "--top", "1"]
+    assert cmd_compare(argv) == 0
+    assert ledger["findings"][-1]["text"] == capsys.readouterr().out.rstrip("\n")
+
+
+def test_compare_without_before_and_after_is_a_refusal_row(tmp_path):
+    _two_archives(tmp_path)
+    plan = _plan(
+        tmp_path,
+        """\
+archives = ["plant1/*.parquet"]
+window   = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+baseline = "2024-03-01T00:00:00Z/2024-03-01T00:59:00Z"
+steps    = ["compare"]
+""",
+    )
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 2
+    assert _ledger(out)["refusals"] == [
+        "[ValueError] compare plant1:FIC101.PV, plant1:TIC101.PV: the plan sets no "
+        "'before' and 'after', which compare requires"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("given", "missing"), [("before", "after"), ("after", "before")]
+)
+def test_one_period_without_the_other_refuses_the_plan(tmp_path, capsys, given, missing):
+    _two_archives(tmp_path)
+    plan = _plan(
+        tmp_path,
+        f"""\
+archives = ["plant1/*.parquet"]
+{given} = "{BEFORE}"
+steps = ["profile"]
+""",
+    )
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith(
+        f"error: the plan sets '{given}' without '{missing}'; compare needs both"
+    )
+    assert not out.exists()
 
 
 def test_the_default_output_directory_sits_beside_the_plan(tmp_path):

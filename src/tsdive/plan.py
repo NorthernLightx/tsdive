@@ -1,7 +1,8 @@
 """``tsdive run``: one plan, several archives, one evidence ledger.
 
-A plan is a TOML file naming archives, a window, a baseline and the steps
-to walk. Every step is one of the CLI's own analyses, parsed by that
+A plan is a TOML file naming archives, a window, a baseline, a before and
+after period for ``compare``, and the steps to walk. Every step is one of
+the CLI's own analyses, parsed by that
 command's own parser and rendered by its own ``render()``, so a plan can
 say nothing a command line cannot and the same validators refuse the
 same values.
@@ -29,7 +30,15 @@ import pandas as pd
 
 from tsdive.analyses import ScreenAnalysis, SpcAnalysis
 from tsdive.api import Profile
-from tsdive.cli import ANALYSES, BASELINED, EXTENT_DEFAULTED, MULTI_TAG_STEPS, STEPS, _lines
+from tsdive.cli import (
+    ANALYSES,
+    BASELINED,
+    EXTENT_DEFAULTED,
+    MULTI_TAG_STEPS,
+    STEPS,
+    TWO_PERIOD_STEPS,
+    _lines,
+)
 from tsdive.errors import TSDiveError
 from tsdive.narrate import EvidenceLedger
 from tsdive.report import SEP, continued, label_line, plural, wrapped
@@ -37,7 +46,9 @@ from tsdive.store.tagstore import Window, meta_from_parquet
 from tsdive.ui.static_report import render_static_report, write_static_report
 from tsdive.ui.svg import window_figure
 
-PLAN_KEYS = frozenset({"archives", "window", "baseline", "steps", "options"})
+PLAN_KEYS = frozenset(
+    {"archives", "window", "baseline", "before", "after", "steps", "options"}
+)
 
 
 @dataclass(frozen=True)
@@ -45,7 +56,8 @@ class Plan:
     """A plan whose steps are known and whose archives exist.
 
     Construct it through :func:`load_plan`; every field here has already
-    been through the refusals that make a half-run impossible.
+    been through the refusals that make a half-run impossible. ``before``
+    and ``after`` are both set or both ``None``.
     """
 
     path: Path
@@ -53,6 +65,8 @@ class Plan:
     steps: tuple[str, ...]
     window: str | None = None
     baseline: str | None = None
+    before: str | None = None
+    after: str | None = None
     options: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
@@ -121,12 +135,21 @@ def load_plan(path: Path) -> Plan:
     stray = sorted(set(options) - set(STEPS))
     if stray:
         raise ValueError(f"options for unknown step(s): {', '.join(stray)}")
+    before = _text(raw.get("before"), "before")
+    after = _text(raw.get("after"), "after")
+    if (before is None) != (after is None):
+        given, missing = ("before", "after") if after is None else ("after", "before")
+        raise ValueError(
+            f"the plan sets '{given}' without '{missing}'; compare needs both periods"
+        )
     return Plan(
         path=path,
         archives=_archives(raw.get("archives"), path.parent),
         steps=_steps(raw.get("steps")),
         window=_text(raw.get("window"), "window"),
         baseline=_text(raw.get("baseline"), "baseline"),
+        before=before,
+        after=after,
         options=options,
     )
 
@@ -155,6 +178,13 @@ def _option_argv(options: dict[str, object]) -> list[str]:
 def _step_argv(plan: Plan, step: str, paths: Sequence[str]) -> list[str]:
     """The command line this plan step would have been typed as."""
     argv = list(paths)
+    if step in TWO_PERIOD_STEPS:
+        if plan.before is None or plan.after is None:
+            raise ValueError(
+                f"the plan sets no 'before' and 'after', which {step} requires"
+            )
+        argv += ["--before", plan.before, "--after", plan.after]
+        return argv + _option_argv(plan.options.get(step, {}))
     if plan.window is not None:
         argv += ["--window", plan.window]
     elif step not in EXTENT_DEFAULTED:
