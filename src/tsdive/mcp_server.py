@@ -73,8 +73,9 @@ error instead, and its message names what to fix."""
 INSTRUCTIONS = """\
 tsdive profiles process time series held in single-tag parquet archives
 and reports what the store did to a window. Every tool is read-only and
-takes local archive paths plus ISO 8601 UTC windows written START/END,
-for example 2024-03-01T00:00:00Z/2024-03-01T01:00:00Z.
+takes local archive paths plus ISO 8601 UTC windows written START/END
+like 2024-03-01T00:00:00Z/2024-03-01T01:00:00Z, START/PT1H, PT1H/END,
+or a date for one whole UTC day.
 
 Read result_kind on every answer. A refusal names the check that has no
 answer on this data and why. It is the result, so report it instead of
@@ -161,7 +162,8 @@ def profile(
 
     Args:
         archive: single-tag parquet archive carrying tsdive.meta.
-        window: ISO 8601 START/END in UTC. Omitted, the whole archive extent.
+        window: START/END, START/PT5H, PT5H/END or a date for one day, in
+            ISO 8601 UTC. Omitted, the whole archive extent.
         basis: TIME_WEIGHTED or EVENT_WEIGHTED. Omitted, TIME_WEIGHTED.
         stepped: stepped interpolation between samples.
         tz: IANA zone names to audit for DST transitions inside the window.
@@ -190,7 +192,8 @@ def segment(
 
     Args:
         archive: single-tag parquet archive carrying tsdive.meta.
-        window: ISO 8601 START/END in UTC. Omitted, the whole archive extent.
+        window: START/END, START/PT5H, PT5H/END or a date for one day, in
+            ISO 8601 UTC. Omitted, the whole archive extent.
         penalty: cost one more breakpoint has to buy. Omitted, a multiple
             of log(n) on the scaled series.
         min_size: samples a segment must hold, at least.
@@ -224,8 +227,10 @@ def screen(
 
     Args:
         archive: single-tag parquet archive carrying tsdive.meta.
-        baseline: ISO 8601 START/END in UTC for the history.
-        window: ISO 8601 START/END in UTC to screen.
+        baseline: START/END, START/PT5H, PT5H/END or a date for one day, in
+            ISO 8601 UTC for the history.
+        window: START/END, START/PT5H, PT5H/END or a date for one day, in
+            ISO 8601 UTC to screen.
         method: mad or moving-range. Omitted, mad.
         k: flag beyond k*scale from center. Omitted, 3.0.
         mode: MODE archive path; one baseline per regime instead of one
@@ -261,8 +266,10 @@ def spc(
 
     Args:
         archive: single-tag parquet archive carrying tsdive.meta.
-        baseline: ISO 8601 START/END in UTC the limits are computed from.
-        window: ISO 8601 START/END in UTC to chart.
+        baseline: START/END, START/PT5H, PT5H/END or a date for one day, in
+            ISO 8601 UTC the limits are computed from.
+        window: START/END, START/PT5H, PT5H/END or a date for one day, in
+            ISO 8601 UTC to chart.
         basis: TIME_WEIGHTED or EVENT_WEIGHTED. Omitted, TIME_WEIGHTED.
         stepped: stepped interpolation between samples.
     """
@@ -292,8 +299,10 @@ def compare(
 
     Args:
         archives: every single-tag parquet archive of one unit.
-        before: ISO 8601 START/END in UTC for the earlier period.
-        after: ISO 8601 START/END in UTC for the later period.
+        before: START/END, START/PT5H, PT5H/END or a date for one day, in
+            ISO 8601 UTC for the earlier period.
+        after: START/END, START/PT5H, PT5H/END or a date for one day, in
+            ISO 8601 UTC for the later period.
         top: rows each table reports before it counts the rest.
         rate_s: grid rate in seconds. Omitted, the rate every archive declares.
     """

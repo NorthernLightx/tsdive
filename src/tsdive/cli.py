@@ -4,10 +4,11 @@ The working loop a new archive walks:
 
     ingest -> profile -> segment -> screen -> spc -> mspc
 
-Every command after ``ingest`` takes the same ``START/END`` window
-syntax and refuses the same way: ``[ErrorName] message`` on stderr, exit
-2. On ``profile`` an omitted window means the archive's whole extent,
-which the report states like any other window.
+Every command after ``ingest`` takes the same window syntax
+(``START/END``, ``START/PT5H``, ``PT5H/END``, or a date for one UTC day)
+and refuses the same way: ``[ErrorName] message`` on stderr, exit 2. On
+``profile`` an omitted window means the archive's whole extent, which
+the report states like any other window.
 
 Argument parsing, printing and exit codes live here; the profiling flow
 itself is :func:`tsdive.api.profile` and the other analyses are the
@@ -101,6 +102,9 @@ options, on every command:
                                           text (the analysis commands)
   --no-color                              plain text; NO_COLOR does the same
   --version                               print the tsdive version
+
+windows, wherever START/END appears above:
+  START/END, START/PT5H, PT5H/END, or a date for one whole UTC day
 """
 
 

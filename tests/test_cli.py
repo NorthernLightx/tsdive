@@ -1542,3 +1542,13 @@ def test_ingest_init_meta_rejects_conflicting_flags(capsys, extra, named):
     assert exit_info.value.code == 2
     assert named in err
     assert "Traceback" not in err
+
+
+def test_profile_reads_a_bare_date_as_one_utc_day(tmp_path, capsys):
+    path, meta = _demo_archive(tmp_path)
+    assert cmd_profile([str(path), "--window", "2024-03-01"]) == 0
+    by_date = capsys.readouterr().out
+    explicit = "2024-03-01T00:00:00Z/2024-03-02T00:00:00Z"
+    assert cmd_profile([str(path), "--window", explicit]) == 0
+    assert capsys.readouterr().out == by_date
+    assert by_date.splitlines()[0] == f"{meta.identity}  {meta.name}"

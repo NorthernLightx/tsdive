@@ -9,7 +9,9 @@ to parse text back out of a report.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -47,24 +49,82 @@ from tsdive.store.tagstore import (
     write_tag,
 )
 
+_WINDOW_FORMS = (
+    "window must be <START>/<END>, <START>/<DURATION>, <DURATION>/<END> "
+    "or <DATE> in ISO 8601 UTC"
+)
+_BARE_DATE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+_DURATION = re.compile(
+    r"P(?:(?P<days>\d+(?:\.\d+)?)D)?"
+    r"(?:T(?:(?P<hours>\d+(?:\.\d+)?)H)?"
+    r"(?:(?P<minutes>\d+(?:\.\d+)?)M)?"
+    r"(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?\Z"
+)
+
+
+def _window_bound(name: str, text: str) -> pd.Timestamp:
+    """Parse one window bound; a bare date is 00:00:00 UTC of that day."""
+    if _BARE_DATE.match(text):
+        return cast(pd.Timestamp, pd.Timestamp(text, tz="UTC"))
+    try:
+        ts = pd.Timestamp(text)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(_WINDOW_FORMS) from exc
+    if ts.tz is None:
+        raise ValueError(
+            f"window {name} is naive ({ts}); append 'Z' or '+00:00' - "
+            "tsdive stores UTC only"
+        )
+    return cast(pd.Timestamp, ts)
+
+
+def _window_duration(text: str) -> pd.Timedelta:
+    """Parse an ISO 8601 duration in days, hours, minutes and seconds.
+
+    Months and years are refused rather than approximated, and P1M is the
+    reason the units are read here instead of by ``pd.Timedelta``: pandas
+    reads P1M as one minute, so a caller who means a month would get a
+    60-second window and no warning.
+    """
+    match = _DURATION.match(text)
+    parts = {k: float(v) for k, v in match.groupdict().items() if v} if match else {}
+    if not parts:
+        raise ValueError(
+            f"window duration {text} is not days, hours, minutes and seconds; "
+            "write it like PT5H or P2DT6H"
+        )
+    return pd.Timedelta(dt.timedelta(**parts))
+
 
 def parse_window(spec: str) -> tuple[pd.Timestamp, pd.Timestamp]:
-    """Parse ``START/END`` into two UTC-aware timestamps.
+    """Parse an ISO 8601 interval into two UTC-aware timestamps.
 
-    Naive bounds are rejected: a window whose offset is unstated is not a
-    window, and tsdive stores UTC only.
+    ``START/END``, ``START/DURATION``, ``DURATION/END`` and a bare date
+    standing for one UTC day all name a window. Naive bounds are
+    rejected: a window whose offset is unstated is not a window, and
+    tsdive stores UTC only.
     """
     if "/" not in spec:
-        raise ValueError("window must be <START>/<END> in ISO 8601 UTC")
-    start_s, end_s = spec.split("/", maxsplit=1)
-    start = pd.Timestamp(start_s)
-    end = pd.Timestamp(end_s)
-    for name, ts in (("START", start), ("END", end)):
-        if ts.tz is None:
-            raise ValueError(
-                f"window {name} is naive ({ts}); append 'Z' or '+00:00' - "
-                "tsdive stores UTC only"
-            )
+        if _BARE_DATE.match(spec):
+            day = _window_bound("START", spec)
+            return day, cast(pd.Timestamp, day + dt.timedelta(days=1))
+        raise ValueError(_WINDOW_FORMS)
+    left, right = spec.split("/", maxsplit=1)
+    left_is_duration = left.startswith("P")
+    right_is_duration = right.startswith("P")
+    if left_is_duration and right_is_duration:
+        raise ValueError(_WINDOW_FORMS)
+    if right_is_duration:
+        start = _window_bound("START", left)
+        end = start + _window_duration(right)
+    elif left_is_duration:
+        end = _window_bound("END", right)
+        start = end - _window_duration(left)
+    else:
+        start = _window_bound("START", left)
+        end = _window_bound("END", right)
+    if end <= start:
+        raise ValueError("window END is not after START")
     return cast(pd.Timestamp, start), cast(pd.Timestamp, end)
 
 

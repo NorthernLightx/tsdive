@@ -12,6 +12,7 @@ import pytest
 
 import tsdive
 from conftest import EngRange, Role, make_meta, write_archive
+from tsdive.api import parse_window
 from tsdive.cli import cmd_profile, cmd_report_html, main
 from tsdive.errors import SchemaError
 from tsdive.report import fmt_span
@@ -247,3 +248,53 @@ def test_analysis_refusals_raise_what_the_cli_reports(tmp_path, capsys):
     rc = main(["screen", str(pinned), "--baseline", baseline, "--window", window])
     assert rc == 2
     assert capsys.readouterr().err.startswith("[InsufficientQuality]")
+
+
+def test_parse_window_reads_every_iso_8601_interval_form():
+    explicit = parse_window("2024-03-31T01:00:00Z/2024-03-31T06:00:00Z")
+    assert explicit == (
+        pd.Timestamp("2024-03-31T01:00:00Z"),
+        pd.Timestamp("2024-03-31T06:00:00Z"),
+    )
+    assert parse_window("2024-03-31T01:00:00Z/PT5H") == explicit
+    assert parse_window("PT5H/2024-03-31T06:00:00Z") == explicit
+    # A bare date is the whole UTC day, bounds read the same way.
+    assert parse_window("2024-03-31") == parse_window(
+        "2024-03-31T00:00:00Z/2024-04-01T00:00:00Z"
+    )
+    assert parse_window("2024-03-31/PT5H") == (
+        pd.Timestamp("2024-03-31T00:00:00Z"),
+        pd.Timestamp("2024-03-31T05:00:00Z"),
+    )
+    assert parse_window("P1DT12H/2024-03-31") == (
+        pd.Timestamp("2024-03-29T12:00:00Z"),
+        pd.Timestamp("2024-03-31T00:00:00Z"),
+    )
+
+
+def test_parse_window_still_refuses_a_naive_bound():
+    with pytest.raises(ValueError) as caught:
+        parse_window("2024-03-31T01:00:00/2024-03-31T06:00:00Z")
+    assert str(caught.value) == (
+        "window START is naive (2024-03-31 01:00:00); append 'Z' or '+00:00' - "
+        "tsdive stores UTC only"
+    )
+
+
+@pytest.mark.parametrize(
+    ("spec", "message"),
+    [
+        # pandas reads P1M as one minute, so a calendar duration is refused
+        # rather than silently sized.
+        ("2024-03-31T01:00:00Z/P1M", "not days, hours, minutes and seconds"),
+        ("2024-03-31T01:00:00Z/P1Y", "not days, hours, minutes and seconds"),
+        ("2024-03-31T01:00:00Z/PT5X", "not days, hours, minutes and seconds"),
+        ("PT5H/PT1H", "window must be <START>/<END>"),
+        ("2024-03-31T06:00:00Z/2024-03-31T01:00:00Z", "window END is not after START"),
+        ("2024-03-31T01:00:00Z/2024-03-31T01:00:00Z", "window END is not after START"),
+        ("last tuesday", "window must be <START>/<END>"),
+    ],
+)
+def test_parse_window_refuses_what_it_cannot_size(spec, message):
+    with pytest.raises(ValueError, match=message):
+        parse_window(spec)

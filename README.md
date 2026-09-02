@@ -34,11 +34,11 @@ under `scripts/` download on request and print their size first.
 
 ## Use
 
-Commands in the order you run them on an archive. `tsdive --help` lists
-them. Every analysis command takes `--json` after the command name and
-prints one JSON object instead of text. `--no-color` and the `NO_COLOR`
-environment variable turn colour off. The transcripts below are trimmed
-to the lines the text reads.
+Commands in the order you run them on an archive. A window is `START/END`,
+`START/PT5H`, `PT5H/END`, or a date for one UTC day. Every analysis
+command takes `--json` after the command name and prints one JSON object
+instead of text. `--no-color` and the `NO_COLOR` environment variable turn
+colour off. The transcripts below are trimmed to the lines the text reads.
 
 ### profile
 
