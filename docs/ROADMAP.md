@@ -101,8 +101,9 @@ changed and a pair decoupled. Neither word names a cause.
 baseline, and `compare` monitors two periods, so the plan format has to
 grow a second window first.
 
-Owed: the hand-off from `segment` to `screen --mode`. Nothing turns
-segments into regime labels today, so a person reads the segmentation.
+Shipped: `segment --mode-out FILE` writes the segments as a MODE archive,
+one label (`S1`, `S2`, ...) per sample the window read, and `screen --mode
+FILE` builds one baseline per label from it.
 
 Owed: mutual information between two tags, and per-tag attributions from
 a fitted model. Both wait for a benchmark row showing them find something

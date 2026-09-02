@@ -1571,3 +1571,27 @@ def test_profile_reads_a_bare_date_as_one_utc_day(tmp_path, capsys):
     assert cmd_profile([str(path), "--window", explicit]) == 0
     assert capsys.readouterr().out == by_date
     assert by_date.splitlines()[0] == f"{meta.identity}  {meta.name}"
+
+
+def test_segment_mode_out_writes_the_archive_and_names_it(archive_factory, tmp_path, capsys):
+    path = _stepped_archive(archive_factory)
+    out = tmp_path / "seg.parquet"
+    assert cmd_segment([str(path)]) == 0
+    plain = capsys.readouterr().out
+    assert cmd_segment([str(path), "--mode-out", str(out)]) == 0
+    assert capsys.readouterr().out == f"{plain}\nwrote     {out.as_posix()}\n"
+    assert pd.read_parquet(out)["value"].tolist() == ["S1"] * 60 + ["S2"] * 60
+    assert cmd_segment([str(path), "--mode-out", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith("error:") and "already exists" in err
+    assert cmd_segment([str(path), "--mode-out", str(out), "--overwrite"]) == 0
+
+
+def test_segment_json_mode_out_stays_one_object(archive_factory, tmp_path, capsys):
+    path = _stepped_archive(archive_factory)
+    out = tmp_path / "seg.parquet"
+    assert cmd_segment([str(path), "--json", "--mode-out", str(out)]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["mode_out"] == out.as_posix()
+    assert len(doc["segments"]) == 2
+    assert out.exists()

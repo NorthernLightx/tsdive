@@ -10,33 +10,46 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from conftest import EngRange, Role, make_meta, stepped_contract
+from conftest import EngRange, Role, TagIdentity, make_meta, stepped_contract
+from tsdive import analyses
 from tsdive.changepoints import (
     METHOD,
     default_penalty,
     pelt_l2,
     segment_window,
 )
-from tsdive.errors import InsufficientQuality
-from tsdive.store.tagstore import SingleFileStore, Window
+from tsdive.errors import InsufficientQuality, RegimeTooSparse
+from tsdive.store.tagstore import SingleFileStore, Window, meta_from_parquet
 
 BASE = pd.Timestamp("2024-05-01 00:00:00+00:00")
+
+
+def _frame(values, *, minutes=1) -> pd.DataFrame:
+    """``values`` on a regular grid from ``BASE``, every row GOOD."""
+    stamps = [BASE + pd.Timedelta(minutes * i, unit="min") for i in range(len(values))]
+    return pd.DataFrame(
+        {"timestamp": stamps, "value": values, "quality": ["GOOD"] * len(values)}
+    )
 
 
 def _window(archive_factory, values, *, meta=None, minutes=1) -> Window:
     """Write ``values`` on a regular grid and read the whole span back."""
     meta = meta or make_meta(sample_rate_s=60.0 * minutes)
-    stamps = [BASE + pd.Timedelta(minutes * i, unit="min") for i in range(len(values))]
-    frame = pd.DataFrame(
-        {"timestamp": stamps, "value": values, "quality": ["GOOD"] * len(values)}
-    )
+    frame = _frame(values, minutes=minutes)
     store = SingleFileStore(archive_factory(frame, meta))
     return store.read_window(
         meta.identity,
-        stamps[0].to_pydatetime(),
-        stamps[-1].to_pydatetime(),
+        frame["timestamp"].iloc[0].to_pydatetime(),
+        frame["timestamp"].iloc[-1].to_pydatetime(),
         stepped_contract(),
     )
+
+
+def _two_levels(n_first: int, n_second: int) -> list[float]:
+    """Level 50 for ``n_first`` samples, then level 60, each with a 0.1 ripple."""
+    return [50.0 + 0.1 * (i % 3) for i in range(n_first)] + [
+        60.0 + 0.1 * (i % 3) for i in range(n_second)
+    ]
 
 
 def test_pelt_finds_a_single_step_where_it_happens():
@@ -166,3 +179,71 @@ def test_segment_window_splits_a_saturation_into_its_own_segment(archive_factory
 
 def test_default_penalty_is_bic_shaped():
     assert default_penalty(561) == pytest.approx(3.0 * math.log(561))
+
+
+# --- write_mode_archive ------------------------------------------------------
+
+DEMO_BASELINE = "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z"
+DEMO_WINDOW = "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z"
+
+
+def test_write_mode_archive_labels_every_row_of_the_demo_window(demo_archives, tmp_path):
+    flow, _ = demo_archives
+    analysis = analyses.segment(flow)
+    out = analysis.write_mode_archive(tmp_path / "fic101_seg.parquet")
+    written = pd.read_parquet(out)
+    assert len(written) == len(analysis.window.frame)
+    assert list(dict.fromkeys(written["value"])) == ["S1", "S2", "S3", "S4", "S5", "S6"]
+    assert set(written["quality"]) == {"GOOD"}
+    # A segment's first and last sample carry its own number, so the label
+    # changes exactly where the segment table says it does.
+    by_stamp = written.set_index("timestamp")["value"]
+    for i, seg in enumerate(analysis.found.segments, start=1):
+        assert by_stamp[seg.start] == f"S{i}"
+        assert by_stamp[seg.end] == f"S{i}"
+    meta = meta_from_parquet(out)
+    assert meta.identity == TagIdentity("demo", "FIC101.PV.SEG")
+    assert meta.name == f"{analysis.window.meta.name} segments"
+    assert meta.role is Role.MODE
+    assert meta.quality_assumed is True
+    assert meta.sample_rate_s == analysis.window.meta.sample_rate_s
+    assert (meta.unit_raw, meta.eng_range, meta.asset, meta.loop_id) == (None,) * 4
+
+
+def test_screen_mode_refuses_a_segment_the_baseline_never_saw(demo_archives, tmp_path):
+    flow, _ = demo_archives
+    modes = analyses.segment(flow).write_mode_archive(tmp_path / "fic101_seg.parquet")
+    # Segment 4, the half hour at full scale from 02:01, lies inside the
+    # monitored window only, so no baseline exists for its label.
+    with pytest.raises(RegimeTooSparse, match="no baseline for unseen regime 'S4'"):
+        analyses.screen(flow, DEMO_BASELINE, DEMO_WINDOW, mode=modes)
+
+
+def test_screen_mode_grades_each_segment_against_its_own_baseline(archive_factory, tmp_path):
+    # The step comes 90 minutes in and the baseline ends 30 minutes after
+    # it, so both segments get a baseline and the monitored window, all
+    # second level, is graded against S2 alone.
+    values = _two_levels(90, 150)
+    values[200] = 61.0
+    path = archive_factory(_frame(values), make_meta(sample_rate_s=60.0))
+    modes = analyses.segment(path).write_mode_archive(tmp_path / "seg.parquet")
+    result = analyses.screen(
+        path,
+        "2024-05-01T00:00:00Z/2024-05-01T02:00:00Z",
+        "2024-05-01T02:00:00Z/2024-05-01T03:59:00Z",
+        mode=modes,
+    )
+    assert result.regimes is not None and sorted(result.regimes) == ["S1", "S2"]
+    assert result.regimes["S1"].center == pytest.approx(50.1)
+    assert result.regimes["S2"].center == pytest.approx(60.1)
+    assert result.result.n_screened == 120
+    assert result.frame["timestamp"].tolist() == [BASE + pd.Timedelta(200, unit="min")]
+
+
+def test_write_mode_archive_refuses_an_existing_path(archive_factory, tmp_path):
+    path = archive_factory(_frame(_two_levels(60, 60)), make_meta(sample_rate_s=60.0))
+    analysis = analyses.segment(path)
+    out = analysis.write_mode_archive(tmp_path / "seg.parquet")
+    with pytest.raises(FileExistsError):
+        analysis.write_mode_archive(out)
+    assert analysis.write_mode_archive(out, overwrite=True) == out

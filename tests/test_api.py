@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -16,11 +13,8 @@ from tsdive.api import parse_window
 from tsdive.cli import cmd_profile, cmd_report_html, main
 from tsdive.errors import SchemaError
 from tsdive.report import fmt_span
-from tsdive.store.tagstore import write_tag
 
 WINDOW = "2024-03-01T00:00:00Z/2024-03-01T01:00:00Z"
-
-SCRIPTS = Path(__file__).parents[1] / "scripts"
 
 # The windows the README transcripts use on the two demo archives.
 DEMO_BASELINE = "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z"
@@ -141,25 +135,6 @@ def test_empty_archive_has_no_extent(tmp_path):
 def test_public_names_are_all_importable():
     for name in tsdive.__all__:
         assert getattr(tsdive, name, None) is not None, name
-
-
-@pytest.fixture(scope="module")
-def demo_archives(tmp_path_factory) -> tuple[Path, Path]:
-    """The two README demo archives, built by the script that ships them."""
-    spec = importlib.util.spec_from_file_location(
-        "make_demo_archive", SCRIPTS / "make_demo_archive.py"
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["make_demo_archive"] = module
-    spec.loader.exec_module(module)
-    out = tmp_path_factory.mktemp("demo")
-    flow, flow_meta = module.build_fic101()
-    temp, temp_meta = module.build_tic101(flow)
-    return (
-        write_tag(out / "fic101_demo.parquet", flow, flow_meta, overwrite=True),
-        write_tag(out / "tic101_demo.parquet", temp, temp_meta, overwrite=True),
-    )
 
 
 def _cli(capsys, argv: list[str]) -> str:

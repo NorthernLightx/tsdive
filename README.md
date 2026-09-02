@@ -119,10 +119,10 @@ Flagged
   (+26 more)
 ```
 
-`--mode <parquet>` computes one baseline per regime of a MODE tag.
-`--method moving-range` replaces the MAD scale. A baseline that is
-censored, or that overlaps the window, raises an error in `screen`,
-`spc` and `mspc`.
+`--mode <parquet>` computes one baseline per regime of a MODE tag, such
+as the archive `segment --mode-out` writes. `--method moving-range`
+replaces the MAD scale. A censored baseline, or one that overlaps the
+window, raises an error in `screen`, `spc` and `mspc`.
 
 ### spc
 

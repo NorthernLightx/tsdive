@@ -60,7 +60,7 @@ from tsdive.mspc.pca import (
 )
 from tsdive.spc.charts import ControlLimits, RuleHit, apply_rules, individuals_limits
 from tsdive.store.clipping import assert_usable_baseline
-from tsdive.store.identity import TagIdentity
+from tsdive.store.identity import Role, TagIdentity, TagMeta
 from tsdive.store.sampling_contract import (
     AggregateType,
     CalculationBasis,
@@ -72,6 +72,7 @@ from tsdive.store.tagstore import (
     Window,
     archive_extent,
     meta_from_parquet,
+    write_tag,
 )
 from tsdive.ui.jsonout import to_jsonable
 
@@ -193,6 +194,40 @@ class SegmentAnalysis:
     def to_dict(self) -> dict[str, object]:
         """The document ``tsdive segment --json`` prints, ready for ``json.dumps``."""
         return to_jsonable(segment_json(self))
+
+    def write_mode_archive(self, path: str | Path, *, overwrite: bool = False) -> Path:
+        """Write the segments as a MODE archive at ``path`` and return it.
+
+        One row per row of the segmented window's frame, so ``screen
+        --mode`` joins every timestamp the window read. ``value`` holds the
+        segment label ``S1``, ``S2``, ... in the order the segment table
+        numbers them; a row before the first breakpoint is ``S1``.
+        ``quality`` is ``GOOD`` with ``quality_assumed`` set on the meta:
+        the label is derived from the samples, not measured.
+
+        Raises:
+            FileExistsError: ``path`` exists and ``overwrite`` is false.
+        """
+        stamps = self.window.frame["timestamp"].reset_index(drop=True)
+        index = pd.Series(1, index=stamps.index, dtype=int)
+        for breakpoint in self.found.breakpoints:
+            index += (stamps >= breakpoint).astype(int)
+        frame = pd.DataFrame(
+            {
+                "timestamp": stamps,
+                "value": ["S" + str(i) for i in index],
+                "quality": ["GOOD"] * len(stamps),
+            }
+        )
+        source = self.window.meta
+        meta = TagMeta(
+            identity=TagIdentity(source.identity.source_id, f"{source.identity.point_id}.SEG"),
+            name=f"{source.name} segments",
+            sample_rate_s=source.sample_rate_s,
+            role=Role.MODE,
+            quality_assumed=True,
+        )
+        return write_tag(path, frame, meta, overwrite=overwrite)
 
 
 def segment(

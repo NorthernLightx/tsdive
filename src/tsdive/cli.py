@@ -239,7 +239,7 @@ def _report_and_exit(
     except TSDiveError as e:
         _print_refusal(f"[{type(e).__name__}]", str(e), args)
         return 2
-    except (ValueError, FileNotFoundError) as e:
+    except (ValueError, FileNotFoundError, FileExistsError) as e:
         _print_refusal("error:", str(e), args)
         return 2
 
@@ -328,6 +328,17 @@ def _parser_segment() -> argparse.ArgumentParser:
     parser.add_argument(
         "--stepped", action="store_true", help="stepped interpolation between samples"
     )
+    parser.add_argument(
+        "--mode-out",
+        default=None,
+        metavar="FILE",
+        help="write the segments as a MODE archive, one label per sample, for screen --mode",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="replace an existing archive at --mode-out",
+    )
     return _add_output_flags(parser)
 
 
@@ -342,13 +353,31 @@ def _segment_run(args: argparse.Namespace) -> SegmentAnalysis:
     )
 
 
+def _segment_mode_out(analysis: SegmentAnalysis, args: argparse.Namespace) -> str | None:
+    """Write ``--mode-out`` when asked and return the path written, as posix."""
+    mode_out = getattr(args, "mode_out", None)
+    if mode_out is None:
+        return None
+    return analysis.write_mode_archive(mode_out, overwrite=args.overwrite).as_posix()
+
+
 def run_segment(args: argparse.Namespace) -> list[str]:
     """Segment a window into regimes the samples themselves show."""
-    return _lines(_segment_run(args).render())
+    analysis = _segment_run(args)
+    lines = _lines(analysis.render())
+    written = _segment_mode_out(analysis, args)
+    if written is not None:
+        lines += ["", label_line("wrote", written)]
+    return lines
 
 
 def json_segment(args: argparse.Namespace) -> dict[str, object]:
-    return _segment_run(args).to_dict()
+    analysis = _segment_run(args)
+    doc = analysis.to_dict()
+    written = _segment_mode_out(analysis, args)
+    if written is not None:
+        doc["mode_out"] = written
+    return doc
 
 
 def cmd_segment(argv: Sequence[str] | None = None) -> int:
