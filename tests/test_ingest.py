@@ -516,3 +516,107 @@ def test_wide_tags_colliding_after_safe_filename_are_refused(tmp_path):
             tz="Europe/London",
         )
     assert not (tmp_path / "archive").exists()
+
+
+# ---------------------------------------------------------- metadata templates
+
+TEMPLATE_KEYS = [
+    "identity",
+    "name",
+    "unit_raw",
+    "unit_canonical",
+    "eng_range_zero",
+    "eng_range_span",
+    "sample_rate_s",
+    "asset",
+    "loop_id",
+    "role",
+    "quality_codes",
+    "quality_assumed",
+]
+
+
+def test_init_meta_writes_one_template_per_tag_in_schema_order(tmp_path):
+    written = tsdive.init_meta(
+        _wide_csv(tmp_path),
+        out_dir=tmp_path / "meta",
+        source_id="plant1",
+        timestamp_col="ts",
+        quality_suffix="_q",
+    )
+    assert [p.name for p in written] == [f"{tag}.json" for tag in WIDE_TAGS]
+    text = written[0].read_text(encoding="utf-8")
+    assert text.endswith("}\n") and "\n  \"name\"" in text
+    payload = json.loads(text)
+    assert list(payload) == TEMPLATE_KEYS
+    assert payload["identity"] == {"source_id": "plant1", "point_id": "FIC101.PV"}
+    assert payload["name"] == "FIC101.PV"
+    assert payload["quality_codes"] == {"Bad": "BAD", "Good": "GOOD", "Questionable": None}
+    assert all(payload[k] is None for k in TEMPLATE_KEYS[2:10])
+    assert payload["quality_assumed"] is None
+
+
+def test_init_meta_without_quality_columns_leaves_quality_codes_null(tmp_path):
+    (written,) = tsdive.init_meta(
+        _wide_csv(tmp_path, quality=False),
+        out_dir=tmp_path / "meta",
+        source_id="plant1",
+        timestamp_col="ts",
+        tags=["TIC201.PV"],
+    )
+    assert json.loads(written.read_text(encoding="utf-8"))["quality_codes"] is None
+
+
+def test_init_meta_does_not_overwrite_a_template(tmp_path):
+    kwargs = dict(out_dir=tmp_path / "meta", source_id="plant1", timestamp_col="ts")
+    src = _wide_csv(tmp_path, quality=False)
+    tsdive.init_meta(src, **kwargs)
+    with pytest.raises(FileExistsError, match=r"FIC101\.PV\.json already exists"):
+        tsdive.init_meta(src, **kwargs)
+    assert len(tsdive.init_meta(src, overwrite=True, **kwargs)) == 3
+
+
+def test_filled_templates_feed_ingest_wide(tmp_path):
+    src = _wide_csv(tmp_path)
+    meta_dir = tmp_path / "meta"
+    templates = tsdive.init_meta(
+        src, out_dir=meta_dir, source_id="plant1", timestamp_col="ts", quality_suffix="_q"
+    )
+    for path in templates:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["quality_codes"]["Questionable"] = "UNCERTAIN"
+        payload["sample_rate_s"] = 60.0
+        path.write_text(json.dumps(payload), encoding="utf-8")
+    written = tsdive.ingest_wide(
+        src,
+        out_dir=tmp_path / "archive",
+        meta_dir=meta_dir,
+        timestamp_col="ts",
+        quality_suffix="_q",
+        tz="Europe/London",
+    )
+    assert len(written) == 3
+    p = tsdive.profile(written[0])
+    assert p.physics.unmapped_quality_codes == []
+    assert sum(p.physics.severity_counts.values()) == len(WIDE_INSTANTS)
+    assert p.meta.sample_rate_s == 60.0
+
+
+def test_template_with_an_unmapped_code_is_refused_at_read(tmp_path):
+    src = _wide_csv(tmp_path)
+    meta_dir = tmp_path / "meta"
+    tsdive.init_meta(
+        src, out_dir=meta_dir, source_id="plant1", timestamp_col="ts", quality_suffix="_q"
+    )
+    with pytest.raises(SchemaError, match="quality_codes maps 'Questionable' to None"):
+        tsdive.read_meta_json(meta_dir / "FIC101.PV.json")
+    with pytest.raises(SchemaError, match=r"FIC101\.PV\.json: quality_codes maps 'Questionable'"):
+        tsdive.ingest_wide(
+            src,
+            out_dir=tmp_path / "archive",
+            meta_dir=meta_dir,
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
+        )
+    assert not (tmp_path / "archive").exists()

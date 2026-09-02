@@ -178,6 +178,13 @@ def read_meta_json(path: str | Path) -> TagMeta:
         raise SchemaError(f"{Path(path).name}: not valid JSON ({e})") from e
     if not isinstance(payload, dict):
         raise SchemaError(f"{Path(path).name}: expected a JSON object of tag metadata")
+    severities = {s.value for s in Severity}
+    for code, declared in (payload.get("quality_codes") or {}).items():
+        if not isinstance(declared, str) or declared.strip().upper() not in severities:
+            raise SchemaError(
+                f"{Path(path).name}: quality_codes maps {code!r} to {declared!r}; "
+                f"expected one of {', '.join(sorted(severities))}"
+            )
     return meta_from_dict(payload)
 
 
@@ -389,6 +396,26 @@ def _wide_columns(
     return chosen
 
 
+def _wide_quality_columns(
+    frame: pd.DataFrame,
+    chosen: Sequence[str],
+    *,
+    label: str,
+    quality_suffix: str | None,
+) -> dict[str, str | None]:
+    """Each tag's quality column, ``None`` for every tag when there is no suffix."""
+    quality_cols: dict[str, str | None] = {}
+    for tag in chosen:
+        qcol = f"{tag}{quality_suffix}" if quality_suffix is not None else None
+        if qcol is not None and qcol not in frame.columns:
+            raise SchemaError(
+                f"{label}: no quality column {qcol!r} for tag {tag!r}; columns are "
+                f"{', '.join(map(str, frame.columns))}"
+            )
+        quality_cols[tag] = qcol
+    return quality_cols
+
+
 def _check_distinct_filenames(names: Sequence[str], *, what: str) -> None:
     """Raise ValueError when two names share one :func:`safe_filename`."""
     seen: dict[str, str] = {}
@@ -457,23 +484,17 @@ def ingest_wide(
             "--assume-quality GOOD|UNCERTAIN|BAD, which is recorded on every "
             "archive and reported in every profile"
         )
-    quality_cols: dict[str, str | None] = {}
-    for tag in chosen:
-        qcol = f"{tag}{quality_suffix}" if quality_suffix is not None else None
-        if qcol is not None and qcol not in frame.columns:
-            raise SchemaError(
-                f"{label}: no quality column {qcol!r} for tag {tag!r}; columns are "
-                f"{', '.join(map(str, frame.columns))}"
-            )
-        quality_cols[tag] = qcol
+    quality_cols = _wide_quality_columns(
+        frame, chosen, label=label, quality_suffix=quality_suffix
+    )
     meta_root = Path(meta_dir)
     metas: dict[str, TagMeta] = {}
     for tag in chosen:
         meta_path = meta_root / f"{safe_filename(tag)}.json"
         if not meta_path.exists():
             raise SchemaError(
-                f"tag {tag!r}: no metadata file {meta_path.as_posix()}; write it "
-                "before ingesting"
+                f"tag {tag!r}: no metadata file {meta_path.as_posix()}; write it by "
+                "hand or with --init-meta"
             )
         metas[tag] = read_meta_json(meta_path)
     _check_distinct_filenames(
@@ -508,6 +529,98 @@ def ingest_wide(
         write_tag(target, out_frame, stamped, overwrite=overwrite)
         for target, out_frame, stamped in prepared
     ]
+
+
+# The keys of a metadata template, in the order docs/SCHEMA.md lists them.
+_META_TEMPLATE_KEYS = (
+    "unit_raw",
+    "unit_canonical",
+    "eng_range_zero",
+    "eng_range_span",
+    "sample_rate_s",
+    "asset",
+    "loop_id",
+    "role",
+    "quality_codes",
+    "quality_assumed",
+)
+
+
+def _quality_code_template(raw_codes: pd.Series) -> dict[str, str | None]:
+    """One entry per distinct raw quality value, filled only where the value names a severity."""
+    severities = {s.value for s in Severity}
+    template: dict[str, str | None] = {}
+    for raw in sorted({str(v) for v in raw_codes.dropna()}):
+        folded = raw.strip().upper()
+        template[raw] = folded if folded in severities else None
+    return template
+
+
+def init_meta(
+    source: str | Path,
+    *,
+    out_dir: str | Path,
+    source_id: str,
+    timestamp_col: str = "timestamp",
+    tags: Sequence[str] | None = None,
+    quality_suffix: str | None = None,
+    overwrite: bool = False,
+) -> list[Path]:
+    """Write one metadata template per tag column of a wide export.
+
+    Each template at ``out_dir / f"{safe_filename(tag)}.json"`` carries
+    ``identity`` (``source_id`` and the column name as ``point_id``),
+    ``name`` (the column name) and every optional key of ``tsdive.meta``
+    set to ``null``. Nothing about units, ranges or sample rate is read
+    off the data. With ``quality_suffix``, ``quality_codes`` lists every
+    distinct raw value of the tag's quality column, mapped to a severity
+    only where the value spells ``GOOD``, ``UNCERTAIN`` or ``BAD``
+    itself; every other code stays ``null`` for the reader to fill, and
+    :func:`read_meta_json` refuses the file until they are.
+
+    Raises:
+        SchemaError: unreadable input, or a missing timestamp, tag or
+            quality column.
+        ValueError: two tags that share one file name.
+        FileExistsError: a template exists and ``overwrite`` is False.
+    """
+    src = Path(source)
+    frame = _read_source(src)
+    chosen = _wide_columns(
+        frame,
+        label=src.name,
+        timestamp_col=timestamp_col,
+        tags=tags,
+        quality_suffix=quality_suffix,
+    )
+    _check_distinct_filenames(chosen, what="tags")
+    quality_cols = _wide_quality_columns(
+        frame, chosen, label=src.name, quality_suffix=quality_suffix
+    )
+    root = Path(out_dir)
+    targets = {tag: root / f"{safe_filename(tag)}.json" for tag in chosen}
+    if not overwrite:
+        for target in targets.values():
+            if target.exists():
+                raise FileExistsError(
+                    f"{target} already exists; pass overwrite=True to replace it"
+                )
+    root.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for tag in chosen:
+        payload: dict[str, object] = {
+            "identity": {"source_id": source_id, "point_id": tag},
+            "name": tag,
+            **dict.fromkeys(_META_TEMPLATE_KEYS),
+        }
+        qcol = quality_cols[tag]
+        if qcol is not None:
+            payload["quality_codes"] = _quality_code_template(frame[qcol])
+        targets[tag].write_text(
+            json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+        written.append(targets[tag])
+    return written
 
 
 @dataclass(frozen=True)

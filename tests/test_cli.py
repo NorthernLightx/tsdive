@@ -1494,3 +1494,51 @@ def test_ingest_rejects_flags_of_the_other_form(tmp_path, capsys, extra, named):
     assert exit_info.value.code == 2
     assert named in err
     assert "Traceback" not in err
+
+
+def test_ingest_init_meta_writes_templates_and_stops(tmp_path, capsys):
+    src, _, tags = _wide_fixture(tmp_path)
+    out_dir = tmp_path / "templates"
+    rc = main(
+        [
+            "ingest",
+            str(src),
+            "--wide",
+            "--init-meta",
+            str(out_dir),
+            "--source-id",
+            "plant1",
+            "--timestamp-col",
+            "ts",
+            "--quality-suffix",
+            "_q",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.err == ""
+    assert captured.out.splitlines() == [
+        f"wrote     {(out_dir / f'{tag}.json').as_posix()}" for tag in tags
+    ]
+    payload = json.loads((out_dir / "PIC301.PV.json").read_text(encoding="utf-8"))
+    assert payload["identity"] == {"source_id": "plant1", "point_id": "PIC301.PV"}
+    assert payload["quality_codes"] == {"Good": "GOOD"}
+    assert not any(tmp_path.glob("**/*.parquet"))
+
+
+@pytest.mark.parametrize(
+    ("extra", "named"),
+    [
+        (["--wide", "--init-meta", "t"], "--source-id"),
+        (["--wide", "--init-meta", "t", "--source-id", "p", "--out", "a"], "--out"),
+        (["--wide", "--init-meta", "t", "--source-id", "p", "--meta-dir", "m"], "--meta-dir"),
+        (["--init-meta", "t", "--source-id", "p"], "--init-meta"),
+    ],
+)
+def test_ingest_init_meta_rejects_conflicting_flags(capsys, extra, named):
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ingest", "export.csv", *extra])
+    err = capsys.readouterr().err
+    assert exit_info.value.code == 2
+    assert named in err
+    assert "Traceback" not in err

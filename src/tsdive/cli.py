@@ -39,6 +39,7 @@ from tsdive.api import (
     Profile,
     ingest,
     ingest_wide,
+    init_meta,
     parse_window,
     profile,
     read_meta_json,
@@ -703,7 +704,7 @@ def _parser_ingest() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--out",
-        required=True,
+        default=None,
         help="archive to create; with --wide, directory for one archive per tag",
     )
     parser.add_argument(
@@ -743,6 +744,19 @@ def _parser_ingest() -> argparse.ArgumentParser:
         metavar="S",
         help="each tag's quality column is <tag><S>",
     )
+    wide.add_argument(
+        "--init-meta",
+        default=None,
+        metavar="DIR",
+        help="write a <tag>.json metadata template per tag column into DIR and stop; "
+        "fill them in, then ingest with --meta-dir DIR",
+    )
+    wide.add_argument(
+        "--source-id",
+        default=None,
+        metavar="ID",
+        help="identity.source_id written into every template (--init-meta)",
+    )
     parser.add_argument(
         "--tz",
         default=None,
@@ -757,7 +771,9 @@ def _parser_ingest() -> argparse.ArgumentParser:
         "the archive and reported by every profile of it",
     )
     parser.add_argument(
-        "--overwrite", action="store_true", help="replace an existing archive at --out"
+        "--overwrite",
+        action="store_true",
+        help="replace an existing archive at --out, or template under --init-meta",
     )
     return _add_output_flags(parser, json_flag=False)
 
@@ -774,16 +790,37 @@ def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespac
         ("--tags", args.tags),
         ("--quality-suffix", args.quality_suffix),
     )
+    init_only = (("--source-id", args.source_id),)
+    ingest_only = (
+        ("--out", args.out),
+        ("--meta-dir", args.meta_dir),
+        ("--tz", args.tz),
+        ("--assume-quality", args.assume_quality),
+    )
     if args.wide:
         for flag, value in single_only:
             if value is not None:
                 parser.error(f"{flag} does not apply with --wide; use --meta-dir")
-        if args.meta_dir is None:
-            parser.error("--wide requires --meta-dir")
+        if args.init_meta is not None:
+            for flag, value in ingest_only:
+                if value is not None:
+                    parser.error(f"{flag} does not apply with --init-meta")
+            if args.source_id is None:
+                parser.error("--init-meta requires --source-id")
+        else:
+            for flag, value in init_only:
+                if value is not None:
+                    parser.error(f"{flag} requires --init-meta")
+            if args.out is None:
+                parser.error("the following arguments are required: --out")
+            if args.meta_dir is None:
+                parser.error("--wide requires --meta-dir")
     else:
-        for flag, value in wide_only:
+        for flag, value in (*wide_only, ("--init-meta", args.init_meta), *init_only):
             if value is not None:
                 parser.error(f"{flag} requires --wide")
+        if args.out is None:
+            parser.error("the following arguments are required: --out")
         if args.meta is None:
             parser.error("the following arguments are required: --meta")
 
@@ -795,6 +832,18 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
     _check_ingest_flags(parser, args)
 
     try:
+        if args.init_meta is not None:
+            templates = init_meta(
+                args.source,
+                out_dir=args.init_meta,
+                source_id=args.source_id,
+                timestamp_col=args.timestamp_col,
+                tags=_split_tags(args.tags),
+                quality_suffix=args.quality_suffix,
+                overwrite=args.overwrite,
+            )
+            _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
+            return 0
         if args.wide:
             written = ingest_wide(
                 args.source,
