@@ -3,6 +3,17 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
+## Unreleased
+
+### Added
+
+- `tsdive.eval`: the evaluation protocol as an API. `ranking_metrics`
+  returns ROC-AUC, PR-AUC and precision at a recall floor and reports a
+  one-class fold as a refusal; `clock_control` scores a window by its
+  position in its record; `worst_baseline_threshold`, `fires`, `far_floor`
+  and `over_floor` carry the alarm rule and its false-alarm floor;
+  `group_holdout`, `GroupSplit` and `GroupLeakage` are re-exported.
+
 ## 0.2.0 - 2026-09-02
 
 ### Added
