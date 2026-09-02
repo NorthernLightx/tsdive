@@ -996,6 +996,17 @@ STEPS: dict[str, tuple[Callable[[], argparse.ArgumentParser], StepRunner]] = {
     "mspc": (_parser_mspc, run_mspc),
 }
 
+# The same steps returning their analysis objects instead of text, for a
+# caller that draws or inspects a result after rendering it. Each object
+# has ``render()``, and ``STEPS`` prints exactly its lines.
+ANALYSES: dict[str, Callable[[argparse.Namespace], object]] = {
+    "profile": _profiled,
+    "segment": _segment_run,
+    "screen": _screen_run,
+    "spc": _spc_run,
+    "mspc": _mspc_run,
+}
+
 # mspc reads every archive at once; the other steps run once per archive.
 MULTI_TAG_STEPS = frozenset({"mspc"})
 
@@ -1039,9 +1050,9 @@ def cmd_run(argv: Sequence[str] | None = None) -> int:
         # step or an unmatched glob leaves no half-run output directory.
         _print_refusal("error:", str(e), args)
         return 2
-    profiles, findings, refusals = execute(plan)
+    profiles, findings, refusals, figures = execute(plan)
     out_dir = Path(args.out) if args.out else plan_path.parent / "tsdive-run"
-    _, _, lines = write_run(plan, out_dir, profiles, findings, refusals)
+    _, _, lines = write_run(plan, out_dir, profiles, findings, refusals, figures)
     _print_lines(lines, args)
     return 0 if profiles or findings else 2
 

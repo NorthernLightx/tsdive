@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from itertools import takewhile
 
 import pandas as pd
@@ -189,6 +190,30 @@ def test_report_html_carries_the_findings(tmp_path):
     assert "<h3>mspc - plant1:FIC101.PV, plant1:TIC101.PV</h3>" in html_text
 
 
+def test_report_html_draws_the_screen_and_spc_results_over_each_plot(tmp_path):
+    _two_archives(tmp_path)
+    plan = _plan(tmp_path, ALL_FIVE)
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 0
+    html_text = (out / "report.html").read_text(encoding="utf-8")
+    figures = re.findall(r"<svg .*?</svg>", html_text)
+    assert len(figures) == 2
+    assert html_text.index("<h2>Plots</h2>") < html_text.index("<h2>Window profiles</h2>")
+    findings = _ledger(out)["findings"]
+    for figure, tag in zip(figures, ["plant1:FIC101.PV", "plant1:TIC101.PV"], strict=True):
+        assert f"<title>{tag}  " in figure
+        by_step = {f["step"]: f["text"] for f in findings if f["tags"] == tag}
+        flagged = re.search(r"flagged (\d+) of", by_step["screen"])
+        hits = re.search(r"(\d+) rule hits? in", by_step["spc"])
+        assert flagged is not None and hits is not None
+        assert figure.count('class="flag"') == int(flagged.group(1))
+        assert figure.count('class="hit"') == int(hits.group(1))
+        assert figure.count('class="center"') == 1
+        assert figure.count('class="limit"') == 2
+    headline = (out / "ledger.txt").read_text(encoding="utf-8").splitlines()[0]
+    assert headline.startswith("run plan.toml   2 archives   5 steps   profiles 2")
+
+
 def test_a_censored_baseline_refuses_that_tag_and_the_run_continues(tmp_path):
     _archive(tmp_path, "FIC101.PV", [50.0 + (i % 5) for i in range(121)])
     censored = [50.0 + (i % 5) for i in range(121)]
@@ -213,6 +238,12 @@ steps    = ["profile", "screen", "spc"]
         "plant1:FIC101.PV",
         "plant1:FIC101.PV",
     ]
+    # the refused tag keeps its plot from the profile step, with nothing drawn over it
+    figures = re.findall(r"<svg .*?</svg>", (out / "report.html").read_text(encoding="utf-8"))
+    assert len(figures) == 2
+    assert figures[0].count('class="center"') == 1
+    assert figures[1].count('class="center"') == 0
+    assert figures[1].count('class="flag"') == 0
     assert len(ledger["refusals"]) == 2
     for row, step in zip(ledger["refusals"], ("screen", "spc"), strict=True):
         assert row.startswith(f"[InsufficientQuality] {step} plant1:TIC101.PV: ")

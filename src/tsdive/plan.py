@@ -1,9 +1,10 @@
 """``tsdive run``: one plan, several archives, one evidence ledger.
 
 A plan is a TOML file naming archives, a window, a baseline and the steps
-to walk. Every step is one of the CLI's own ``run_*`` functions, parsed
-by that command's own parser, so a plan can say nothing a command line
-cannot and the same validators refuse the same values.
+to walk. Every step is one of the CLI's own analyses, parsed by that
+command's own parser and rendered by its own ``render()``, so a plan can
+say nothing a command line cannot and the same validators refuse the
+same values.
 
 Two kinds of refusal, kept apart:
 
@@ -24,12 +25,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NoReturn
 
-from tsdive.cli import BASELINED, EXTENT_DEFAULTED, MULTI_TAG_STEPS, STEPS
+import pandas as pd
+
+from tsdive.analyses import ScreenAnalysis, SpcAnalysis
+from tsdive.api import Profile
+from tsdive.cli import ANALYSES, BASELINED, EXTENT_DEFAULTED, MULTI_TAG_STEPS, STEPS, _lines
 from tsdive.errors import TSDiveError
 from tsdive.narrate import EvidenceLedger
 from tsdive.report import SEP, continued, label_line, plural, wrapped
-from tsdive.store.tagstore import meta_from_parquet
+from tsdive.store.tagstore import Window, meta_from_parquet
 from tsdive.ui.static_report import render_static_report, write_static_report
+from tsdive.ui.svg import window_figure
 
 PLAN_KEYS = frozenset({"archives", "window", "baseline", "steps", "options"})
 
@@ -196,31 +202,74 @@ def _refusal_lines(row: Mapping[str, str]) -> list[str]:
     ]
 
 
-def execute(plan: Plan) -> tuple[list[str], list[dict[str, str]], list[dict[str, str]]]:
-    """Walk the plan, returning its profiles, findings and refusals.
+def _figures(
+    archives: Sequence[str],
+    windows: Mapping[str, Window],
+    screens: Mapping[str, ScreenAnalysis],
+    spcs: Mapping[str, SpcAnalysis],
+) -> list[str]:
+    """One plot per archive the profile step read, in plan order.
+
+    A screen adds its limits and flagged samples, an spc its rule hits;
+    a step that refused for an archive left no entry and adds nothing.
+    A regime-keyed screen has no single set of limits, so only its flags
+    are drawn.
+    """
+    figures: list[str] = []
+    for path in archives:
+        window = windows.get(path)
+        if window is None:
+            continue
+        limits: tuple[float, float, float] | None = None
+        flagged: Sequence[pd.Timestamp] = ()
+        hits: Sequence[pd.Timestamp] = ()
+        screen = screens.get(path)
+        if screen is not None:
+            flagged = screen.result.flagged_timestamps
+            if screen.provisional is not None:
+                lcl, ucl = screen.provisional.limits(screen.k)
+                limits = (screen.provisional.center, lcl, ucl)
+        spc = spcs.get(path)
+        if spc is not None:
+            hits = [hit.timestamp for hit in spc.hits]
+        figures.append(window_figure(window, limits=limits, flagged=flagged, hits=hits))
+    return figures
+
+
+def execute(
+    plan: Plan,
+) -> tuple[list[str], list[dict[str, str]], list[dict[str, str]], list[str]]:
+    """Walk the plan, returning its profiles, findings, refusals and figures.
 
     ``profile`` fills the ledger's profiles because a profile describes a
     window; every other step files a finding, which is a verdict about
     one. Neither ever raises past here. A refusal row keeps its error
     name, step, tags and message apart, so the report can lay them out
-    without parsing a sentence back into fields.
+    without parsing a sentence back into fields. The figures are the
+    report's plots, one per profiled archive, with the screen and spc
+    results of that archive drawn over it.
     """
     labels = {path: _identity(path) for path in plan.archives}
     profiles: list[str] = []
     findings: list[dict[str, str]] = []
     refusals: list[dict[str, str]] = []
+    windows: dict[str, Window] = {}
+    screens: dict[str, ScreenAnalysis] = {}
+    spcs: dict[str, SpcAnalysis] = {}
     for step in plan.steps:
         groups: list[tuple[str, ...]] = (
             [tuple(plan.archives)]
             if step in MULTI_TAG_STEPS
             else [(path,) for path in plan.archives]
         )
-        make_parser, runner = STEPS[step]
+        make_parser, _ = STEPS[step]
+        analyse = ANALYSES[step]
         for paths in groups:
             tags = ", ".join(labels[path] for path in paths)
             try:
                 args = _parse_step(make_parser(), _step_argv(plan, step, paths))
-                lines = runner(args)
+                result = analyse(args)
+                lines = _lines(result.render())
             except (TSDiveError, ValueError, OSError) as e:
                 refusals.append(
                     {
@@ -231,13 +280,19 @@ def execute(plan: Plan) -> tuple[list[str], list[dict[str, str]], list[dict[str,
                     }
                 )
                 continue
+            if isinstance(result, Profile):
+                windows[paths[0]] = result.window
+            elif isinstance(result, ScreenAnalysis):
+                screens[paths[0]] = result
+            elif isinstance(result, SpcAnalysis):
+                spcs[paths[0]] = result
             if step == "profile":
                 profiles.append("\n".join(lines))
             else:
                 findings.append(
                     {"step": step, "tags": tags, "text": "\n".join(lines)}
                 )
-    return profiles, findings, refusals
+    return profiles, findings, refusals, _figures(plan.archives, windows, screens, spcs)
 
 
 def render_run(
@@ -271,12 +326,14 @@ def write_run(
     profiles: list[str],
     findings: list[dict[str, str]],
     refusals: list[dict[str, str]],
+    figures: Sequence[str] = (),
 ) -> tuple[EvidenceLedger, tuple[Path, Path, Path], list[str]]:
     """Write ledger.json, ledger.txt and report.html into ``out_dir``.
 
     Returns the ledger, the files written, and the lines the command
     prints. ledger.txt opens with those same lines, so the file and the
-    terminal say one thing.
+    terminal say one thing. ``figures`` go into report.html only; the
+    ledger files carry text and never change with a plot.
 
     The ledger is titled after the plan file, never after the clock, so
     two runs of the same plan over the same archives write the same bytes.
@@ -298,6 +355,7 @@ def write_run(
         ],
         refusal_log=logged,
         findings=[(f["step"], f["tags"], f["text"]) for f in findings],
+        figures=figures,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     written = (

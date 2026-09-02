@@ -220,10 +220,10 @@ every pair.
 ### run
 
 Runs one TOML plan over many archives and writes `ledger.json`,
-`ledger.txt` and `report.html` to `-o DIR` (default `tsdive-run/`
-beside the plan). Options are the step's own flags: a list repeats the
-flag, `true` is the bare flag. Globs resolve against the plan file.
-`examples/plans/demo.toml`:
+`ledger.txt` and `report.html` (tables and one plot per tag) to
+`-o DIR` (default `tsdive-run/` beside the plan). Options are the
+step's own flags: a list repeats the flag, `true` is the bare flag.
+Globs resolve against the plan file. `examples/plans/demo.toml`:
 
 ```toml
 archives = ["../../data/demo/*.parquet"]
