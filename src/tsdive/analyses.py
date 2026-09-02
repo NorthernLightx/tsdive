@@ -3,8 +3,9 @@
 Every function reads its windows from parquet archives, runs the
 computation and returns a result holding objects, not text. On each
 result ``render()`` returns the plain text ``tsdive <command>`` prints
-and ``to_dict()`` the payload ``tsdive <command> --json`` prints; the CLI
-calls those two methods, so the library and the CLI cannot disagree.
+and ``to_dict()`` the JSON-ready document ``tsdive <command> --json``
+prints; the CLI calls those two methods, so the library and the CLI
+cannot disagree.
 
 Windows are ``START/END`` in ISO 8601 UTC, as on the command line. A
 malformed window raises ``ValueError``; a read the archive cannot support
@@ -72,6 +73,7 @@ from tsdive.store.tagstore import (
     archive_extent,
     meta_from_parquet,
 )
+from tsdive.ui.jsonout import to_jsonable
 
 SCREEN_METHODS = ("mad", "moving-range")
 
@@ -189,7 +191,8 @@ class SegmentAnalysis:
         return "\n".join(segment_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        return segment_json(self)
+        """The document ``tsdive segment --json`` prints, ready for ``json.dumps``."""
+        return to_jsonable(segment_json(self))
 
 
 def segment(
@@ -207,8 +210,8 @@ def segment(
         archive: parquet archive carrying ``tsdive.meta``.
         window: ``START/END`` in ISO 8601 UTC. Omitted, the archive's own
             extent.
-        penalty: cost one more breakpoint has to buy. Omitted, the
-            default multiplier times ``log(n)`` on the scaled series.
+        penalty: penalty added for each breakpoint. Omitted, the default
+            multiplier times ``log(n)`` on the scaled series.
         min_size: samples a segment must hold, at least.
         basis: calculation basis declared on the read.
         stepped: stepped interpolation between samples.
@@ -266,7 +269,8 @@ class ScreenAnalysis:
         return "\n".join(screen_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        return screen_json(self)
+        """The document ``tsdive screen --json`` prints, ready for ``json.dumps``."""
+        return to_jsonable(screen_json(self))
 
 
 def screen(
@@ -367,7 +371,8 @@ class SpcAnalysis:
         return "\n".join(spc_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        return spc_json(self)
+        """The document ``tsdive spc --json`` prints, ready for ``json.dumps``."""
+        return to_jsonable(spc_json(self))
 
 
 def spc(
@@ -457,7 +462,8 @@ class MspcAnalysis:
         return "\n".join(mspc_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        return mspc_json(self)
+        """The document ``tsdive mspc --json`` prints, ready for ``json.dumps``."""
+        return to_jsonable(mspc_json(self))
 
 
 def mspc(
@@ -536,7 +542,8 @@ class CompareAnalysis(CompareResult):
         return "\n".join(compare_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        return compare_json(self)
+        """The document ``tsdive compare --json`` prints, ready for ``json.dumps``."""
+        return to_jsonable(compare_json(self))
 
 
 def compare(

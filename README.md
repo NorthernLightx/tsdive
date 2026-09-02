@@ -295,6 +295,10 @@ p = tsdive.profile("data/demo/fic101_demo.parquet",
                    "2024-03-30T20:00:00Z/2024-03-31T06:00:00Z")
 p.physics.coverage.coverage      # 0.933
 p.render()                       # the plain text the CLI prints, no colour
+s = tsdive.screen("data/demo/fic101_demo.parquet",
+                  "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z",   # baseline
+                  "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z")   # window
+s.to_dict()["n_flagged"]         # 29; s.render() is the text tsdive screen prints
 ```
 
 ### MCP

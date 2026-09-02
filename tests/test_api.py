@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
 import tsdive
 from conftest import EngRange, Role, make_meta, write_archive
-from tsdive.cli import cmd_profile, cmd_report_html
+from tsdive.cli import cmd_profile, cmd_report_html, main
 from tsdive.errors import SchemaError
 from tsdive.report import fmt_span
+from tsdive.store.tagstore import write_tag
 
 WINDOW = "2024-03-01T00:00:00Z/2024-03-01T01:00:00Z"
+
+SCRIPTS = Path(__file__).parents[1] / "scripts"
+
+# The windows the README transcripts use on the two demo archives.
+DEMO_BASELINE = "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z"
+DEMO_WINDOW = "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z"
+DEMO_BEFORE = "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z"
+DEMO_AFTER = "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z"
 
 
 def _demo_archive(tmp_path):
@@ -126,3 +140,110 @@ def test_empty_archive_has_no_extent(tmp_path):
 def test_public_names_are_all_importable():
     for name in tsdive.__all__:
         assert getattr(tsdive, name, None) is not None, name
+
+
+@pytest.fixture(scope="module")
+def demo_archives(tmp_path_factory) -> tuple[Path, Path]:
+    """The two README demo archives, built by the script that ships them."""
+    spec = importlib.util.spec_from_file_location(
+        "make_demo_archive", SCRIPTS / "make_demo_archive.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["make_demo_archive"] = module
+    spec.loader.exec_module(module)
+    out = tmp_path_factory.mktemp("demo")
+    flow, flow_meta = module.build_fic101()
+    temp, temp_meta = module.build_tic101(flow)
+    return (
+        write_tag(out / "fic101_demo.parquet", flow, flow_meta, overwrite=True),
+        write_tag(out / "tic101_demo.parquet", temp, temp_meta, overwrite=True),
+    )
+
+
+def _cli(capsys, argv: list[str]) -> str:
+    rc = main(argv)
+    out = capsys.readouterr().out
+    assert rc == 0
+    return out
+
+
+def _agrees_with_cli(analysis, cls, argv: list[str], capsys) -> None:
+    """render() is the CLI's stdout and to_dict() is its --json payload."""
+    assert isinstance(analysis, cls)
+    assert analysis.render() + "\n" == _cli(capsys, argv)
+    payload = json.loads(json.dumps(analysis.to_dict()))
+    assert payload == json.loads(_cli(capsys, [*argv, "--json"]))
+
+
+def test_segment_agrees_with_the_cli(demo_archives, capsys):
+    flow, _ = demo_archives
+    a = tsdive.segment(flow)
+    _agrees_with_cli(a, tsdive.SegmentAnalysis, ["segment", str(flow)], capsys)
+    assert a.to_dict()["tag"] == "demo:FIC101.PV"
+    assert len(a.frame) == len(a.found.segments) == 6
+
+
+def test_screen_agrees_with_the_cli(demo_archives, capsys):
+    flow, _ = demo_archives
+    a = tsdive.screen(flow, DEMO_BASELINE, DEMO_WINDOW)
+    argv = ["screen", str(flow), "--baseline", DEMO_BASELINE, "--window", DEMO_WINDOW]
+    _agrees_with_cli(a, tsdive.ScreenAnalysis, argv, capsys)
+    assert a.to_dict()["n_flagged"] == 29
+    assert list(a.frame["timestamp"]) == sorted(a.result.flagged_timestamps)
+
+
+def test_spc_agrees_with_the_cli(demo_archives, capsys):
+    flow, _ = demo_archives
+    a = tsdive.spc(flow, DEMO_BASELINE, DEMO_WINDOW)
+    argv = ["spc", str(flow), "--baseline", DEMO_BASELINE, "--window", DEMO_WINDOW]
+    _agrees_with_cli(a, tsdive.SpcAnalysis, argv, capsys)
+    assert len(a.frame) == len(a.hits) == a.to_dict()["n_hits"] == 37
+
+
+def test_mspc_agrees_with_the_cli(demo_archives, capsys):
+    flow, temp = demo_archives
+    a = tsdive.mspc([flow, temp], DEMO_BEFORE, DEMO_AFTER)
+    argv = [
+        "mspc", str(flow), str(temp), "--baseline", DEMO_BEFORE, "--window", DEMO_AFTER
+    ]
+    _agrees_with_cli(a, tsdive.MspcAnalysis, argv, capsys)
+    assert a.tags == ["demo:FIC101.PV", "demo:TIC101.PV"]
+    assert int(a.frame["spe_breach"].sum()) == len(a.found.spe_breaches) == 108
+    assert len(a.frame) == len(a.test.index) == 121
+
+
+def test_compare_agrees_with_the_cli(demo_archives, capsys):
+    flow, temp = demo_archives
+    a = tsdive.compare([flow, temp], DEMO_BEFORE, DEMO_AFTER)
+    argv = [
+        "compare", str(flow), str(temp), "--before", DEMO_BEFORE, "--after", DEMO_AFTER
+    ]
+    _agrees_with_cli(a, tsdive.CompareAnalysis, argv, capsys)
+    assert a.n_refused == 0
+    assert list(a.frame["tag"]) == [c.tag for c in a.tags]
+
+
+def test_analysis_refusals_raise_what_the_cli_reports(tmp_path, capsys):
+    path, _ = _demo_archive(tmp_path)
+    with pytest.raises(ValueError, match="baseline and window overlap"):
+        tsdive.spc(path, WINDOW, WINDOW)
+    rc = main(["spc", str(path), "--baseline", WINDOW, "--window", WINDOW])
+    assert rc == 2
+    assert capsys.readouterr().err == "error: baseline and window overlap\n"
+
+    # A baseline pinned at the top of the range is censored and refused
+    # with the same typed error on both paths.
+    base = pd.Timestamp("2024-03-01 00:00:00+00:00")
+    stamps = [base + pd.Timedelta(60 * i, unit="s") for i in range(120)]
+    values = [100.0] * 60 + [50.0 + (i % 5) for i in range(60)]
+    frame = pd.DataFrame({"timestamp": stamps, "value": values, "quality": ["GOOD"] * 120})
+    meta = make_meta(loop_id="FIC102", role=Role.PV, eng_range=EngRange(zero=0.0, span=100.0))
+    pinned = write_archive(tmp_path / "plant1" / "FIC102.PV.parquet", frame, meta)
+    baseline = "2024-03-01T00:00:00Z/2024-03-01T01:00:00Z"
+    window = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+    with pytest.raises(tsdive.InsufficientQuality):
+        tsdive.screen(pinned, baseline, window)
+    rc = main(["screen", str(pinned), "--baseline", baseline, "--window", window])
+    assert rc == 2
+    assert capsys.readouterr().err.startswith("[InsufficientQuality]")

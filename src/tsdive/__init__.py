@@ -4,6 +4,18 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
+from tsdive.analyses import (
+    CompareAnalysis,
+    MspcAnalysis,
+    ScreenAnalysis,
+    SegmentAnalysis,
+    SpcAnalysis,
+    compare,
+    mspc,
+    screen,
+    segment,
+    spc,
+)
 from tsdive.api import Profile, ingest, profile, read_meta_json
 from tsdive.errors import (
     IncomparableSamplingError,
@@ -35,11 +47,13 @@ from tsdive.store.tagstore import (
 __all__ = [
     "AggregateType",
     "CalculationBasis",
+    "CompareAnalysis",
     "EngRange",
     "IncomparableSamplingError",
     "IncomparableUnitsError",
     "InsufficientQuality",
     "MspcAlignmentError",
+    "MspcAnalysis",
     "NarratorUnavailable",
     "NonMonotonicIndex",
     "Profile",
@@ -48,8 +62,11 @@ __all__ = [
     "Role",
     "SamplingContract",
     "SchemaError",
+    "ScreenAnalysis",
+    "SegmentAnalysis",
     "SingleFileStore",
     "Source",
+    "SpcAnalysis",
     "TSDiveError",
     "TagIdentity",
     "TagMeta",
@@ -57,8 +74,13 @@ __all__ = [
     "UnresolvedUnitError",
     "Window",
     "__version__",
+    "compare",
     "ingest",
+    "mspc",
     "profile",
     "read_meta_json",
+    "screen",
+    "segment",
+    "spc",
     "write_tag",
 ]
