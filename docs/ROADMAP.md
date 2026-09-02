@@ -137,7 +137,10 @@ separately and never summed.
 Shipped: IsolationForest over physics-gated feature rows. Incomplete rows
 are excluded and counted rather than dropped, and `random_state` is
 pinned. Shipped: `tsdive report-html`, a self-contained static HTML
-evidence viewer with no server and no JavaScript dependencies.
+evidence viewer with no server and no JavaScript dependencies. Studied,
+not shipped: a zero-shot time-series foundation model (Chronos-Bolt) as a
+benchmark subject on the onset-aligned 3W windows, under the same
+protocol as the detectors (`examples/studies/3w_chronos`, extra `tsfm`).
 
 ## Stage 8, LLM narration
 

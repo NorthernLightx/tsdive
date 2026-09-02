@@ -86,6 +86,21 @@ several times the size of the others. The per-fold well lists are
 published with the numbers, and what the split does to the scores is read
 in [3w_detectors/REPORT.md](../examples/studies/3w_detectors/REPORT.md).
 
+### Chronos-Bolt zero-shot on the onset-aligned windows
+
+A benchmark subject, not a shipped detector: `amazon/chronos-bolt-small`
+forecasts each onset-aligned window from the four hours before it, with
+nothing fitted on 3W, and the forecast error is scored under the detector
+study's protocol (`tsdive.eval`). It needs the detector study's aligned
+cache under `data/3w_windows_aligned` and its frozen
+`results/aligned_per_instance.csv` for the fold membership.
+
+- Install: `uv sync --extra tsfm` (chronos-forecasting and a CPU torch;
+  the library itself never imports either).
+- Run: `uv run python examples/studies/3w_chronos/run_chronos.py`, then
+  `uv run python examples/studies/3w_chronos/make_report.py`.
+- Read: [3w_chronos/REPORT.md](../examples/studies/3w_chronos/REPORT.md).
+
 ### Known upstream issues
 
 - The `dataset/folds` path 404s on `main` (fold splits were removed
