@@ -13,6 +13,7 @@ than editing them: it refuses an existing file unless the caller says
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +43,19 @@ from tsdive.store.sampling_contract import SamplingContract
 from tsdive.store.timebase import TimestampAuditReport, require_utc, timestamp_audit
 
 META_KEY = "tsdive.meta"
+
+# Characters no common filesystem accepts in a name, plus control characters.
+_UNSAFE_IN_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
+
+
+def safe_filename(text: str) -> str:
+    """Return ``text`` with every character a filesystem rejects replaced by ``_``.
+
+    Replaces ``\\ / : * ? " < > |`` and control characters, so a tag such as
+    ``FIC101/PV:1`` lands as ``FIC101_PV_1``. Two names can collide after
+    replacement; callers that write files check for that first.
+    """
+    return _UNSAFE_IN_FILENAME.sub("_", text)
 
 
 @dataclass

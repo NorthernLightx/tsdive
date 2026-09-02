@@ -1424,3 +1424,73 @@ def test_profile_flatline_optin(tmp_path, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert out.splitlines()[-2] == "Flatline"
+
+
+def _wide_fixture(tmp_path):
+    """A 3-tag wide CSV with ``_q`` quality columns and a meta dir for it."""
+    tags = ("FIC101.PV", "TIC201.PV", "PIC301.PV")
+    stamps = pd.date_range("2024-03-01T00:00:00Z", periods=4, freq="60s")
+    rows: dict[str, list] = {"ts": [s.isoformat() for s in stamps]}
+    meta_dir = tmp_path / "meta"
+    meta_dir.mkdir()
+    for i, tag in enumerate(tags):
+        rows[tag] = [10.0 * i + k for k in range(len(stamps))]
+        rows[f"{tag}_q"] = ["Good"] * len(stamps)
+        payload = {
+            "identity": {"source_id": "plant1", "point_id": tag},
+            "name": tag,
+            "sample_rate_s": 60.0,
+            "quality_codes": {"Good": "GOOD"},
+        }
+        (meta_dir / f"{tag}.json").write_text(json.dumps(payload), encoding="utf-8")
+    src = tmp_path / "wide.csv"
+    pd.DataFrame(rows).to_csv(src, index=False)
+    return src, meta_dir, tags
+
+
+def test_ingest_wide_writes_one_archive_per_tag_and_prints_each(tmp_path, capsys):
+    src, meta_dir, tags = _wide_fixture(tmp_path)
+    out_dir = tmp_path / "archive"
+    rc = main(
+        [
+            "ingest",
+            str(src),
+            "--wide",
+            "--out",
+            str(out_dir),
+            "--meta-dir",
+            str(meta_dir),
+            "--timestamp-col",
+            "ts",
+            "--quality-suffix",
+            "_q",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.err == ""
+    assert captured.out.splitlines() == [
+        f"wrote     {(out_dir / f'{tag}.parquet').as_posix()}" for tag in tags
+    ]
+    assert all((out_dir / f"{tag}.parquet").exists() for tag in tags)
+    assert cmd_profile([str(out_dir / "TIC201.PV.parquet")]) == 0
+    assert "GOOD 4   UNCERTAIN 0   BAD 0" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("extra", "named"),
+    [
+        (["--wide", "--meta", "m.json"], "--meta"),
+        (["--wide"], "--meta-dir"),
+        (["--meta", "m.json", "--meta-dir", "meta"], "--meta-dir"),
+        (["--meta", "m.json", "--tags", "A,B"], "--tags"),
+        (["--meta", "m.json", "--quality-suffix", "_q"], "--quality-suffix"),
+    ],
+)
+def test_ingest_rejects_flags_of_the_other_form(tmp_path, capsys, extra, named):
+    with pytest.raises(SystemExit) as exit_info:
+        main(["ingest", "export.csv", "--out", str(tmp_path / "x"), *extra])
+    err = capsys.readouterr().err
+    assert exit_info.value.code == 2
+    assert named in err
+    assert "Traceback" not in err

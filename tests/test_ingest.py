@@ -10,7 +10,7 @@ import pytest
 import tsdive
 from tsdive.cli import cmd_ingest, cmd_profile
 from tsdive.errors import SchemaError
-from tsdive.store.tagstore import meta_from_parquet
+from tsdive.store.tagstore import meta_from_parquet, safe_filename
 
 META = {
     "identity": {"source_id": "plant1", "point_id": "FIC101.PV"},
@@ -349,3 +349,170 @@ def test_mode_tag_string_states_ingest_cleanly(tmp_path):
         quality_col="q",
     )
     assert list(tsdive.profile(out).frame["value"]) == ["R0", "R1", "R1"]
+
+
+# ---------------------------------------------------------------- wide exports
+
+WIDE_TAGS = ("FIC101.PV", "TIC201.PV", "PIC301.PV")
+WIDE_CODES = ("Good", "Bad", "Questionable")
+# One hour of real instants at 60 s across the 2024-03-31 01:00Z spring
+# forward. Written as naive Europe/London wall-clock, the column runs
+# 00:30..00:59 and then 02:00..02:30.
+WIDE_INSTANTS = pd.date_range("2024-03-31T00:30:00Z", "2024-03-31T01:30:00Z", freq="60s")
+
+
+def _wide_csv(tmp_path, *, tags=WIDE_TAGS, quality=True, suffix="_q", name="wide.csv"):
+    local = WIDE_INSTANTS.tz_convert("Europe/London").strftime("%Y-%m-%d %H:%M:%S")
+    rows: dict[str, list] = {"ts": list(local)}
+    n = len(WIDE_INSTANTS)
+    for i, tag in enumerate(tags):
+        rows[tag] = [50.0 * (i + 1) + k for k in range(n)]
+        if quality:
+            rows[f"{tag}{suffix}"] = [WIDE_CODES[(k + i) % 3] for k in range(n)]
+    path = tmp_path / name
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
+def _wide_meta_dir(tmp_path, tags=WIDE_TAGS, codes=None):
+    codes = codes or {"Good": "GOOD", "Bad": "BAD", "Questionable": "UNCERTAIN"}
+    meta_dir = tmp_path / "meta"
+    meta_dir.mkdir(exist_ok=True)
+    for tag in tags:
+        payload = {
+            **META,
+            "identity": {"source_id": "plant1", "point_id": tag},
+            "name": tag,
+            "quality_codes": codes,
+        }
+        (meta_dir / f"{safe_filename(tag)}.json").write_text(json.dumps(payload), encoding="utf-8")
+    return meta_dir
+
+
+def test_wide_export_writes_one_archive_per_column_across_dst(tmp_path):
+    out_dir = tmp_path / "archive"
+    written = tsdive.ingest_wide(
+        _wide_csv(tmp_path),
+        out_dir=out_dir,
+        meta_dir=_wide_meta_dir(tmp_path),
+        timestamp_col="ts",
+        quality_suffix="_q",
+        tz="Europe/London",
+    )
+    assert [p.name for p in written] == [f"{tag}.parquet" for tag in WIDE_TAGS]
+    assert all(p.exists() and p.parent == out_dir for p in written)
+
+    meta = meta_from_parquet(written[1])
+    assert meta.identity.point_id == "TIC201.PV"
+    assert meta.quality_assumed is False
+    frame = pd.read_parquet(written[1])
+    assert list(frame["timestamp"]) == list(WIDE_INSTANTS)
+    assert frame["value"].iloc[0] == 100.0
+
+    p = tsdive.profile(written[1], tz="Europe/London")
+    assert p.physics.coverage.coverage == 1.0
+    assert "coverage 1.000" in p.render()
+    (transition,) = p.physics.timestamp_audit.dst_transitions
+    assert transition.instant_utc == pd.Timestamp("2024-03-31 01:00:00+00:00")
+    assert "DST (Europe/London) 2024-03-31 01:00:00Z  +0h -> +1h" in p.render()
+    assert sum(p.physics.severity_counts.values()) == len(WIDE_INSTANTS)
+    assert p.physics.unmapped_quality_codes == []
+
+
+def test_wide_tags_subset_with_assumed_quality(tmp_path):
+    written = tsdive.ingest_wide(
+        _wide_csv(tmp_path, quality=False),
+        out_dir=tmp_path / "archive",
+        meta_dir=_wide_meta_dir(tmp_path),
+        timestamp_col="ts",
+        tags=["TIC201.PV"],
+        tz="Europe/London",
+        assume_quality="good",
+    )
+    assert [p.name for p in written] == ["TIC201.PV.parquet"]
+    assert sorted(q.name for q in (tmp_path / "archive").iterdir()) == ["TIC201.PV.parquet"]
+    meta = meta_from_parquet(written[0])
+    assert meta.quality_assumed is True
+    assert set(pd.read_parquet(written[0])["quality"]) == {"GOOD"}
+
+
+def test_wide_missing_meta_file_names_tag_and_path(tmp_path):
+    meta_dir = _wide_meta_dir(tmp_path)
+    (meta_dir / "PIC301.PV.json").unlink()
+    with pytest.raises(SchemaError, match=r"'PIC301\.PV'.*meta/PIC301\.PV\.json") as info:
+        tsdive.ingest_wide(
+            _wide_csv(tmp_path),
+            out_dir=tmp_path / "archive",
+            meta_dir=meta_dir,
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
+        )
+    assert "no metadata file" in str(info.value)
+    assert not (tmp_path / "archive").exists()
+
+
+def test_wide_missing_quality_column_is_refused(tmp_path):
+    with pytest.raises(SchemaError, match=r"no quality column 'FIC101\.PV_q' for tag 'FIC101\.PV'"):
+        tsdive.ingest_wide(
+            _wide_csv(tmp_path, quality=False),
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path),
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
+        )
+
+
+def test_wide_suffix_and_assume_quality_together_are_refused(tmp_path):
+    with pytest.raises(SchemaError, match="--assume-quality was given with --quality-suffix"):
+        tsdive.ingest_wide(
+            _wide_csv(tmp_path),
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path),
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
+            assume_quality="GOOD",
+        )
+
+
+def test_wide_naive_stamps_without_tz_are_refused(tmp_path):
+    with pytest.raises(SchemaError, match="naive"):
+        tsdive.ingest_wide(
+            _wide_csv(tmp_path),
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path),
+            timestamp_col="ts",
+            quality_suffix="_q",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
+def test_wide_unsafe_tag_name_lands_as_a_safe_filename(tmp_path):
+    tags = ("FIC101/PV:1",)
+    assert safe_filename(tags[0]) == "FIC101_PV_1"
+    written = tsdive.ingest_wide(
+        _wide_csv(tmp_path, tags=tags),
+        out_dir=tmp_path / "archive",
+        meta_dir=_wide_meta_dir(tmp_path, tags=tags),
+        timestamp_col="ts",
+        quality_suffix="_q",
+        tz="Europe/London",
+    )
+    assert [p.name for p in written] == ["FIC101_PV_1.parquet"]
+    assert meta_from_parquet(written[0]).identity.point_id == "FIC101/PV:1"
+
+
+def test_wide_tags_colliding_after_safe_filename_are_refused(tmp_path):
+    tags = ("A/B", "A:B")
+    with pytest.raises(ValueError, match=r"'A/B' and 'A:B' both map to the file name 'A_B'"):
+        tsdive.ingest_wide(
+            _wide_csv(tmp_path, tags=tags),
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path, tags=("A_B",)),
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
+        )
+    assert not (tmp_path / "archive").exists()

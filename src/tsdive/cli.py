@@ -35,7 +35,14 @@ from tsdive.analyses import (
     SpcAnalysis,
 )
 from tsdive.analyses_render import window_json
-from tsdive.api import Profile, ingest, parse_window, profile, read_meta_json
+from tsdive.api import (
+    Profile,
+    ingest,
+    ingest_wide,
+    parse_window,
+    profile,
+    read_meta_json,
+)
 from tsdive.changepoints import DEFAULT_PENALTY_MULTIPLIER
 from tsdive.detectors.flatline import FlatlineVerdict
 from tsdive.errors import TSDiveError
@@ -67,6 +74,8 @@ MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time se
 commands, in the order an archive walks them:
   ingest <csv|parquet> --out ARCHIVE --meta META.json
                                           build an archive from an export
+  ingest <csv|parquet> --wide --out DIR --meta-dir DIR
+                                          one archive per column of a wide export
   profile <parquet> [--window START/END]  data physics and statistics for a window
   segment <parquet> [--window START/END]  regimes read off the samples themselves,
                                           for a tag with no MODE tag to key them
@@ -674,17 +683,66 @@ def cmd_profile(argv: Sequence[str] | None = None) -> int:
     )
 
 
-def cmd_ingest(argv: Sequence[str] | None = None) -> int:
-    """Build an archive from a CSV or parquet export."""
+def _split_tags(text: str | None) -> list[str] | None:
+    return None if text is None else [t.strip() for t in text.split(",") if t.strip()]
+
+
+def _warn_assumed_quality(assume_quality: str | None) -> None:
+    if assume_quality:
+        print(
+            f"warning: quality assumed {assume_quality.strip().upper()} for every "
+            "sample; the archive records this and every profile of it says so",
+            file=sys.stderr,
+        )
+
+
+def _parser_ingest() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tsdive ingest")
-    parser.add_argument("source", help="CSV or parquet export of one tag")
-    parser.add_argument("--out", required=True, help="archive to create")
     parser.add_argument(
-        "--meta", required=True, help="JSON file of tag metadata (the tsdive.meta object)"
+        "source", help="CSV or parquet export: one tag, or one column per tag with --wide"
+    )
+    parser.add_argument(
+        "--out",
+        required=True,
+        help="archive to create; with --wide, directory for one archive per tag",
+    )
+    parser.add_argument(
+        "--meta", default=None, help="JSON file of tag metadata (the tsdive.meta object)"
     )
     parser.add_argument("--timestamp-col", default="timestamp")
-    parser.add_argument("--value-col", default="value")
-    parser.add_argument("--quality-col", default="quality")
+    parser.add_argument(
+        "--value-col", default=None, help="value column of a single-tag export (default value)"
+    )
+    parser.add_argument(
+        "--quality-col",
+        default=None,
+        help="quality column of a single-tag export (default quality)",
+    )
+    wide = parser.add_argument_group("wide exports, one column per tag")
+    wide.add_argument(
+        "--wide",
+        action="store_true",
+        help="write one archive per tag column into --out, named by point_id",
+    )
+    wide.add_argument(
+        "--meta-dir",
+        default=None,
+        metavar="DIR",
+        help="directory of <tag>.json metadata files, one per tag column",
+    )
+    wide.add_argument(
+        "--tags",
+        default=None,
+        metavar="A,B,...",
+        help="tag columns to ingest; omitted, every column that is not the "
+        "timestamp or a quality column",
+    )
+    wide.add_argument(
+        "--quality-suffix",
+        default=None,
+        metavar="S",
+        help="each tag's quality column is <tag><S>",
+    )
     parser.add_argument(
         "--tz",
         default=None,
@@ -701,18 +759,67 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--overwrite", action="store_true", help="replace an existing archive at --out"
     )
-    _add_output_flags(parser, json_flag=False)
+    return _add_output_flags(parser, json_flag=False)
+
+
+def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject flags that belong to the other ingest form."""
+    single_only = (
+        ("--meta", args.meta),
+        ("--value-col", args.value_col),
+        ("--quality-col", args.quality_col),
+    )
+    wide_only = (
+        ("--meta-dir", args.meta_dir),
+        ("--tags", args.tags),
+        ("--quality-suffix", args.quality_suffix),
+    )
+    if args.wide:
+        for flag, value in single_only:
+            if value is not None:
+                parser.error(f"{flag} does not apply with --wide; use --meta-dir")
+        if args.meta_dir is None:
+            parser.error("--wide requires --meta-dir")
+    else:
+        for flag, value in wide_only:
+            if value is not None:
+                parser.error(f"{flag} requires --wide")
+        if args.meta is None:
+            parser.error("the following arguments are required: --meta")
+
+
+def cmd_ingest(argv: Sequence[str] | None = None) -> int:
+    """Build an archive from a CSV or parquet export."""
+    parser = _parser_ingest()
     args = parser.parse_args(argv)
+    _check_ingest_flags(parser, args)
 
     try:
+        if args.wide:
+            written = ingest_wide(
+                args.source,
+                out_dir=args.out,
+                meta_dir=args.meta_dir,
+                timestamp_col=args.timestamp_col,
+                tags=_split_tags(args.tags),
+                quality_suffix=args.quality_suffix,
+                tz=args.tz,
+                assume_quality=args.assume_quality,
+                overwrite=args.overwrite,
+            )
+            _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
+            _warn_assumed_quality(args.assume_quality)
+            return 0
+        value_col = args.value_col or "value"
+        quality_col = args.quality_col or "quality"
         meta = read_meta_json(args.meta)
         out = ingest(
             args.source,
             out=args.out,
             meta=meta,
             timestamp_col=args.timestamp_col,
-            value_col=args.value_col,
-            quality_col=args.quality_col,
+            value_col=value_col,
+            quality_col=quality_col,
             tz=args.tz,
             assume_quality=args.assume_quality,
             overwrite=args.overwrite,
@@ -720,7 +827,7 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
         quality = (
             f"quality assumed {args.assume_quality.strip().upper()}"
             if args.assume_quality
-            else f"quality from column {args.quality_col}"
+            else f"quality from column {quality_col}"
         )
         lines = [
             label_line("wrote", Path(out).as_posix()),
@@ -733,12 +840,7 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
         if args.tz:
             lines.append(label_line("tz", f"{args.tz} -> UTC"))
         _print_lines(lines, args)
-        if args.assume_quality:
-            print(
-                f"warning: quality assumed {args.assume_quality.strip().upper()} for every "
-                "sample; the archive records this and every profile of it says so",
-                file=sys.stderr,
-            )
+        _warn_assumed_quality(args.assume_quality)
         return 0
     except TSDiveError as e:
         _print_refusal(f"[{type(e).__name__}]", str(e), args)

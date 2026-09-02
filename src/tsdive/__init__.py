@@ -16,7 +16,7 @@ from tsdive.analyses import (
     segment,
     spc,
 )
-from tsdive.api import Profile, ingest, profile, read_meta_json
+from tsdive.api import Profile, ingest, ingest_wide, profile, read_meta_json
 from tsdive.errors import (
     IncomparableSamplingError,
     IncomparableUnitsError,
@@ -76,6 +76,7 @@ __all__ = [
     "__version__",
     "compare",
     "ingest",
+    "ingest_wide",
     "mspc",
     "profile",
     "read_meta_json",
