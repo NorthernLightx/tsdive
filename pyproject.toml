@@ -34,6 +34,9 @@ tep = ["pyreadr>=0.5"]
 # src/tsdive/mcp_server.py, and nothing else, needs the MCP SDK. Version 2
 # is the first that carries mcp.server.mcpserver.
 mcp = ["mcp>=2.1,<3"]
+# examples/studies/3w_chronos, and nothing else, runs Chronos-Bolt; the
+# library itself never imports chronos or torch.
+tsfm = ["chronos-forecasting>=2.3,<3"]
 # Everything the library itself can use. pyreadr is a script dependency,
 # not a library one, so it stays out.
 all = ["scikit-learn>=1.5,<2", "mcp>=2.1,<3"]

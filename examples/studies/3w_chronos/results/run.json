@@ -1,0 +1,79 @@
+{
+  "aligned_windows": "data/3w_windows_aligned/windows.parquet",
+  "aligned_windows_manifest_sha256": "6f4f097fcd4aaff670ea9619ee7d773c415e6e90492b4abd95d79c62e90995cb",
+  "archives": "data/3w_archives",
+  "code": {
+    "git_head": "3c6733770e7302d11ddbc61194532e17708d7a08",
+    "tsdive_version": "0.2.0"
+  },
+  "dataset_manifest_sha256": "14bc1397d3eef8a671b9f6253d195c161d06157307e47e687829da2070f3b1c2",
+  "design": "onset-aligned",
+  "far_floor": 0.25,
+  "fitted_on_3w": false,
+  "folds_from": "examples/studies/3w_detectors/results/aligned_per_instance.csv",
+  "model": {
+    "batch": 128,
+    "chronos_forecasting_version": "2.3.1",
+    "device": "cpu",
+    "dtype": "float32",
+    "model_id": "amazon/chronos-bolt-small",
+    "model_revision": "772f3d25d38aec6d914c8949dab4462e2d46f5d8",
+    "pipeline_class": "ChronosBoltPipeline",
+    "seed": 0,
+    "threads": 4,
+    "torch_version": "2.14.0+cpu"
+  },
+  "model_load_seconds": 9.0,
+  "parameters": {
+    "baseline_windows": 3,
+    "context_minutes": 240,
+    "min_context_minutes": 60,
+    "min_scored_variables": 4,
+    "min_target_minutes": 30,
+    "quality_used": "GOOD_ASSUMED",
+    "quantile_levels": [
+      0.1,
+      0.5,
+      0.9
+    ],
+    "target_minutes": 60,
+    "variables": [
+      "P-ANULAR",
+      "P-JUS-CKGL",
+      "P-MON-CKP",
+      "P-PDG",
+      "P-TPT",
+      "T-TPT"
+    ],
+    "width_floor_share": 0.05
+  },
+  "refusals": {
+    "n_context_minutes_filled": 18381,
+    "n_instances": 48,
+    "n_instances_refused": 15,
+    "n_instances_scored": 33,
+    "n_target_minutes_skipped": 0,
+    "n_variable_rows": 1728,
+    "n_variable_rows_refused": 484,
+    "n_variable_rows_scored": 1244,
+    "n_windows": 288,
+    "n_windows_refused": 60,
+    "n_windows_scored": 228,
+    "variable_refusals_by_cause": {
+      "context": 252,
+      "context is constant": 229,
+      "target": 3
+    },
+    "variable_refusals_by_variable": {
+      "P-ANULAR": 82,
+      "P-JUS-CKGL": 25,
+      "P-MON-CKP": 13,
+      "P-PDG": 202,
+      "P-TPT": 78,
+      "T-TPT": 84
+    }
+  },
+  "threshold_rule": "each instance's own alarm limit is the largest score over its three baseline windows; a test window fires when it scores strictly above it",
+  "tool": "chronos-bolt-small surprise",
+  "wall_seconds": 58.1
+}

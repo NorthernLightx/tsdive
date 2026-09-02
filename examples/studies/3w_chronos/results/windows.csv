@@ -1,0 +1,289 @@
+instance,well,window_key,window_index,onset_offset,role,n_variables_scored,score,refusal
+WELL-00001_20140124083303,WELL-00001,0,8,-5,baseline,4,0.1073,
+WELL-00001_20140124083303,WELL-00001,1,9,-4,baseline,4,1.1765,
+WELL-00001_20140124083303,WELL-00001,2,10,-3,baseline,4,2.4689,
+WELL-00001_20140124083303,WELL-00001,3,11,-2,pre,4,7.6025,
+WELL-00001_20140124083303,WELL-00001,4,13,0,post0,4,33.2453,
+WELL-00001_20140124083303,WELL-00001,5,14,1,post1,4,0.5652,
+WELL-00001_20170226130146,WELL-00001,6,5,-5,baseline,5,0.3546,
+WELL-00001_20170226130146,WELL-00001,7,6,-4,baseline,5,0.1806,
+WELL-00001_20170226130146,WELL-00001,8,7,-3,baseline,5,0.2999,
+WELL-00001_20170226130146,WELL-00001,9,8,-2,pre,5,0.2698,
+WELL-00001_20170226130146,WELL-00001,10,10,0,post0,5,0.2723,
+WELL-00001_20170226130146,WELL-00001,11,11,1,post1,5,0.3254,
+WELL-00002_20140212160333,WELL-00002,12,0,-5,baseline,0,,"0 of 6 variables scored, fewer than 4; P-ANULAR: context: 11 of 240 minutes with data, fewer than 60; P-JUS-CKGL: context: 0 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 11 of 240 minutes with data, fewer than 60; P-TPT: context: 11 of 240 minutes with data, fewer than 60; T-TPT: context: 11 of 240 minutes with data, fewer than 60"
+WELL-00002_20140212160333,WELL-00002,13,1,-4,baseline,3,,"3 of 6 variables scored, fewer than 4; P-JUS-CKGL: context: 0 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale"
+WELL-00002_20140212160333,WELL-00002,14,2,-3,baseline,3,,"3 of 6 variables scored, fewer than 4; P-JUS-CKGL: context: 0 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale"
+WELL-00002_20140212160333,WELL-00002,15,3,-2,pre,3,,"3 of 6 variables scored, fewer than 4; P-JUS-CKGL: context: 0 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale"
+WELL-00002_20140212160333,WELL-00002,16,5,0,post0,3,,"3 of 6 variables scored, fewer than 4; P-JUS-CKGL: context: 0 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale"
+WELL-00002_20140212160333,WELL-00002,17,6,1,post1,3,,"3 of 6 variables scored, fewer than 4; P-JUS-CKGL: context: 0 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale"
+WELL-00006_20170731170930,WELL-00006,18,11,-5,baseline,5,0.3879,
+WELL-00006_20170731170930,WELL-00006,19,12,-4,baseline,5,0.1591,
+WELL-00006_20170731170930,WELL-00006,20,13,-3,baseline,4,0.3419,
+WELL-00006_20170731170930,WELL-00006,21,14,-2,pre,4,0.1971,
+WELL-00006_20170731170930,WELL-00006,22,16,0,post0,5,0.5311,
+WELL-00006_20170731170930,WELL-00006,23,17,1,post1,5,0.6205,
+WELL-00006_20180617190257,WELL-00006,24,7,-5,baseline,5,0.2529,
+WELL-00006_20180617190257,WELL-00006,25,8,-4,baseline,4,0.1504,
+WELL-00006_20180617190257,WELL-00006,26,9,-3,baseline,4,0.3252,
+WELL-00006_20180617190257,WELL-00006,27,10,-2,pre,4,0.2309,
+WELL-00006_20180617190257,WELL-00006,28,12,0,post0,4,0.7359,
+WELL-00006_20180617190257,WELL-00006,29,13,1,post1,5,0.8313,
+WELL-00014_20160304155906,WELL-00014,30,1,-5,baseline,6,0.2983,
+WELL-00014_20160304155906,WELL-00014,31,2,-4,baseline,6,0.4659,
+WELL-00014_20160304155906,WELL-00014,32,3,-3,baseline,6,0.2694,
+WELL-00014_20160304155906,WELL-00014,33,4,-2,pre,6,0.2514,
+WELL-00014_20160304155906,WELL-00014,34,6,0,post0,6,0.1968,
+WELL-00014_20160304155906,WELL-00014,35,7,1,post1,6,0.1755,
+WELL-00014_20160306070000,WELL-00014,36,0,-5,baseline,0,,"0 of 6 variables scored, fewer than 4; P-ANULAR: context: 2 of 240 minutes with data, fewer than 60; P-JUS-CKGL: context: 2 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 2 of 240 minutes with data, fewer than 60; P-PDG: context: 2 of 240 minutes with data, fewer than 60; P-TPT: context: 2 of 240 minutes with data, fewer than 60; T-TPT: context: 2 of 240 minutes with data, fewer than 60"
+WELL-00014_20160306070000,WELL-00014,37,1,-4,baseline,5,0.4308,
+WELL-00014_20160306070000,WELL-00014,38,2,-3,baseline,5,0.6241,
+WELL-00014_20160306070000,WELL-00014,39,3,-2,pre,5,0.4385,
+WELL-00014_20160306070000,WELL-00014,40,5,0,post0,6,0.2327,
+WELL-00014_20160306070000,WELL-00014,41,6,1,post1,6,0.2723,
+WELL-00019_20120601165020,WELL-00019,42,24,-5,baseline,5,0.3337,
+WELL-00019_20120601165020,WELL-00019,43,25,-4,baseline,5,0.5497,
+WELL-00019_20120601165020,WELL-00019,44,26,-3,baseline,5,0.4087,
+WELL-00019_20120601165020,WELL-00019,45,27,-2,pre,5,0.4434,
+WELL-00019_20120601165020,WELL-00019,46,29,0,post0,5,18.2323,
+WELL-00019_20120601165020,WELL-00019,47,30,1,post1,5,0.166,
+WELL-00019_20141117190526,WELL-00019,48,7,-5,baseline,5,0.357,
+WELL-00019_20141117190526,WELL-00019,49,8,-4,baseline,5,0.3391,
+WELL-00019_20141117190526,WELL-00019,50,9,-3,baseline,5,0.4093,
+WELL-00019_20141117190526,WELL-00019,51,10,-2,pre,5,0.4636,
+WELL-00019_20141117190526,WELL-00019,52,12,0,post0,5,23.5952,
+WELL-00019_20141117190526,WELL-00019,53,13,1,post1,5,0.25,
+WELL-00019_20150614025713,WELL-00019,54,10,-5,baseline,5,0.2531,
+WELL-00019_20150614025713,WELL-00019,55,11,-4,baseline,5,0.4058,
+WELL-00019_20150614025713,WELL-00019,56,12,-3,baseline,5,0.2963,
+WELL-00019_20150614025713,WELL-00019,57,13,-2,pre,5,0.2204,
+WELL-00019_20150614025713,WELL-00019,58,15,0,post0,5,5.4778,
+WELL-00019_20150614025713,WELL-00019,59,16,1,post1,5,0.1945,
+WELL-00019_20210617032654,WELL-00019,60,10,-5,baseline,4,0.4629,
+WELL-00019_20210617032654,WELL-00019,61,11,-4,baseline,4,0.4466,
+WELL-00019_20210617032654,WELL-00019,62,12,-3,baseline,4,0.7759,
+WELL-00019_20210617032654,WELL-00019,63,13,-2,pre,4,0.3901,
+WELL-00019_20210617032654,WELL-00019,64,15,0,post0,4,14.1266,
+WELL-00019_20210617032654,WELL-00019,65,16,1,post1,4,0.3651,
+WELL-00021_20180611011218,WELL-00021,66,0,-5,baseline,0,,"0 of 6 variables scored, fewer than 4; P-ANULAR: context: 52 of 240 minutes with data, fewer than 60; P-JUS-CKGL: context: 52 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 52 of 240 minutes with data, fewer than 60; P-PDG: context: 52 of 240 minutes with data, fewer than 60; P-TPT: context: 52 of 240 minutes with data, fewer than 60; T-TPT: context: 52 of 240 minutes with data, fewer than 60"
+WELL-00021_20180611011218,WELL-00021,67,1,-4,baseline,5,0.3033,
+WELL-00021_20180611011218,WELL-00021,68,2,-3,baseline,5,0.3583,
+WELL-00021_20180611011218,WELL-00021,69,3,-2,pre,5,0.5268,
+WELL-00021_20180611011218,WELL-00021,70,5,0,post0,5,0.7948,
+WELL-00021_20180611011218,WELL-00021,71,6,1,post1,5,0.2696,
+WELL-00021_20190403013307,WELL-00021,72,3,-5,baseline,5,0.428,
+WELL-00021_20190403013307,WELL-00021,73,4,-4,baseline,5,0.2479,
+WELL-00021_20190403013307,WELL-00021,74,5,-3,baseline,5,0.3742,
+WELL-00021_20190403013307,WELL-00021,75,6,-2,pre,5,0.2533,
+WELL-00021_20190403013307,WELL-00021,76,8,0,post0,5,0.478,
+WELL-00021_20190403013307,WELL-00021,77,9,1,post1,5,0.6375,
+WELL-00022_20180802233838,WELL-00022,78,18,-5,baseline,5,0.2368,
+WELL-00022_20180802233838,WELL-00022,79,19,-4,baseline,5,0.317,
+WELL-00022_20180802233838,WELL-00022,80,20,-3,baseline,5,0.2095,
+WELL-00022_20180802233838,WELL-00022,81,21,-2,pre,5,0.3125,
+WELL-00022_20180802233838,WELL-00022,82,23,0,post0,5,0.7181,
+WELL-00022_20180802233838,WELL-00022,83,24,1,post1,5,0.3842,
+WELL-00022_20180912025800,WELL-00022,84,3,-5,baseline,5,0.6036,
+WELL-00022_20180912025800,WELL-00022,85,4,-4,baseline,5,0.1952,
+WELL-00022_20180912025800,WELL-00022,86,5,-3,baseline,5,0.3253,
+WELL-00022_20180912025800,WELL-00022,87,6,-2,pre,5,0.8445,
+WELL-00022_20180912025800,WELL-00022,88,8,0,post0,5,0.2728,
+WELL-00022_20180912025800,WELL-00022,89,9,1,post1,5,0.3018,
+WELL-00022_20180919003240,WELL-00022,90,5,-5,baseline,5,0.4648,
+WELL-00022_20180919003240,WELL-00022,91,6,-4,baseline,5,0.3917,
+WELL-00022_20180919003240,WELL-00022,92,7,-3,baseline,5,0.3136,
+WELL-00022_20180919003240,WELL-00022,93,8,-2,pre,5,0.4692,
+WELL-00022_20180919003240,WELL-00022,94,10,0,post0,5,0.2872,
+WELL-00022_20180919003240,WELL-00022,95,11,1,post1,5,0.2555,
+WELL-00022_20180925003447,WELL-00022,96,9,-5,baseline,5,0.4303,
+WELL-00022_20180925003447,WELL-00022,97,10,-4,baseline,5,0.3521,
+WELL-00022_20180925003447,WELL-00022,98,11,-3,baseline,5,0.3864,
+WELL-00022_20180925003447,WELL-00022,99,12,-2,pre,5,0.2288,
+WELL-00022_20180925003447,WELL-00022,100,14,0,post0,5,0.3414,
+WELL-00022_20180925003447,WELL-00022,101,15,1,post1,5,0.2542,
+WELL-00022_20181007080700,WELL-00022,102,17,-5,baseline,5,0.3378,
+WELL-00022_20181007080700,WELL-00022,103,18,-4,baseline,5,0.4044,
+WELL-00022_20181007080700,WELL-00022,104,19,-3,baseline,5,0.318,
+WELL-00022_20181007080700,WELL-00022,105,20,-2,pre,5,0.31,
+WELL-00022_20181007080700,WELL-00022,106,22,0,post0,5,0.5035,
+WELL-00022_20181007080700,WELL-00022,107,23,1,post1,5,0.3042,
+WELL-00022_20181020133850,WELL-00022,108,5,-5,baseline,5,0.3165,
+WELL-00022_20181020133850,WELL-00022,109,6,-4,baseline,5,0.3222,
+WELL-00022_20181020133850,WELL-00022,110,7,-3,baseline,5,0.3091,
+WELL-00022_20181020133850,WELL-00022,111,8,-2,pre,5,0.2892,
+WELL-00022_20181020133850,WELL-00022,112,10,0,post0,5,0.4209,
+WELL-00022_20181020133850,WELL-00022,113,11,1,post1,5,0.237,
+WELL-00022_20181026005827,WELL-00022,114,24,-5,baseline,5,0.2566,
+WELL-00022_20181026005827,WELL-00022,115,25,-4,baseline,5,0.3177,
+WELL-00022_20181026005827,WELL-00022,116,26,-3,baseline,5,0.4112,
+WELL-00022_20181026005827,WELL-00022,117,27,-2,pre,5,0.2896,
+WELL-00022_20181026005827,WELL-00022,118,29,0,post0,5,0.4253,
+WELL-00022_20181026005827,WELL-00022,119,30,1,post1,5,0.3045,
+WELL-00022_20181101193049,WELL-00022,120,2,-5,baseline,5,0.681,
+WELL-00022_20181101193049,WELL-00022,121,3,-4,baseline,5,0.3276,
+WELL-00022_20181101193049,WELL-00022,122,4,-3,baseline,5,0.9928,
+WELL-00022_20181101193049,WELL-00022,123,5,-2,pre,5,0.3598,
+WELL-00022_20181101193049,WELL-00022,124,7,0,post0,5,1.2574,
+WELL-00022_20181101193049,WELL-00022,125,8,1,post1,5,0.2471,
+WELL-00023_20180826212652,WELL-00023,126,4,-5,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00023_20180826212652,WELL-00023,127,5,-4,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00023_20180826212652,WELL-00023,128,6,-3,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00023_20180826212652,WELL-00023,129,7,-2,pre,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00023_20180826212652,WELL-00023,130,9,0,post0,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00023_20180826212652,WELL-00023,131,10,1,post1,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00023_20181014121654,WELL-00023,132,14,-5,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181014121654,WELL-00023,133,15,-4,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181014121654,WELL-00023,134,16,-3,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181014121654,WELL-00023,135,17,-2,pre,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181014121654,WELL-00023,136,19,0,post0,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181014121654,WELL-00023,137,20,1,post1,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181019115124,WELL-00023,138,14,-5,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181019115124,WELL-00023,139,15,-4,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181019115124,WELL-00023,140,16,-3,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181019115124,WELL-00023,141,17,-2,pre,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181019115124,WELL-00023,142,19,0,post0,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181019115124,WELL-00023,143,20,1,post1,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181030045054,WELL-00023,144,2,-5,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181030045054,WELL-00023,145,3,-4,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181030045054,WELL-00023,146,4,-3,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181030045054,WELL-00023,147,5,-2,pre,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181030045054,WELL-00023,148,7,0,post0,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00023_20181030045054,WELL-00023,149,8,1,post1,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00024_20160712123044,WELL-00024,150,3,-5,baseline,5,0.322,
+WELL-00024_20160712123044,WELL-00024,151,4,-4,baseline,5,0.4009,
+WELL-00024_20160712123044,WELL-00024,152,5,-3,baseline,5,0.46,
+WELL-00024_20160712123044,WELL-00024,153,6,-2,pre,5,0.2864,
+WELL-00024_20160712123044,WELL-00024,154,8,0,post0,5,0.9066,
+WELL-00024_20160712123044,WELL-00024,155,9,1,post1,5,0.2653,
+WELL-00024_20160720230624,WELL-00024,156,7,-5,baseline,5,0.2853,
+WELL-00024_20160720230624,WELL-00024,157,8,-4,baseline,5,0.3045,
+WELL-00024_20160720230624,WELL-00024,158,9,-3,baseline,5,0.4913,
+WELL-00024_20160720230624,WELL-00024,159,10,-2,pre,5,0.3325,
+WELL-00024_20160720230624,WELL-00024,160,12,0,post0,5,0.3922,
+WELL-00024_20160720230624,WELL-00024,161,13,1,post1,5,0.5223,
+WELL-00024_20160722105543,WELL-00024,162,5,-5,baseline,5,0.2149,
+WELL-00024_20160722105543,WELL-00024,163,6,-4,baseline,5,0.3426,
+WELL-00024_20160722105543,WELL-00024,164,7,-3,baseline,5,0.2106,
+WELL-00024_20160722105543,WELL-00024,165,8,-2,pre,5,0.3994,
+WELL-00024_20160722105543,WELL-00024,166,10,0,post0,5,0.4003,
+WELL-00024_20160722105543,WELL-00024,167,11,1,post1,5,0.3299,
+WELL-00024_20160729172014,WELL-00024,168,0,-5,baseline,0,,"0 of 6 variables scored, fewer than 4; P-ANULAR: context: 42 of 240 minutes with data, fewer than 60; P-JUS-CKGL: context: 42 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 42 of 240 minutes with data, fewer than 60; P-PDG: context: 42 of 240 minutes with data, fewer than 60; P-TPT: context: 42 of 240 minutes with data, fewer than 60; T-TPT: context: 42 of 240 minutes with data, fewer than 60"
+WELL-00024_20160729172014,WELL-00024,169,1,-4,baseline,5,0.4056,
+WELL-00024_20160729172014,WELL-00024,170,2,-3,baseline,5,0.2947,
+WELL-00024_20160729172014,WELL-00024,171,3,-2,pre,5,0.288,
+WELL-00024_20160729172014,WELL-00024,172,5,0,post0,5,0.3152,
+WELL-00024_20160729172014,WELL-00024,173,6,1,post1,5,0.3405,
+WELL-00024_20160825100303,WELL-00024,174,5,-5,baseline,5,0.4323,
+WELL-00024_20160825100303,WELL-00024,175,6,-4,baseline,5,0.2387,
+WELL-00024_20160825100303,WELL-00024,176,7,-3,baseline,5,1.0322,
+WELL-00024_20160825100303,WELL-00024,177,8,-2,pre,5,0.3427,
+WELL-00024_20160825100303,WELL-00024,178,10,0,post0,5,0.3664,
+WELL-00024_20160825100303,WELL-00024,179,11,1,post1,5,0.4103,
+WELL-00024_20160909220000,WELL-00024,180,14,-5,baseline,5,0.3492,
+WELL-00024_20160909220000,WELL-00024,181,15,-4,baseline,5,0.4078,
+WELL-00024_20160909220000,WELL-00024,182,16,-3,baseline,5,0.2716,
+WELL-00024_20160909220000,WELL-00024,183,17,-2,pre,5,0.2771,
+WELL-00024_20160909220000,WELL-00024,184,19,0,post0,5,0.3103,
+WELL-00024_20160909220000,WELL-00024,185,20,1,post1,5,0.4775,
+WELL-00024_20161001112049,WELL-00024,186,1,-5,baseline,5,0.2886,
+WELL-00024_20161001112049,WELL-00024,187,2,-4,baseline,5,0.2857,
+WELL-00024_20161001112049,WELL-00024,188,3,-3,baseline,5,0.2584,
+WELL-00024_20161001112049,WELL-00024,189,4,-2,pre,5,0.2952,
+WELL-00024_20161001112049,WELL-00024,190,6,0,post0,5,0.3074,
+WELL-00024_20161001112049,WELL-00024,191,7,1,post1,5,0.3159,
+WELL-00024_20161026065657,WELL-00024,192,2,-5,baseline,5,0.1759,
+WELL-00024_20161026065657,WELL-00024,193,3,-4,baseline,5,0.267,
+WELL-00024_20161026065657,WELL-00024,194,4,-3,baseline,5,0.3577,
+WELL-00024_20161026065657,WELL-00024,195,5,-2,pre,5,0.2133,
+WELL-00024_20161026065657,WELL-00024,196,7,0,post0,5,0.3497,
+WELL-00024_20161026065657,WELL-00024,197,8,1,post1,5,0.342,
+WELL-00025_20200629194141,WELL-00025,198,19,-5,baseline,5,0.4027,
+WELL-00025_20200629194141,WELL-00025,199,20,-4,baseline,5,0.3199,
+WELL-00025_20200629194141,WELL-00025,200,21,-3,baseline,5,0.3308,
+WELL-00025_20200629194141,WELL-00025,201,22,-2,pre,5,0.3248,
+WELL-00025_20200629194141,WELL-00025,202,24,0,post0,5,1.7678,
+WELL-00025_20200629194141,WELL-00025,203,25,1,post1,5,0.5349,
+WELL-00026_20160601130000,WELL-00026,204,1,-5,baseline,4,1.1082,
+WELL-00026_20160601130000,WELL-00026,205,2,-4,baseline,4,0.2257,
+WELL-00026_20160601130000,WELL-00026,206,3,-3,baseline,4,0.2536,
+WELL-00026_20160601130000,WELL-00026,207,4,-2,pre,4,0.3262,
+WELL-00026_20160601130000,WELL-00026,208,6,0,post0,4,0.3901,
+WELL-00026_20160601130000,WELL-00026,209,7,1,post1,4,0.4408,
+WELL-00026_20170207230000,WELL-00026,210,32,-5,baseline,4,0.3608,
+WELL-00026_20170207230000,WELL-00026,211,33,-4,baseline,4,0.3207,
+WELL-00026_20170207230000,WELL-00026,212,34,-3,baseline,4,0.3999,
+WELL-00026_20170207230000,WELL-00026,213,35,-2,pre,4,0.2904,
+WELL-00026_20170207230000,WELL-00026,214,37,0,post0,4,0.3261,
+WELL-00026_20170207230000,WELL-00026,215,38,1,post1,4,0.2339,
+WELL-00026_20170608230000,WELL-00026,216,61,-5,baseline,4,0.5967,
+WELL-00026_20170608230000,WELL-00026,217,62,-4,baseline,4,0.3608,
+WELL-00026_20170608230000,WELL-00026,218,63,-3,baseline,4,0.2704,
+WELL-00026_20170608230000,WELL-00026,219,64,-2,pre,4,0.2852,
+WELL-00026_20170608230000,WELL-00026,220,66,0,post0,4,0.2866,
+WELL-00026_20170608230000,WELL-00026,221,67,1,post1,4,0.3425,
+WELL-00027_20230918170106,WELL-00027,222,9,-5,baseline,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00027_20230918170106,WELL-00027,223,10,-4,baseline,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00027_20230918170106,WELL-00027,224,11,-3,baseline,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00027_20230918170106,WELL-00027,225,12,-2,pre,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00027_20230918170106,WELL-00027,226,14,0,post0,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00027_20230918170106,WELL-00027,227,15,1,post1,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; T-TPT: context is constant: the surprise has no scale"
+WELL-00028_20210617053128,WELL-00028,228,8,-5,baseline,4,0.2204,
+WELL-00028_20210617053128,WELL-00028,229,9,-4,baseline,4,0.371,
+WELL-00028_20210617053128,WELL-00028,230,10,-3,baseline,4,0.2194,
+WELL-00028_20210617053128,WELL-00028,231,11,-2,pre,4,0.3435,
+WELL-00028_20210617053128,WELL-00028,232,13,0,post0,4,8.8197,
+WELL-00028_20210617053128,WELL-00028,233,14,1,post1,4,0.319,
+WELL-00029_20201020231724,WELL-00029,234,11,-5,baseline,5,0.2949,
+WELL-00029_20201020231724,WELL-00029,235,12,-4,baseline,5,0.3812,
+WELL-00029_20201020231724,WELL-00029,236,13,-3,baseline,5,0.2449,
+WELL-00029_20201020231724,WELL-00029,237,14,-2,pre,5,0.2386,
+WELL-00029_20201020231724,WELL-00029,238,16,0,post0,5,156.0914,
+WELL-00029_20201020231724,WELL-00029,239,17,1,post1,5,0.7848,
+WELL-00030_20141108012623,WELL-00030,240,4,-5,baseline,6,0.3931,
+WELL-00030_20141108012623,WELL-00030,241,5,-4,baseline,6,0.3909,
+WELL-00030_20141108012623,WELL-00030,242,6,-3,baseline,6,0.5341,
+WELL-00030_20141108012623,WELL-00030,243,7,-2,pre,6,0.3163,
+WELL-00030_20141108012623,WELL-00030,244,9,0,post0,6,7.4998,
+WELL-00030_20141108012623,WELL-00030,245,10,1,post1,6,0.383,
+WELL-00031_20140403170404,WELL-00031,246,3,-5,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context is constant: the surprise has no scale; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00031_20140403170404,WELL-00031,247,4,-4,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context is constant: the surprise has no scale; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00031_20140403170404,WELL-00031,248,5,-3,baseline,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context is constant: the surprise has no scale; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00031_20140403170404,WELL-00031,249,6,-2,pre,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context is constant: the surprise has no scale; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00031_20140403170404,WELL-00031,250,8,0,post0,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context is constant: the surprise has no scale; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00031_20140403170404,WELL-00031,251,9,1,post1,2,,"2 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context: 0 of 240 minutes with data, fewer than 60; P-TPT: context is constant: the surprise has no scale; T-TPT: context: 0 of 240 minutes with data, fewer than 60"
+WELL-00032_20110830235321,WELL-00032,252,6,-5,baseline,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00032_20110830235321,WELL-00032,253,7,-4,baseline,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00032_20110830235321,WELL-00032,254,8,-3,baseline,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00032_20110830235321,WELL-00032,255,9,-2,pre,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00032_20110830235321,WELL-00032,256,11,0,post0,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00032_20110830235321,WELL-00032,257,12,1,post1,3,,"3 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-PDG: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00037_20181011071238,WELL-00037,258,0,-5,baseline,0,,"0 of 6 variables scored, fewer than 4; P-ANULAR: context: 0 of 240 minutes with data, fewer than 60; P-JUS-CKGL: context: 49 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 49 of 240 minutes with data, fewer than 60; P-PDG: context: 49 of 240 minutes with data, fewer than 60; P-TPT: context: 49 of 240 minutes with data, fewer than 60; T-TPT: context: 49 of 240 minutes with data, fewer than 60"
+WELL-00037_20181011071238,WELL-00037,259,1,-4,baseline,5,0.6497,
+WELL-00037_20181011071238,WELL-00037,260,2,-3,baseline,5,0.4504,
+WELL-00037_20181011071238,WELL-00037,261,3,-2,pre,5,0.2647,
+WELL-00037_20181011071238,WELL-00037,262,5,0,post0,5,0.3782,
+WELL-00037_20181011071238,WELL-00037,263,6,1,post1,5,0.3699,
+WELL-00040_20181013160242,WELL-00040,264,0,-5,baseline,0,,"0 of 6 variables scored, fewer than 4; P-ANULAR: context: 57 of 240 minutes with data, fewer than 60; P-JUS-CKGL: context: 57 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 57 of 240 minutes with data, fewer than 60; P-PDG: context: 57 of 240 minutes with data, fewer than 60; P-TPT: context: 57 of 240 minutes with data, fewer than 60; T-TPT: context: 57 of 240 minutes with data, fewer than 60"
+WELL-00040_20181013160242,WELL-00040,265,1,-4,baseline,3,,"3 of 6 variables scored, fewer than 4; P-PDG: context is constant: the surprise has no scale; P-TPT: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00040_20181013160242,WELL-00040,266,2,-3,baseline,3,,"3 of 6 variables scored, fewer than 4; P-PDG: context is constant: the surprise has no scale; P-TPT: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00040_20181013160242,WELL-00040,267,3,-2,pre,3,,"3 of 6 variables scored, fewer than 4; P-PDG: context is constant: the surprise has no scale; P-TPT: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00040_20181013160242,WELL-00040,268,5,0,post0,3,,"3 of 6 variables scored, fewer than 4; P-PDG: context is constant: the surprise has no scale; P-TPT: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00040_20181013160242,WELL-00040,269,6,1,post1,3,,"3 of 6 variables scored, fewer than 4; P-PDG: context is constant: the surprise has no scale; P-TPT: context is constant: the surprise has no scale; T-TPT: context is constant: the surprise has no scale"
+WELL-00041_20181013160201,WELL-00041,270,0,-5,baseline,0,,"0 of 6 variables scored, fewer than 4; P-ANULAR: context: 59 of 240 minutes with data, fewer than 60; P-JUS-CKGL: context: 59 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 59 of 240 minutes with data, fewer than 60; P-PDG: context: 59 of 240 minutes with data, fewer than 60; P-TPT: context: 59 of 240 minutes with data, fewer than 60; T-TPT: context: 59 of 240 minutes with data, fewer than 60"
+WELL-00041_20181013160201,WELL-00041,271,1,-4,baseline,4,0.2087,
+WELL-00041_20181013160201,WELL-00041,272,2,-3,baseline,4,0.1915,
+WELL-00041_20181013160201,WELL-00041,273,3,-2,pre,4,0.1841,
+WELL-00041_20181013160201,WELL-00041,274,5,0,post0,4,0.3667,
+WELL-00041_20181013160201,WELL-00041,275,6,1,post1,4,0.6457,
+WELL-00042_20141217142745,WELL-00042,276,1,-5,baseline,6,0.4514,
+WELL-00042_20141217142745,WELL-00042,277,2,-4,baseline,6,0.5936,
+WELL-00042_20141217142745,WELL-00042,278,3,-3,baseline,6,0.6087,
+WELL-00042_20141217142745,WELL-00042,279,4,-2,pre,6,0.4158,
+WELL-00042_20141217142745,WELL-00042,280,6,0,post0,6,0.7689,
+WELL-00042_20141217142745,WELL-00042,281,7,1,post1,6,0.5494,
+WELL-00042_20141221190219,WELL-00042,282,0,-5,baseline,0,,"0 of 6 variables scored, fewer than 4; P-ANULAR: context: 1 of 240 minutes with data, fewer than 60; P-JUS-CKGL: context: 1 of 240 minutes with data, fewer than 60; P-MON-CKP: context: 1 of 240 minutes with data, fewer than 60; P-PDG: context: 1 of 240 minutes with data, fewer than 60; P-TPT: context: 1 of 240 minutes with data, fewer than 60; T-TPT: context: 1 of 240 minutes with data, fewer than 60"
+WELL-00042_20141221190219,WELL-00042,283,1,-4,baseline,6,2.2291,
+WELL-00042_20141221190219,WELL-00042,284,2,-3,baseline,6,1.1168,
+WELL-00042_20141221190219,WELL-00042,285,3,-2,pre,6,0.365,
+WELL-00042_20141221190219,WELL-00042,286,5,0,post0,6,0.3304,
+WELL-00042_20141221190219,WELL-00042,287,6,1,post1,6,0.2455,
