@@ -265,6 +265,25 @@ def test_report_html_writes_snapshot(tmp_path, capsys):
     assert "profiles=1" in text
 
 
+def test_report_html_draws_one_figure_per_archive(tmp_path, capsys):
+    path, _ = _demo_archive(tmp_path)
+    other = _every_minute(
+        tmp_path,
+        [20.0 + (i % 3) for i in range(61)],
+        ["GOOD"] * 61,
+        meta=make_meta(point_id="TIC101.PV"),
+        name="TIC101.PV",
+    )
+    out = tmp_path / "report.html"
+    rc = cmd_report_html([str(path), str(other), "--window", WINDOW, "-o", str(out)])
+    assert rc == 0
+    assert "profiles  2   refusals 0" in capsys.readouterr().out
+    text = out.read_text(encoding="utf-8")
+    assert text.count("<svg") == 2
+    assert text.count("<h2>Plots</h2>") == 1
+    assert text.index("<h2>Plots</h2>") < text.index("<h2>Window profiles</h2>")
+
+
 def test_report_html_reports_bad_window_without_traceback(tmp_path, capsys):
     path, _ = _demo_archive(tmp_path)
     naive = "2024-03-01T00:00:00/2024-03-01T01:00:00"

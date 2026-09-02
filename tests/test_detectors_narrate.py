@@ -174,6 +174,22 @@ def test_static_report_without_header_emits_no_th():
     assert "<td>profiles rendered</td><td>2</td>" in html_text
 
 
+def test_static_report_without_figures_is_unchanged():
+    """``figures=None`` and ``figures=[]`` both draw the report of before."""
+    kwargs: dict = {
+        "title": "t",
+        "profiles": ["demo:x  a tag"],
+        "benchmarks_markdown_rows": [("profiles rendered", "1")],
+        "refusal_log": [],
+    }
+    plain = render_static_report(**kwargs)
+    assert render_static_report(**kwargs, figures=None) == plain
+    assert render_static_report(**kwargs, figures=[]) == plain
+    assert "<h2>Plots</h2>" not in plain
+    drawn = render_static_report(**kwargs, figures=["<svg><title>x</title></svg>"])
+    assert drawn.index("<h2>Plots</h2>") < drawn.index("<h2>Window profiles</h2>")
+
+
 def test_ledger_text_opens_with_the_header_it_is_given():
     """``tsdive run`` hands its own stdout in, so both say one thing."""
     ledger = EvidenceLedger(

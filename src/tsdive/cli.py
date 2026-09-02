@@ -907,6 +907,7 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
     """Render a static HTML evidence snapshot from demo archives."""
     from tsdive.narrate import EvidenceLedger
     from tsdive.ui.static_report import render_static_report, write_static_report
+    from tsdive.ui.svg import window_figure
 
     parser = argparse.ArgumentParser(prog="tsdive report-html")
     parser.add_argument("parquet", nargs="+", help="archive(s) to profile into the report")
@@ -926,6 +927,7 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
         )
         window_label = f"{start.isoformat()}/{end.isoformat()}"
         profiles: list[str] = []
+        figures: list[str] = []
         refusals: list[str] = []
         contract = SamplingContract(CalculationBasis.TIME_WEIGHTED, RetrievalMode.RECORDED)
         for path in args.parquet:
@@ -941,6 +943,7 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
                 profiles.append(
                     render_window_report(window, stats=compute_stats(window))
                 )
+                figures.append(window_figure(window))
             except TSDiveError as e:
                 refusals.append(f"[{type(e).__name__}] {e}")
             except OSError as e:
@@ -957,6 +960,7 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
                 ("ledger", ", ".join(f"{k}={v}" for k, v in ledger.summary_stats().items())),
             ],
             refusal_log=refusals,
+            figures=figures,
         )
         out = write_static_report(html_text, Path(args.out))
         _print_lines(
