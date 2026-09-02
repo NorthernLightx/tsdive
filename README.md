@@ -343,7 +343,7 @@ The checks ran over the 3W dataset (Petrobras, 1,119 offshore well
 instances, 14,347 tags) with zero refusals. The study reports:
 [data-physics profile](examples/studies/3w_profile/REPORT.md),
 [detector evaluation](examples/studies/3w_detectors/REPORT.md).
-Reproduce with [docs/DATA.md](docs/DATA.md).
+Protocol in [docs/EVAL.md](docs/EVAL.md), reproduction in [docs/DATA.md](docs/DATA.md).
 
 ## Limits
 

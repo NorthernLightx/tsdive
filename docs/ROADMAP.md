@@ -59,6 +59,9 @@ seeded SHA-256 rank breaks size ties. `GroupSplit.leakage_check()` raises
 `GroupLeakage` if a group reaches two folds, and it runs before the split
 is returned. Folds come out uneven by construction, and `fold_sizes`
 reports that.
+Shipped: `tsdive.eval`, which carries the evaluation protocol as an API:
+`ranking_metrics`, `clock_control`, `worst_baseline_threshold`, `fires`,
+`far_floor` and the group holdout re-exported beside them.
 
 ## Stage 3, provisional baselines
 
