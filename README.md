@@ -260,16 +260,18 @@ page for bare archives without a plan.
 
 ### ingest
 
-Builds an archive from your own CSV or parquet export.
+A wide export, one column per tag, takes two commands:
 
 ```console
-tsdive ingest export.csv \
-    --out archive/plant1/FIC101.PV.parquet --meta meta.json \
-    --timestamp-col ts --value-col v --quality-col q
+tsdive ingest export.csv --wide --timestamp-col ts --quality-suffix _q \
+    --init-meta meta/ --source-id plant1
+tsdive ingest export.csv --wide --timestamp-col ts --quality-suffix _q \
+    --out archive/plant1/ --meta-dir meta/ --tz Europe/London
 ```
 
-`meta.json` needs `identity` and `name`; the other keys are optional and
-listed in [docs/SCHEMA.md](docs/SCHEMA.md).
+The first writes one template per tag with the optional keys of
+[docs/SCHEMA.md](docs/SCHEMA.md) left null. The second writes one
+archive per tag, reading quality from `<tag>_q`. A filled template:
 
 ```json
 {
@@ -283,8 +285,7 @@ listed in [docs/SCHEMA.md](docs/SCHEMA.md).
 }
 ```
 
-Timestamps without an offset need `--tz Europe/London`. An export with
-no quality column needs `--assume-quality GOOD`.
+A single-tag export uses `--out FILE --meta FILE` (see `tsdive ingest --help`).
 
 ### Python
 
