@@ -96,6 +96,7 @@ from tsdive.errors import (
     PopulationTooSparse,
     RegimeTooSparse,
 )
+from tsdive.eval import clock_control, fires, ranking_metrics, worst_baseline_threshold
 from tsdive.mspc.pca import AlignedMatrix, PcaModel, detect, fit_pca
 from tsdive.spc import apply_rules, individuals_limits
 
@@ -407,9 +408,13 @@ def score_clock_own_history(windows: pd.DataFrame, layout: OwnHistory) -> ToolSc
     """
     out = ToolScores.empty()
     _design_refusals(out, layout, windows)
-    for keys in layout.scored.values():
-        for position, key in enumerate(keys):
-            out.record(int(key), float(position))
+    positions = {
+        int(key): position
+        for keys in layout.scored.values()
+        for position, key in enumerate(keys)
+    }
+    for key, score in clock_control(positions).items():
+        out.record(key, score)
     return out
 
 
@@ -811,30 +816,7 @@ def _float32_representable(rows: pd.DataFrame) -> tuple[pd.DataFrame, int]:
 
 
 def metrics(y: np.ndarray, scores: np.ndarray) -> dict:
-    from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score
-
-    n_pos, n_neg = int(y.sum()), int((1 - y).sum())
-    if n_pos == 0 or n_neg == 0:
-        return {
-            "roc_auc": None,
-            "pr_auc": None,
-            "precision_at_recall_50": None,
-            "n_pos": n_pos,
-            "n_neg": n_neg,
-            "refusal": "fold under test carries one class only; no ranking metric exists",
-        }
-    precision, recall, _ = precision_recall_curve(y, scores)
-    reachable = precision[recall >= 0.5]
-    return {
-        "roc_auc": round(float(roc_auc_score(y, scores)), 4),
-        "pr_auc": round(float(average_precision_score(y, scores)), 4),
-        "precision_at_recall_50": (
-            round(float(reachable.max()), 4) if len(reachable) else None
-        ),
-        "n_pos": n_pos,
-        "n_neg": n_neg,
-        "refusal": None,
-    }
+    return ranking_metrics(y, scores).to_dict()
 
 
 # --------------------------------------------------------- onset-aligned
@@ -873,8 +855,8 @@ def score_clock_aligned(windows: pd.DataFrame, layout: OwnHistory) -> ToolScores
     """
     out = ToolScores.empty()
     index = windows.set_index("window_key")["window_index"]
-    for key in sorted(layout.scored_keys):
-        out.record(int(key), float(index.loc[key]))
+    for key, score in clock_control(index.loc[sorted(layout.scored_keys)]).items():
+        out.record(int(key), score)
     return out
 
 
@@ -891,9 +873,10 @@ def score_clock_flat(windows: pd.DataFrame, layout: OwnHistory) -> ToolScores:
     """
     out = ToolScores.empty()
     frame = windows.set_index("window_key")[["window_index", "onset_offset"]]
-    for key in sorted(layout.scored_keys):
-        row = frame.loc[key]
-        out.record(int(key), float(row["window_index"] - row["onset_offset"]))
+    keys = sorted(layout.scored_keys)
+    position = frame.loc[keys, "window_index"] - frame.loc[keys, "onset_offset"]
+    for key, score in clock_control(position).items():
+        out.record(int(key), score)
     return out
 
 
@@ -922,7 +905,7 @@ def aligned_per_instance(
             "onset_kind": str(first["onset_kind"]),
             "fold": int(first["fold"]),
             "n_baseline_scored": len(base),
-            "baseline_max": max(base) if base else None,
+            "baseline_max": worst_baseline_threshold(base) if base else None,
         }
         reasons = []
         for role in ("pre", "post0", "post1"):
@@ -991,11 +974,13 @@ def aligned_metrics(frame: pd.DataFrame) -> dict:
         sub = usable[usable[role].notna()]
         if not len(sub):
             return 0, None
-        hits = int(
-            (
-                sub[role].to_numpy(dtype=float)
-                > sub["baseline_max"].to_numpy(dtype=float)
-            ).sum()
+        hits = sum(
+            fires(score, limit)
+            for score, limit in zip(
+                sub[role].to_numpy(dtype=float),
+                sub["baseline_max"].to_numpy(dtype=float),
+                strict=True,
+            )
         )
         return len(sub), round(hits / len(sub), 4)
 
@@ -1006,7 +991,7 @@ def aligned_metrics(frame: pd.DataFrame) -> dict:
         delay = None
         for offset, role in enumerate(("post0", "post1")):
             value = row[role]
-            if value is not None and not pd.isna(value) and float(value) > limit:
+            if value is not None and not pd.isna(value) and fires(float(value), limit):
                 delay = offset
                 break
         if delay is None:

@@ -25,6 +25,8 @@ HERE = Path(__file__).parent
 ROOT = Path(__file__).parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
+from tsdive.eval import far_floor as false_alarm_floor  # noqa: E402
+
 POOLED = "pooled-cross-well"
 MATCHED = "pooled-cross-well, own-history windows"
 OWN = "own-history"
@@ -626,7 +628,7 @@ def aligned_section(add, res: Path, out_dir: Path, clock_row: pd.Series) -> None
     )
     add("")
     k_base = int(manifest["baseline_windows"])
-    far_floor = 1.0 / (k_base + 1)
+    far_floor = false_alarm_floor(k_base)
     add(
         f"That threshold rule carries a false-alarm floor. With {k_base} baseline "
         "windows, a pre window that is exchangeable with them - drawn from the same "
