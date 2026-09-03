@@ -1,0 +1,71 @@
+experiment,folder,group,n_usable_tags,unusable_tags,delta,refusal,n_fit_rows,n_calibration,n_stream,first_anomaly_stream_index,last_anomaly_stream_index,alarm_index,alarm_time,delay_s,outcome
+anomaly-free__anomaly-free,anomaly-free,anomaly_free,7,Pressure: MAD over the fit windows is zero,0.01,,113.0,56.0,9236.0,,,27.0,2020-02-08T13:34:16+00:00,,false alarm (anomaly-free record)
+anomaly-free__anomaly-free,anomaly-free,anomaly_free,7,Pressure: MAD over the fit windows is zero,0.05,,113.0,56.0,9236.0,,,22.0,2020-02-08T13:34:11+00:00,,false alarm (anomaly-free record)
+other__1,other,labelled,8,,0.01,,115.0,57.0,573.0,385.0,572.0,442.0,2020-03-01T15:54:50+00:00,60.0,alarm inside the anomaly span
+other__1,other,labelled,8,,0.05,,115.0,57.0,573.0,385.0,572.0,440.0,2020-03-01T15:54:48+00:00,58.0,alarm inside the anomaly span
+other__10,other,labelled,8,,0.01,,114.0,57.0,1156.0,399.0,984.0,36.0,2020-02-08T17:51:22+00:00,,false alarm before onset
+other__10,other,labelled,8,,0.05,,114.0,57.0,1156.0,399.0,984.0,28.0,2020-02-08T17:51:13+00:00,,false alarm before onset
+other__11,other,labelled,8,,0.01,,115.0,57.0,1018.0,398.0,848.0,139.0,2020-02-08T18:16:09+00:00,,false alarm before onset
+other__11,other,labelled,8,,0.05,,115.0,57.0,1018.0,398.0,848.0,134.0,2020-02-08T18:16:04+00:00,,false alarm before onset
+other__12,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,114.0,56.0,878.0,398.0,706.0,65.0,2020-02-08T18:38:59+00:00,,false alarm before onset
+other__12,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,114.0,56.0,878.0,398.0,706.0,61.0,2020-02-08T18:38:55+00:00,,false alarm before onset
+other__13,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,79.0,40.0,804.0,376.0,640.0,55.0,2020-02-08T18:51:50+00:00,,false alarm before onset
+other__13,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,79.0,40.0,804.0,376.0,640.0,11.0,2020-02-08T18:50:49+00:00,,false alarm before onset
+other__14,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,115.0,57.0,733.0,399.0,700.0,142.0,2020-02-08T19:21:57+00:00,,false alarm before onset
+other__14,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,115.0,57.0,733.0,399.0,700.0,108.0,2020-02-08T19:21:22+00:00,,false alarm before onset
+other__2,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,empty or non-finite calibration or stream,,,,,,,,,
+other__2,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,empty or non-finite calibration or stream,,,,,,,,,
+other__3,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,115.0,56.0,966.0,397.0,794.0,423.0,2020-03-01T16:54:20+00:00,27.0,alarm inside the anomaly span
+other__3,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,115.0,56.0,966.0,397.0,794.0,419.0,2020-03-01T16:54:16+00:00,23.0,alarm inside the anomaly span
+other__4,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,114.0,57.0,1020.0,625.0,1019.0,32.0,2020-03-01T17:03:27+00:00,,false alarm before onset
+other__4,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,114.0,57.0,1020.0,625.0,1019.0,23.0,2020-03-01T17:03:18+00:00,,false alarm before onset
+other__5,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,114.0,57.0,984.0,401.0,810.0,11.0,2020-02-08T16:10:00+00:00,,false alarm before onset
+other__5,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,114.0,57.0,984.0,401.0,810.0,7.0,2020-02-08T16:09:55+00:00,,false alarm before onset
+other__6,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,115.0,57.0,975.0,401.0,802.0,409.0,2020-02-08T16:37:17+00:00,8.0,alarm inside the anomaly span
+other__6,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,115.0,57.0,975.0,401.0,802.0,407.0,2020-02-08T16:37:15+00:00,6.0,alarm inside the anomaly span
+other__7,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,115.0,57.0,918.0,400.0,746.0,5.0,2020-02-08T16:50:16+00:00,,false alarm before onset
+other__7,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,115.0,57.0,918.0,400.0,746.0,3.0,2020-02-08T16:50:14+00:00,,false alarm before onset
+other__8,other,labelled,8,,0.01,,114.0,57.0,976.0,401.0,803.0,255.0,2020-02-08T17:14:38+00:00,,false alarm before onset
+other__8,other,labelled,8,,0.05,,114.0,57.0,976.0,401.0,803.0,249.0,2020-02-08T17:14:32+00:00,,false alarm before onset
+other__9,other,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,115.0,57.0,972.0,400.0,800.0,432.0,2020-02-08T17:37:52+00:00,34.0,alarm inside the anomaly span
+other__9,other,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,115.0,57.0,972.0,400.0,800.0,428.0,2020-02-08T17:37:47+00:00,29.0,alarm inside the anomaly span
+valve1__0,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,115.0,57.0,975.0,401.0,801.0,5.0,2020-03-09T10:17:38+00:00,,false alarm before onset
+valve1__0,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,115.0,57.0,975.0,401.0,801.0,4.0,2020-03-09T10:17:37+00:00,,false alarm before onset
+valve1__1,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,114.0,57.0,974.0,401.0,802.0,36.0,2020-03-09T10:38:10+00:00,,false alarm before onset
+valve1__1,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,114.0,57.0,974.0,401.0,802.0,33.0,2020-03-09T10:38:07+00:00,,false alarm before onset
+valve1__10,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,114.0,58.0,974.0,401.0,801.0,6.0,2020-03-09T13:37:46+00:00,,false alarm before onset
+valve1__10,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,114.0,58.0,974.0,401.0,801.0,5.0,2020-03-09T13:37:45+00:00,,false alarm before onset
+valve1__11,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,115.0,57.0,969.0,400.0,798.0,36.0,2020-03-09T13:58:17+00:00,,false alarm before onset
+valve1__11,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,115.0,57.0,969.0,400.0,798.0,33.0,2020-03-09T13:58:14+00:00,,false alarm before onset
+valve1__12,valve1,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,114.0,57.0,969.0,399.0,797.0,419.0,2020-03-09T14:25:01+00:00,21.0,alarm inside the anomaly span
+valve1__12,valve1,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,114.0,57.0,969.0,399.0,797.0,415.0,2020-03-09T14:24:57+00:00,17.0,alarm inside the anomaly span
+valve1__13,valve1,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,114.0,57.0,969.0,399.0,797.0,465.0,2020-03-09T14:45:51+00:00,70.0,alarm inside the anomaly span
+valve1__13,valve1,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,114.0,57.0,969.0,399.0,797.0,461.0,2020-03-09T14:45:46+00:00,65.0,alarm inside the anomaly span
+valve1__14,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,114.0,56.0,969.0,399.0,797.0,63.0,2020-03-09T14:58:47+00:00,,false alarm before onset
+valve1__14,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,114.0,56.0,969.0,399.0,797.0,17.0,2020-03-09T14:57:59+00:00,,false alarm before onset
+valve1__15,valve1,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,114.0,57.0,979.0,403.0,806.0,421.0,2020-03-09T15:25:00+00:00,19.0,alarm inside the anomaly span
+valve1__15,valve1,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,114.0,57.0,979.0,403.0,806.0,418.0,2020-03-09T15:24:57+00:00,16.0,alarm inside the anomaly span
+valve1__2,valve1,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,115.0,58.0,902.0,393.0,729.0,240.0,2020-03-09T11:01:45+00:00,,false alarm before onset
+valve1__2,valve1,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,115.0,58.0,902.0,393.0,729.0,224.0,2020-03-09T11:01:29+00:00,,false alarm before onset
+valve1__3,valve1,labelled,7,Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,115.0,57.0,976.0,401.0,804.0,53.0,2020-03-09T11:18:30+00:00,,false alarm before onset
+valve1__3,valve1,labelled,7,Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,115.0,57.0,976.0,401.0,804.0,50.0,2020-03-09T11:18:27+00:00,,false alarm before onset
+valve1__4,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,115.0,58.0,922.0,400.0,748.0,57.0,2020-03-09T11:38:37+00:00,,false alarm before onset
+valve1__4,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,115.0,58.0,922.0,400.0,748.0,56.0,2020-03-09T11:38:36+00:00,,false alarm before onset
+valve1__5,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,115.0,58.0,981.0,404.0,806.0,14.0,2020-03-09T11:57:50+00:00,,false alarm before onset
+valve1__5,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,115.0,58.0,981.0,404.0,806.0,10.0,2020-03-09T11:57:46+00:00,,false alarm before onset
+valve1__6,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,115.0,58.0,981.0,403.0,807.0,58.0,2020-03-09T12:18:37+00:00,,false alarm before onset
+valve1__6,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,115.0,58.0,981.0,403.0,807.0,56.0,2020-03-09T12:18:35+00:00,,false alarm before onset
+valve1__7,valve1,labelled,8,,0.01,,116.0,58.0,920.0,404.0,808.0,517.0,2020-03-09T12:46:35+00:00,118.0,alarm inside the anomaly span
+valve1__7,valve1,labelled,8,,0.05,,116.0,58.0,920.0,404.0,808.0,508.0,2020-03-09T12:46:25+00:00,108.0,alarm inside the anomaly span
+valve1__8,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,114.0,57.0,973.0,401.0,800.0,226.0,2020-03-09T13:01:35+00:00,,false alarm before onset
+valve1__8,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,114.0,57.0,973.0,401.0,800.0,224.0,2020-03-09T13:01:33+00:00,,false alarm before onset
+valve1__9,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,115.0,57.0,976.0,402.0,803.0,135.0,2020-03-09T13:19:59+00:00,,false alarm before onset
+valve1__9,valve1,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,115.0,57.0,976.0,402.0,803.0,19.0,2020-03-09T13:17:58+00:00,,false alarm before onset
+valve2__0,valve2,labelled,7,Pressure: MAD over the fit windows is zero,0.01,,113.0,56.0,956.0,393.0,786.0,555.0,2020-03-09T16:09:23+00:00,173.0,alarm inside the anomaly span
+valve2__0,valve2,labelled,7,Pressure: MAD over the fit windows is zero,0.05,,113.0,56.0,956.0,393.0,786.0,534.0,2020-03-09T16:09:01+00:00,151.0,alarm inside the anomaly span
+valve2__1,valve2,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,113.0,55.0,895.0,392.0,724.0,17.0,2020-03-09T16:19:48+00:00,,false alarm before onset
+valve2__1,valve2,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,113.0,55.0,895.0,392.0,724.0,10.0,2020-03-09T16:19:41+00:00,,false alarm before onset
+valve2__2,valve2,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,113.0,56.0,960.0,396.0,790.0,40.0,2020-03-09T16:40:14+00:00,,false alarm before onset
+valve2__2,valve2,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,113.0,56.0,960.0,396.0,790.0,35.0,2020-03-09T16:40:08+00:00,,false alarm before onset
+valve2__3,valve2,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.01,,113.0,56.0,826.0,395.0,789.0,5.0,2020-03-09T16:59:36+00:00,,false alarm before onset
+valve2__3,valve2,labelled,6,Pressure: MAD over the fit windows is zero; Volume Flow RateRMS: MAD over the fit windows is zero,0.05,,113.0,56.0,826.0,395.0,789.0,4.0,2020-03-09T16:59:35+00:00,,false alarm before onset

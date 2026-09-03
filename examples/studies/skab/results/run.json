@@ -1,0 +1,51 @@
+{
+  "code": {
+    "git_head": "fa2514fb5e5d00b898affd6dd78eee83a1073892",
+    "tsdive_version": "0.3.0"
+  },
+  "counts": {
+    "groups": {
+      "anomaly_free": 1,
+      "labelled": 34
+    },
+    "n_records": 35,
+    "n_windows": 850,
+    "unusable_tags": 43,
+    "windows_refused_per_tool": {
+      "clock": 0,
+      "mspc_spe": 370,
+      "mspc_t2": 370,
+      "screen": 5,
+      "spc": 5
+    }
+  },
+  "dataset": "SKAB",
+  "dataset_manifest_sha256": "c0d612939333fdd8fbe77b7830af5b39f4a886c22c6d8a424f4a4e4ef98efa98",
+  "design": "own history: first k windows per record, label-blind; nothing fitted across records; folds are the upstream folders",
+  "parameters": {
+    "deltas": [
+      0.05,
+      0.01
+    ],
+    "epsilons": [
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9
+    ],
+    "k_baseline_windows": 3,
+    "k_mad": 3.0,
+    "permutation_seeds": 10,
+    "rate_s": 1,
+    "recovery_windows": 2,
+    "window_s": 60
+  },
+  "upstream_commit": "b2c0d46c2971dcbfe71e26087b6d231998bb91c2",
+  "upstream_repo": "waico/SKAB",
+  "wall_seconds": 372.8
+}

@@ -1,0 +1,5 @@
+group,delta,n_records,n_scored,n_refused,n_no_alarm,n_false_before_onset,n_detect,n_after_recovery,n_false_anomaly_free,far_before_onset,detect_rate,after_recovery_rate,false_anomaly_free_rate,median_delay_s,permutation_alarm_fraction,permutation_seeds
+anomaly_free,0.01,1,1,0,0,0,0,0,1,0.0,0.0,0.0,1.0,,0.0,10
+anomaly_free,0.05,1,1,0,0,0,0,0,1,0.0,0.0,0.0,1.0,,0.0,10
+labelled,0.01,34,33,1,0,24,9,0,0,0.7273,0.2727,0.0,0.0,34.0,0.0,10
+labelled,0.05,34,33,1,0,24,9,0,0,0.7273,0.2727,0.0,0.0,29.0,0.003,10
