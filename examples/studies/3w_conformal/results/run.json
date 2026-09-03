@@ -48,7 +48,7 @@
     }
   },
   "code": {
-    "git_head": "b6a404fe53d2e2c39e72a478f46be51e8a9fc50e",
+    "git_head": "742c28ed819f67392646bcc367ba76c048aa7a64",
     "tsdive_version": "0.2.0"
   },
   "dataset_manifest_sha256": "14bc1397d3eef8a671b9f6253d195c161d06157307e47e687829da2070f3b1c2",
@@ -74,5 +74,5 @@
     "permutation_seeds": 10
   },
   "study": "3w_conformal",
-  "wall_seconds": 20.5
+  "wall_seconds": 20.0
 }
