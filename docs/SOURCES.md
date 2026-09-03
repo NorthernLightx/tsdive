@@ -17,6 +17,7 @@ first implementation. A historian is one kind of source among several.
 | InfluxDB / TimescaleDB export | `tsdive ingest` | retention downsampling is an aggregate contract; declare it | none in source; `--assume-quality` | continuous-query holes are gaps | as exported | via ingest |
 | MQTT / Kafka capture | not yet | event-weighted by nature | none; `--assume-quality` | publisher deadband is compression | broker and device clocks undeclared | planned |
 | 3W dataset | `scripts/convert_3w.py` | recorded, 1 s | none; `GOOD_ASSUMED` / `NO_DATA` | none observed | naive index localised as UTC, recorded | shipped |
+| SKAB dataset | `examples/studies/skab/build_archives.py` | recorded, 1 s | none; `GOOD` assumed, `quality_assumed` recorded | none observed | naive stamps localised as UTC, stated at ingest | shipped |
 | TEP simulation | `scripts/convert_tep.py` | recorded, 180 s | none; `SIMULATED` | none | synthetic clock, recorded | shipped |
 
 ## What every source must declare

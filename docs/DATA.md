@@ -129,6 +129,74 @@ is scored beside it as the exchangeability check.
   fetcher enumerates `dataset/**` blob sizes through the git-trees API
   instead and prints the real byte total before asking.
 
+## SKAB
+
+Verified on 2026-09-03 against commit
+`b2c0d46c2971dcbfe71e26087b6d231998bb91c2`.
+
+- Source: `github.com/waico/SKAB`, the Skoltech Anomaly Benchmark. A
+  water-circulation testbed (pump, valves, tank) runs 34 experiments
+  of about 20 minutes in which a fault is induced and then removed, plus
+  one anomaly-free run of 166 minutes. It is a testbed, not a plant.
+- Role: the second real bed. Every labelled record returns to normal
+  after the fault, so it measures what 3W cannot, the false-alarm rate
+  after recovery and whether a score comes back under its threshold.
+- Licence: GPL-3.0, repository and data. Nothing under `data/` is
+  committed; the fetch script downloads the files.
+- Fetch: `uv run python examples/studies/skab/fetch_skab.py --dest data/skab`.
+  35 files, 4,392,581 bytes, 13 s; manifest sha256 `c0d612939333`. A
+  second run downloads nothing when every file's sha256 matches the
+  manifest.
+- Convert: `uv run python examples/studies/skab/build_archives.py`.
+  35 experiments, 280 archives, 0 refusals, 18 s.
+
+### Layout
+
+The files sit under `data/<folder>/<name>.csv` upstream and land under
+`data/skab/raw/<folder>/<name>.csv`:
+
+| folder | files | rows | labels |
+|---|---|---|---|
+| valve1 | 16 | 18,160 | yes |
+| valve2 | 4 | 4,312 | yes |
+| other | 14 | 14,929 | yes |
+| anomaly-free | 1 | 9,405 | no |
+
+`build_archives.py` writes one archive per sensor to
+`data/skab_archives/<folder>__<name>/<sensor>.parquet`, the labels to
+`labels.parquet` beside them, and the wide CSV and metadata templates it
+ingests from to `data/skab_work/<folder>__<name>/`. Every ingest refusal
+goes to `data/skab_archives/refusals.json` with its error class and
+message, and the run continues with the next file.
+
+### Schema facts that change how the data is read
+
+- The separator is `;`. The header is `datetime`, eight sensor columns
+  (`Accelerometer1RMS`, `Accelerometer2RMS`, `Current`, `Pressure`,
+  `Temperature`, `Thermocouple`, `Voltage`, `Volume Flow RateRMS`),
+  `anomaly` and `changepoint`.
+- `datetime` is naive, `2020-03-09 10:14:33`, with no offset anywhere
+  in the files. The study passes `tz="UTC"` at ingest. The true offset
+  is unknown and changes nothing in a within-record analysis, which
+  reads only differences between stamps.
+- The step is 1 s and rows are missing. Most records carry 2 s steps,
+  and seven records carry one longer gap: 247 s in `other/2`, 76 s in
+  `valve1/2`, 65 s in `valve1/7`, 64 s in `valve2/1`, 54 s in
+  `valve1/4`, 33 s in `other/13`, 5 s in `other/12`. A fixed 60 s
+  window inside such a gap holds no rows and is a refusal.
+- There is no quality column. Every sample is ingested with
+  `assume_quality="GOOD"` and every archive says `quality_assumed`.
+- Units are not documented upstream, so `unit_raw` stays null, and no
+  `sample_rate_s` is declared, so `mspc` is called with `rate_s=1`.
+- Labels are per row: `anomaly` and `changepoint`, both 0 or 1. Each
+  labelled record holds one anomaly run with normal rows before and
+  after it; in `valve1/0` the anomaly rows are 573 to 973 of 1,147 and
+  `changepoint` marks 4 rows. The anomaly-free file has no label
+  columns. Labels stay in `labels.parquet` and never enter an archive.
+- Timestamps are unique in every file. A duplicated stamp is refused
+  before ingest (`SchemaError` from `require_unique`), because
+  `ingest_wide` accepts it and only the read audit reports it.
+
 ## TEP
 
 Verified on 2026-08-28.
