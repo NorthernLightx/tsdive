@@ -13,6 +13,11 @@ change any interface, and the entries say which ones moved.
   position in its record; `worst_baseline_threshold`, `fires`, `far_floor`
   and `over_floor` carry the alarm rule and its false-alarm floor;
   `group_holdout`, `GroupSplit` and `GroupLeakage` are re-exported.
+- `tsdive.eval`: `conformal_p_values`, `power_martingale`,
+  `mixture_martingale` and `martingale_alarm` build a conformal test
+  martingale alarm whose false-alarm probability over a whole record is
+  bounded by `delta` when the calibration and stream scores are
+  exchangeable.
 
 ## 0.2.0 - 2026-09-02
 

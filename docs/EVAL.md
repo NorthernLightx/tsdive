@@ -5,8 +5,9 @@ This page gives the rules a published detector number follows and the
 
 ```python
 from tsdive.eval import (
-    GroupLeakage, clock_control, far_floor, fires, group_holdout,
-    over_floor, ranking_metrics, worst_baseline_threshold,
+    GroupLeakage, clock_control, conformal_p_values, far_floor, fires,
+    group_holdout, martingale_alarm, mixture_martingale, over_floor,
+    power_martingale, ranking_metrics, worst_baseline_threshold,
 )
 ```
 
@@ -41,9 +42,27 @@ from tsdive.eval import (
    gap a measured rate leaves above it. With three baseline windows the
    floor is 25 percent.
 
+6. **Publish an alarm with a stated false-alarm bound.**
+   `conformal_p_values(calibration, stream)` gives each stream score a
+   p-value against the calibration scores and the stream so far, with
+   ties counted against the new score so the value is conservative.
+   `mixture_martingale(p_values)` turns them into the log of a test
+   martingale (`power_martingale` is one component), and
+   `martingale_alarm(log_values, delta)` fires at the first index where
+   it reaches `1 / delta`. Ville's inequality bounds the probability of
+   ever reaching that line by `delta`, so the bound covers the record
+   over its whole run and not each window. It holds when the calibration
+   and stream scores are exchangeable, and any fitted centre and scale
+   that produce the scores come from a fit set disjoint from both. A
+   trending record breaks exchangeability, and the clock control shows
+   how far.
+
 ## Worked example
 
-The 3W detector study applies all five rules, holds out by well, and
+The 3W detector study applies rules 1 to 5, holds out by well, and
 prints the clock control and the floor in its tables:
 [examples/studies/3w_detectors/REPORT.md](../examples/studies/3w_detectors/REPORT.md).
+The 3W conformal study applies rule 6 beside rules 2, 4 and 5 and
+reports the permutation check that makes exchangeability hold:
+[examples/studies/3w_conformal/REPORT.md](../examples/studies/3w_conformal/REPORT.md).
 Reproduction steps are in [DATA.md](DATA.md).

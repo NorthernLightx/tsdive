@@ -101,6 +101,24 @@ cache under `data/3w_windows_aligned` and its frozen
   `uv run python examples/studies/3w_chronos/make_report.py`.
 - Read: [3w_chronos/REPORT.md](../examples/studies/3w_chronos/REPORT.md).
 
+### Conformal martingale on the own-history and onset-aligned windows
+
+The conformal test martingale alarm (`tsdive.eval`) runs over both of the
+detector study's caches, `data/3w_windows` and `data/3w_windows_aligned`,
+reading the per-minute sub-group medians they already hold. Per instance
+the first two windows are the fit set, the third the calibration window
+and the rest the stream. The own-history cache splits by label into 538
+normal instances (every window labelled 0), 53 mixed (three normal
+baseline windows, a fault later), 54 with a fault inside the baseline,
+and 468 with fewer than 4 windows, a design refusal. The aligned cache is
+the 48 evaluable instances. A permutation of each instance's own scores
+is scored beside it as the exchangeability check.
+
+- Run: `uv run python examples/studies/3w_conformal/run_conformal.py`,
+  then `uv run python examples/studies/3w_conformal/make_report.py
+  --update-benchmarks`.
+- Read: [3w_conformal/REPORT.md](../examples/studies/3w_conformal/REPORT.md).
+
 ### Known upstream issues
 
 - The `dataset/folds` path 404s on `main` (fold splits were removed
