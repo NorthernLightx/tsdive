@@ -1,0 +1,16 @@
+tool,phase,n_windows,median_score,p25_score,p75_score
+screen,pre_onset,230,6.3715,4.4145,18.5193
+screen,in_span,255,19.2045,7.0558,171.3224
+screen,post_span,92,12.8099,6.6122,25.4401
+spc,pre_onset,230,45.5,24.0,69.0
+spc,in_span,255,116.0,66.5,138.5
+spc,post_span,92,93.5,47.5,125.0
+mspc_t2,pre_onset,174,1.0011,0.8608,1.1871
+mspc_t2,in_span,182,0.9858,0.871,1.1448
+mspc_t2,post_span,46,0.9828,0.9125,1.1774
+mspc_spe,pre_onset,174,0.8373,0.4724,1.6272
+mspc_spe,in_span,182,2.9313,0.9736,12.8744
+mspc_spe,post_span,46,0.8901,0.5685,2.7126
+clock,pre_onset,233,6.0,4.0,8.0
+clock,in_span,256,13.0,11.0,15.0
+clock,post_span,92,18.0,18.0,19.0

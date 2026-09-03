@@ -1,0 +1,9 @@
+tag,n_records,n_frozen_whole_record,n_zero_mad_whole_record,distinct_count_min,distinct_count_median,n_records_with_gaps,longest_gap_s_max,flatline_windows_assessed,flatline_windows_fired,n_records_flatline_fired,n_duplicate_timestamps
+Accelerometer1RMS,35,0,0,739,1094.0,4,247.0,786,19,10,0
+Accelerometer2RMS,35,0,0,718,1118.0,4,247.0,786,23,14,0
+Current,35,0,0,743,1137.0,4,247.0,786,17,10,0
+Pressure,35,0,35,5,6.0,4,247.0,786,79,32,0
+Temperature,35,0,0,738,1097.0,4,247.0,786,28,16,0
+Thermocouple,35,0,0,421,692.0,4,247.0,786,71,30,0
+Voltage,35,0,0,742,1122.0,4,247.0,786,18,11,0
+Volume Flow RateRMS,35,0,1,33,54.0,4,247.0,786,122,35,0

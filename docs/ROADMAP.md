@@ -48,9 +48,10 @@ Parked, each with the measured reason:
   detection rate of 27.3%. It stays a benchmark subject. No forecaster
   ships as a tool.
 
-Next beds: a second real dataset where records return to normal after a
-fault, and a row that measures what the frozen-sensor and rounding checks
-change in the 3W detector numbers.
+Next beds: SKAB is the bed where records return to normal after a fault,
+and its numbers are in `examples/studies/skab/REPORT.md`. Still owed is a
+row that measures what the frozen-sensor and rounding checks change in
+the 3W detector numbers.
 
 ## Stage 0, sources
 

@@ -1,0 +1,11 @@
+tool,group,n_records,n_stream_windows,n_windows_scored,n_windows_refused,roc_auc,pr_auc,roc_auc_majority,auc_refusal,n_records_auc,record_auc_median,n_records_auc_refused,far_floor,roc_auc_valve1,roc_auc_valve1_refusal,roc_auc_valve2,roc_auc_valve2_refusal,roc_auc_other,roc_auc_other_refusal,n_records_with_threshold,n_records_no_threshold,n_pre_windows,far_pre,over_floor,n_detected,detect_rate,median_delay_windows,n_post_windows,far_post,n_recovery_eligible,n_recovered,recovered_rate
+screen,labelled,34,581,577,4,0.6769,0.6402,0.6698,,34,0.8312,0,0.25,0.5608,,0.5489,,0.8427,,33,1,230,0.5609,0.3109,31.0,0.9394,0.0,87.0,0.7471,27.0,5.0,0.1852
+screen,anomaly_free,1,164,164,0,,,,record carries one class only in its scored stream windows,0,,1,0.25,,no scored window,,no scored window,,no scored window,1,0,164,0.9939,0.7439,,,,,,,,
+spc,labelled,34,581,577,4,0.7348,0.6962,0.7244,,34,0.8219,0,0.25,0.6761,,0.7101,,0.8071,,33,1,230,0.787,0.537,32.0,0.9697,0.0,87.0,0.8276,28.0,1.0,0.0357
+spc,anomaly_free,1,164,164,0,,,,record carries one class only in its scored stream windows,0,,1,0.25,,no scored window,,no scored window,,no scored window,1,0,164,0.9878,0.7378,,,,,,,,
+mspc_t2,labelled,34,581,402,179,0.4803,0.4388,0.484,,26,0.5,8,0.25,0.4799,,,no scored window,0.4789,,26,8,174,0.3103,0.0603,14.0,0.5385,0.0,46.0,0.2391,14.0,10.0,0.7143
+mspc_t2,anomaly_free,1,164,0,164,,,,record carries one class only in its scored stream windows,0,,1,0.25,,no scored window,,no scored window,,no scored window,0,1,0,,,,,,,,,,
+mspc_spe,labelled,34,581,402,179,0.7344,0.7383,0.7401,,26,0.8641,8,0.25,0.6842,,,no scored window,0.8209,,26,8,174,0.7644,0.5144,25.0,0.9615,0.0,46.0,0.8478,22.0,2.0,0.0909
+mspc_spe,anomaly_free,1,164,0,164,,,,record carries one class only in its scored stream windows,0,,1,0.25,,no scored window,,no scored window,,no scored window,0,1,0,,,,,,,,,,
+clock,labelled,34,581,581,0,0.7161,0.5503,0.6867,,34,0.7,0,0.25,0.7052,,0.7253,,0.725,,34,0,233,1.0,0.75,34.0,1.0,0.0,92.0,1.0,30.0,0.0,0.0
+clock,anomaly_free,1,164,164,0,,,,record carries one class only in its scored stream windows,0,,1,0.25,,no scored window,,no scored window,,no scored window,1,0,164,1.0,0.75,,,,,,,,

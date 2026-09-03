@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -54,13 +55,16 @@ def test_committed_file_has_every_study_section():
     assert "## REAL: 3W v2.0.0 (real WELL-* instances)" in appended
     assert "## REAL: 3W v2.0.0, detectors (three study designs)" in appended
     assert "## REAL: TEP (Rieth 2017 simulation, subset)" in appended
+    assert "## REAL: SKAB" in appended
     # A detector row without its design and split named is a number nobody
     # can check: the same tool scores differently under each design.
     detector_rows = _detector_rows(appended)
     assert detector_rows
     assert all(any(d in line for d in DESIGNS) for line in detector_rows)
     assert all(any(s in line for s in SPLITS) for line in detector_rows)
-    assert all("`14bc1397d3ee`" in line for line in detector_rows)
+    # Every detector row names the manifest of the data it was scored on.
+    assert all(re.search(r"`[0-9a-f]{12}`", line) for line in detector_rows)
+    assert all("`14bc1397d3ee`" in line for line in detector_rows if "3W" in line)
 
 
 def test_pooled_per_tag_rows_are_labelled_an_artefact():
