@@ -25,6 +25,33 @@ Real-data numbers are published under group holdout by asset; each names
 its fold split. The reading rules are in each study's REPORT.md in
 `examples/studies/`.
 
+## Status
+
+Stages 1 to 8 ship in 0.3.0, with the evaluation protocol as `tsdive.eval`.
+
+Parked, each with the measured reason:
+
+- Conformal martingale alarm. It lives in `tsdive.eval` and is not wired
+  into `screen` or `spc`. On 3W normal records it fires on 76.3% at delta
+  0.05 against a 5% bound, and the permutation check gives 0.04%, so the
+  bound needs an exchangeability the records do not have. Report:
+  `examples/studies/3w_conformal/REPORT.md`.
+- Compression detection. A Thornhill-style compression-factor estimate
+  saturates on data rounded to a lattice: the estimate stays near 2
+  whether the true factor is 1 or 40. It waits for an archive with
+  documented compression settings.
+- Control-loop performance (Harris index, stiction). It waits for a loop
+  archive with a loop schema. A candidate archive exists (Bauer 2019,
+  IECR).
+- Zero-shot forecasters as shipped detectors. The Chronos-Bolt study
+  gives the only false-alarm rate under the floor (18.2%) and a post1
+  detection rate of 27.3%. It stays a benchmark subject. No forecaster
+  ships as a tool.
+
+Next beds: a second real dataset where records return to normal after a
+fault, and a row that measures what the frozen-sensor and rounding checks
+change in the 3W detector numbers.
+
 ## Stage 0, sources
 
 Shipped: parquet archives, CSV and parquet ingest, and the 3W and TEP
