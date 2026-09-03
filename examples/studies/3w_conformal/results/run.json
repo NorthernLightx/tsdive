@@ -1,0 +1,78 @@
+{
+  "beds": {
+    "aligned": {
+      "cache": "data/3w_windows_aligned",
+      "groups": {
+        "aligned": 48
+      },
+      "manifest_n_instances": 48,
+      "manifest_n_windows": 288,
+      "manifest_sha256": "6f4f097fcd4aaff670ea9619ee7d773c415e6e90492b4abd95d79c62e90995cb",
+      "n_instances": 48,
+      "n_windows": 288,
+      "refusals": {},
+      "variables": [
+        "P-ANULAR",
+        "P-JUS-CKGL",
+        "P-MON-CKP",
+        "P-PDG",
+        "P-TPT",
+        "T-TPT"
+      ]
+    },
+    "own_history": {
+      "cache": "data/3w_windows",
+      "groups": {
+        "mixed": 53,
+        "normal": 538,
+        "positive_baseline": 54,
+        "short": 468
+      },
+      "manifest_n_instances": 1119,
+      "manifest_n_windows": 6992,
+      "manifest_sha256": "bfff4f2e897b6c9066896d8c47baf4fb958fb7bc67050a1273aaf3118e565516",
+      "n_instances": 1113,
+      "n_windows": 6992,
+      "refusals": {
+        "design": 468,
+        "no usable variable": 1
+      },
+      "variables": [
+        "P-ANULAR",
+        "P-JUS-CKGL",
+        "P-MON-CKP",
+        "P-PDG",
+        "P-TPT",
+        "T-TPT"
+      ]
+    }
+  },
+  "code": {
+    "git_head": "b6a404fe53d2e2c39e72a478f46be51e8a9fc50e",
+    "tsdive_version": "0.2.0"
+  },
+  "dataset_manifest_sha256": "14bc1397d3eef8a671b9f6253d195c161d06157307e47e687829da2070f3b1c2",
+  "parameters": {
+    "deltas": [
+      0.05,
+      0.01
+    ],
+    "epsilons": [
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9
+    ],
+    "k": 3,
+    "min_calibration_scores": 30,
+    "n_fit_windows": 2,
+    "permutation_seeds": 10
+  },
+  "study": "3w_conformal",
+  "wall_seconds": 20.5
+}
