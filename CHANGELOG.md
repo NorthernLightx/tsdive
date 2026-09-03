@@ -3,7 +3,7 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
-## Unreleased
+## 0.3.0 - 2026-09-03
 
 ### Added
 
@@ -18,6 +18,11 @@ change any interface, and the entries say which ones moved.
   martingale alarm whose false-alarm probability over a whole record is
   bounded by `delta` when the calibration and stream scores are
   exchangeable.
+
+### Changed
+
+- `tsdive.analyses_render.render_lines` replaces the private line splitter
+  the plan runner imported from the CLI module.
 
 ## 0.2.0 - 2026-09-02
 

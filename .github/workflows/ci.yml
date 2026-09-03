@@ -7,7 +7,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -20,6 +24,8 @@ jobs:
       - name: Test (offline)
         run: uv run pytest
       - name: Reference cases byte-identical
+        if: matrix.os == 'ubuntu-latest'
         run: uv run python examples/reference_case/run_reference.py
       - name: Benchmarks byte-identical
+        if: matrix.os == 'ubuntu-latest'
         run: uv run python examples/benchmarks/run_benchmarks.py

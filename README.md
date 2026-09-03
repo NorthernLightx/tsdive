@@ -42,8 +42,8 @@ colour off. The transcripts below are trimmed to the lines the text reads.
 
 ### profile
 
-Data checks and statistics for one window. The headline carries the
-numbers you read first, then one section per group of findings.
+Data checks and statistics for one window. The headline carries the numbers
+you read first, then one section per finding group.
 
 ```console
 $ tsdive profile data/demo/fic101_demo.parquet \
@@ -119,10 +119,10 @@ Flagged
   (+26 more)
 ```
 
-`--mode <parquet>` computes one baseline per regime of a MODE tag, such
-as the archive `segment --mode-out` writes. `--method moving-range`
-replaces the MAD scale. A censored baseline, or one that overlaps the
-window, raises an error in `screen`, `spc` and `mspc`.
+`--mode <parquet>` computes one baseline per regime of a MODE tag, such as
+`segment --mode-out` writes. `--method moving-range` replaces the MAD scale.
+A censored baseline, or one that overlaps the window, raises an error in
+`screen`, `spc` and `mspc`.
 
 ### spc
 
@@ -179,9 +179,8 @@ residual.
 
 ### compare
 
-Reports what changed between two periods, over every tag of a unit at
-once. The tables say that a tag changed and that a pair decoupled; they
-do not say why.
+Reports what changed between two periods, over every tag of a unit. The
+tables say that a tag changed and a pair decoupled; they do not say why.
 
 ```console
 $ tsdive compare \
@@ -209,13 +208,12 @@ Joint structure  (PCA fitted on before, 2 of 2 tags aligned)
   SPE contributors   TIC101.PV 79%   FIC101.PV 21%
 ```
 
-The temperature's spread is 6 times the before period's, 62% of its
-samples fall outside its own before-period baseline, and its coupling to
-the flow drops from 0.69 to 0.17 with an interval that excludes 0. The
-PCA model fitted on the before period keeps 26% of the after period's
-variance, and 79% of the residual sits on the temperature. `--top N`
-sets how many rows each table prints; `--json` carries every column and
-every pair.
+The temperature's spread is 6 times the before period's, 62% of its samples
+fall outside its before-period baseline, and its coupling to the flow drops
+from 0.69 to 0.17 with an interval excluding 0. The PCA model fitted on the
+before period keeps 26% of the after period's variance, and 79% of the
+residual sits on the temperature. `--top N` sets how many rows each table
+prints; `--json` carries every column and pair.
 
 ### run
 
@@ -237,7 +235,6 @@ steps    = ["profile", "segment", "screen", "spc", "mspc", "compare"]
 flatline = true
 tz = ["Europe/London"]
 ```
-
 ```console
 $ tsdive run examples/plans/demo.toml
 run demo.toml   2 archives   6 steps   profiles 2   findings 7   refusals 1
@@ -251,11 +248,11 @@ wrote     examples/plans/tsdive-run/ledger.json
           examples/plans/tsdive-run/report.html
 ```
 
-Here the baseline holds the 40-minute outage, so the aligned grid covers
-0.867 and `mspc` raises `MspcAlignmentError`. `compare` reads `before` and
+The baseline holds the 40-minute outage, so the aligned grid covers 0.867
+and `mspc` raises `MspcAlignmentError`. `compare` reads `before` and
 `after`. `ledger.txt` opens with this text, then every finding in full.
 `tsdive report-html <parquet...> --window START/END -o report.html` writes
-the same HTML page for bare archives without a plan.
+the same page without a plan.
 
 ### ingest
 
@@ -303,10 +300,9 @@ s.to_dict()["n_flagged"]         # 29; s.render() is the text tsdive screen prin
 
 ### MCP
 
-`tsdive-mcp` serves `profile`, `segment`, `screen`, `spc` and `compare`
-to an MCP client over stdio, with the same arguments and fields as
-`--json`. It needs the `[mcp]` extra. Tools, arguments and result shapes
-are in [docs/MCP.md](docs/MCP.md).
+`tsdive-mcp` serves `profile`, `segment`, `screen`, `spc` and `compare` to
+an MCP client over stdio, with the same arguments and fields as `--json`.
+Tools and result shapes are in [docs/MCP.md](docs/MCP.md).
 
 ## What it checks
 
@@ -340,17 +336,20 @@ tsdive checks what the archive did to those values first.
 ## Results on real data
 
 The checks ran over the 3W dataset (Petrobras, 1,119 offshore well
-instances, 14,347 tags) with zero refusals. The study reports:
-[data-physics profile](examples/studies/3w_profile/REPORT.md),
-[detector evaluation](examples/studies/3w_detectors/REPORT.md).
+instances, 14,347 tags) with zero refusals. Every detector number in the
+studies sits beside a position-in-record control and a false-alarm floor,
+and under the own-history design the control ranks above every detector:
+[profile](examples/studies/3w_profile/REPORT.md),
+[detectors](examples/studies/3w_detectors/REPORT.md),
+[Chronos-Bolt zero-shot](examples/studies/3w_chronos/REPORT.md),
+[conformal alarm](examples/studies/3w_conformal/REPORT.md).
 Protocol in [docs/EVAL.md](docs/EVAL.md), reproduction in [docs/DATA.md](docs/DATA.md).
 
 ## Limits
 
 No fault diagnosis and no causal inference. No writes to any process or
-historian. No alarm limits, notifications or real-time path. Deferred
-work is in [docs/SCOPE.md](docs/SCOPE.md) and
-[docs/ROADMAP.md](docs/ROADMAP.md).
+historian. No alarm limits, notifications or real-time path. Deferred work
+is in [docs/SCOPE.md](docs/SCOPE.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Development
 
