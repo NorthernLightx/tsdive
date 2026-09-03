@@ -29,6 +29,7 @@ from typing import NoReturn
 import pandas as pd
 
 from tsdive.analyses import ScreenAnalysis, SpcAnalysis
+from tsdive.analyses_render import render_lines
 from tsdive.api import Profile
 from tsdive.cli import (
     ANALYSES,
@@ -37,7 +38,6 @@ from tsdive.cli import (
     MULTI_TAG_STEPS,
     STEPS,
     TWO_PERIOD_STEPS,
-    _lines,
 )
 from tsdive.errors import TSDiveError
 from tsdive.narrate import EvidenceLedger
@@ -299,7 +299,7 @@ def execute(
             try:
                 args = _parse_step(make_parser(), _step_argv(plan, step, paths))
                 result = analyse(args)
-                lines = _lines(result.render())
+                lines = render_lines(result.render())
             except (TSDiveError, ValueError, OSError) as e:
                 refusals.append(
                     {

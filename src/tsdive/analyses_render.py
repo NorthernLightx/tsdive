@@ -51,6 +51,16 @@ if TYPE_CHECKING:
         SpcAnalysis,
     )
 
+
+def render_lines(text: str) -> list[str]:
+    """A rendered report back as the lines it was joined from.
+
+    ``render()`` joins its lines with newlines and carries no trailing
+    one, so splitting on newlines is exact.
+    """
+    return text.split("\n")
+
+
 # Enough flagged timestamps to see where the screen fired without pasting
 # a monitored window back at the caller.
 FLAGGED_SHOWN = 3

@@ -35,7 +35,7 @@ from tsdive.analyses import (
     SegmentAnalysis,
     SpcAnalysis,
 )
-from tsdive.analyses_render import window_json
+from tsdive.analyses_render import render_lines, window_json
 from tsdive.api import (
     Profile,
     ingest,
@@ -178,15 +178,6 @@ StepRunner = Callable[[argparse.Namespace], list[str]]
 StepJson = Callable[[argparse.Namespace], dict[str, object]]
 
 
-def _lines(text: str) -> list[str]:
-    """A rendered report back as the lines it was joined from.
-
-    ``render()`` joins its lines with newlines and carries no trailing
-    one, so splitting on newlines is exact.
-    """
-    return text.split("\n")
-
-
 def _no_color(args: argparse.Namespace) -> bool:
     return bool(getattr(args, "no_color", False))
 
@@ -287,7 +278,7 @@ def _screen_run(args: argparse.Namespace) -> ScreenAnalysis:
 
 def run_screen(args: argparse.Namespace) -> list[str]:
     """Screen a window against a baseline: MAD, or regime-keyed with --mode."""
-    return _lines(_screen_run(args).render())
+    return render_lines(_screen_run(args).render())
 
 
 def json_screen(args: argparse.Namespace) -> dict[str, object]:
@@ -364,7 +355,7 @@ def _segment_mode_out(analysis: SegmentAnalysis, args: argparse.Namespace) -> st
 def run_segment(args: argparse.Namespace) -> list[str]:
     """Segment a window into regimes the samples themselves show."""
     analysis = _segment_run(args)
-    lines = _lines(analysis.render())
+    lines = render_lines(analysis.render())
     written = _segment_mode_out(analysis, args)
     if written is not None:
         lines += ["", label_line("wrote", written)]
@@ -415,7 +406,7 @@ def _spc_run(args: argparse.Namespace) -> SpcAnalysis:
 
 def run_spc(args: argparse.Namespace) -> list[str]:
     """Chart a window against baseline control limits."""
-    return _lines(_spc_run(args).render())
+    return render_lines(_spc_run(args).render())
 
 
 def json_spc(args: argparse.Namespace) -> dict[str, object]:
@@ -479,7 +470,7 @@ def _mspc_run(args: argparse.Namespace) -> MspcAnalysis:
 
 def run_mspc(args: argparse.Namespace) -> list[str]:
     """Detect multivariate departures with PCA T2 and SPE."""
-    return _lines(_mspc_run(args).render())
+    return render_lines(_mspc_run(args).render())
 
 
 def json_mspc(args: argparse.Namespace) -> dict[str, object]:
@@ -525,7 +516,7 @@ def _compared(args: argparse.Namespace) -> CompareAnalysis:
 
 def run_compare(args: argparse.Namespace) -> list[str]:
     """Report what changed between two periods of one unit."""
-    return _lines(_compared(args).render())
+    return render_lines(_compared(args).render())
 
 
 def json_compare(args: argparse.Namespace) -> dict[str, object]:
@@ -583,7 +574,7 @@ def _profiled(args: argparse.Namespace) -> Profile:
 
 def run_profile(args: argparse.Namespace) -> list[str]:
     """Report the data physics and statistics of one window."""
-    return _lines(_profiled(args).render())
+    return render_lines(_profiled(args).render())
 
 
 def _flatline_json(verdict: FlatlineVerdict) -> dict[str, object]:
