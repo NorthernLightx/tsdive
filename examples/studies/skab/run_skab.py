@@ -20,6 +20,12 @@ Outputs under ``--out``:
 - ``summary.csv``: the pooled numbers per tool and group.
 - ``conformal.csv``, ``conformal_summary.csv``, ``permutation.csv``: the
   conformal martingale bed.
+- ``drift.csv``: per tag on the anomaly-free record, how far the level
+  moves and how often a static baseline flags the windows after it.
+- ``window_max_tag.csv``: which tag holds the per-tag maximum.
+- ``stream_layout.csv``: where the anomaly windows sit in each stream.
+- ``score_by_phase.csv``: median score per tool before, inside and after
+  the anomaly span.
 - ``run.json``: provenance, parameters, counts and wall seconds.
 """
 
@@ -749,6 +755,204 @@ def summary_rows(scores: pd.DataFrame, per_record: pd.DataFrame, k: int) -> list
     return rows
 
 
+# ---------------------------------------------------------------- drift
+
+
+DRIFT_BASELINES = ((0, 3), (3, 6), (60, 63))
+DRIFT_COMBINED = "max over usable tags"
+REFUSAL_ZERO_MAD_BASELINE = "MAD over the baseline windows is zero"
+
+
+def spearman(values: np.ndarray, order: np.ndarray) -> float | None:
+    """Rank correlation of ``values`` against ``order``, average ranks on ties."""
+    if len(values) < 2:
+        return None
+    a = pd.Series(values).rank().to_numpy(dtype=float)
+    b = pd.Series(order).rank().to_numpy(dtype=float)
+    if a.std() == 0 or b.std() == 0:
+        return None
+    return float(np.corrcoef(a, b)[0, 1])
+
+
+def _window_index(frame: pd.DataFrame, t0: pd.Timestamp, window_s: int) -> pd.Series:
+    return ((frame["timestamp"] - t0).dt.total_seconds() // window_s).astype(int)
+
+
+def drift_rows(record: Record, window_s: int, k_mad: float, edge: int = 10) -> list[dict]:
+    """Per tag on one record: how far the level moves and how often a static
+    baseline flags the windows after it.
+
+    The per-window statistic is the largest ``|value - centre| / scale`` inside
+    the window, the same quantity ``screen`` scores, so a share here reads as
+    that tool's flag rate. Baselines sit at three positions so the share reads
+    against the baseline's place in the record.
+    """
+    t0 = record.first_stamp
+    rows: list[dict] = []
+    flags: dict[str, dict[int, dict[int, bool]]] = {b: {} for b, _ in DRIFT_BASELINES}
+    for tag in record.tags:
+        frame = record.frames[tag]
+        index = _window_index(frame, t0, window_s)
+        values = pd.to_numeric(frame["value"], errors="coerce")
+        good = np.isfinite(values)
+        medians = values[good].groupby(index[good]).median().sort_index()
+        row: dict = {
+            "experiment": record.experiment,
+            "tag": tag,
+            "n_windows": len(medians),
+            "median_first_10": r4(medians.iloc[:edge].median()) if len(medians) else None,
+            "median_last_10": r4(medians.iloc[-edge:].median()) if len(medians) else None,
+            "change": r4(medians.iloc[-edge:].median() - medians.iloc[:edge].median())
+            if len(medians)
+            else None,
+            "spearman_rho": r4(spearman(medians.to_numpy(), medians.index.to_numpy())),
+            "refusal": "",
+        }
+        reasons = []
+        for start, end in DRIFT_BASELINES:
+            tail = f"min_{start}_{end}"
+            base = values[good & (index >= start) & (index < end)].to_numpy(dtype=float)
+            centre = float(np.median(base)) if base.size else 0.0
+            scale = 1.4826 * float(np.median(np.abs(base - centre))) if base.size else 0.0
+            later = sorted(int(i) for i in set(index[good & (index >= end)]))
+            if base.size == 0 or scale <= 0 or not later:
+                row[f"share_flagged_{tail}"] = None
+                row[f"n_later_{tail}"] = len(later)
+                reasons.append(f"baseline {start}-{end}: {REFUSAL_ZERO_MAD_BASELINE}")
+                continue
+            per_window = {}
+            for i in later:
+                block = values[good & (index == i)].to_numpy(dtype=float)
+                per_window[i] = bool(np.max(np.abs(block - centre)) / scale > k_mad)
+            flags[start][tag] = per_window
+            row[f"share_flagged_{tail}"] = r4(np.mean(list(per_window.values())))
+            row[f"n_later_{tail}"] = len(later)
+        row["refusal"] = "; ".join(reasons)
+        rows.append(row)
+    combined: dict = {
+        "experiment": record.experiment,
+        "tag": DRIFT_COMBINED,
+        "n_windows": None,
+        "median_first_10": None,
+        "median_last_10": None,
+        "change": None,
+        "spearman_rho": None,
+        "refusal": "",
+    }
+    for start, end in DRIFT_BASELINES:
+        tail = f"min_{start}_{end}"
+        per_tag = flags[start]
+        shared = sorted(set.intersection(*(set(v) for v in per_tag.values()))) if per_tag else []
+        combined[f"share_flagged_{tail}"] = (
+            r4(np.mean([any(per_tag[t][i] for t in per_tag) for i in shared])) if shared else None
+        )
+        combined[f"n_later_{tail}"] = len(shared)
+    rows.append(combined)
+    return rows
+
+
+def window_max_tag_rows(tag_scores: pd.DataFrame) -> list[dict]:
+    """Share of scored windows on which each tag holds the per-tag maximum.
+
+    ``screen`` takes the maximum over the usable tags, so the winner is the tag
+    that sets the window score. ``spc`` sums the hits, so the winner is only the
+    tag contributing the most of them.
+    """
+    if tag_scores.empty:
+        return []
+    statistic = {TOOL_SCREEN: "largest robust z", TOOL_SPC: "largest rule-hit count"}
+    rows: list[dict] = []
+    for tool, sub in tag_scores.groupby("tool", sort=True):
+        sub = sub.sort_values(["experiment", "window_index", "tag"])
+        winners = sub.loc[sub.groupby(["experiment", "window_index"])["score"].idxmax(), "tag"]
+        total = len(winners)
+        counts = winners.value_counts()
+        for tag in sorted(counts.index):
+            rows.append(
+                {
+                    "tool": tool,
+                    "statistic": statistic.get(tool, "largest per-tag score"),
+                    "tag": tag,
+                    "n_windows": int(counts[tag]),
+                    "n_windows_total": total,
+                    "share": r4(counts[tag] / total) if total else None,
+                }
+            )
+    return rows
+
+
+def stream_layout_rows(record: Record, k: int) -> dict | None:
+    """Where the anomaly windows sit inside one record's stream."""
+    stream = record.windows[record.windows["role"] == ROLE_STREAM].sort_values("window_index")
+    if stream.empty:
+        return None
+    labels = stream["label"].to_numpy()
+    positive = np.flatnonzero(labels)
+    n_spans = 0
+    if positive.size:
+        n_spans = 1 + int((np.diff(positive) > 1).sum())
+    first = int(positive[0]) if positive.size else None
+    last = int(positive[-1]) if positive.size else None
+    return {
+        "experiment": record.experiment,
+        "folder": record.folder,
+        "group": record.group,
+        "n_stream": len(stream),
+        "n_pre": first if first is not None else len(stream),
+        "n_span": (last - first + 1) if positive.size else 0,
+        "n_post": (len(stream) - 1 - last) if positive.size else 0,
+        "n_spans": n_spans,
+    }
+
+
+PHASE_PRE = "pre_onset"
+PHASE_SPAN = "in_span"
+PHASE_POST = "post_span"
+
+
+def score_by_phase_rows(scores: pd.DataFrame, windows: pd.DataFrame) -> list[dict]:
+    """Median scored-window score per tool in each phase of the labelled records.
+
+    A score is only comparable with itself, so the medians are read down a tool's
+    own column, never across tools.
+    """
+    if scores.empty or windows.empty:
+        return []
+    span: dict[str, tuple[int, int]] = {}
+    labelled = windows[windows["group"] == GROUP_LABELLED]
+    for experiment, sub in labelled.groupby("experiment", sort=True):
+        positive = sub.loc[sub["label"] == 1, "window_index"]
+        if not positive.empty:
+            span[experiment] = (int(positive.min()), int(positive.max()))
+    stream = scores[(scores["role"] == ROLE_STREAM) & (scores["group"] == GROUP_LABELLED)]
+    stream = stream[stream["refusal"] == ""]
+    rows: list[dict] = []
+    for tool in TOOLS:
+        sub = stream[stream["tool"] == tool]
+        buckets: dict[str, list[float]] = {PHASE_PRE: [], PHASE_SPAN: [], PHASE_POST: []}
+        for r in sub.itertuples():
+            bounds = span.get(r.experiment)
+            if bounds is None:
+                continue
+            first, last = bounds
+            index = int(r.window_index)
+            phase = PHASE_PRE if index < first else PHASE_SPAN if index <= last else PHASE_POST
+            buckets[phase].append(float(r.score))
+        for phase in (PHASE_PRE, PHASE_SPAN, PHASE_POST):
+            values = np.array(buckets[phase], dtype=float)
+            rows.append(
+                {
+                    "tool": tool,
+                    "phase": phase,
+                    "n_windows": int(values.size),
+                    "median_score": r4(np.median(values)) if values.size else None,
+                    "p25_score": r4(np.percentile(values, 25)) if values.size else None,
+                    "p75_score": r4(np.percentile(values, 75)) if values.size else None,
+                }
+            )
+    return rows
+
+
 # ---------------------------------------------------------------- conformal
 
 
@@ -929,6 +1133,10 @@ class StudyResult:
     conformal: pd.DataFrame
     conformal_summary: pd.DataFrame
     permutation: pd.DataFrame
+    drift: pd.DataFrame
+    window_max_tag: pd.DataFrame
+    stream_layout: pd.DataFrame
+    score_by_phase: pd.DataFrame
     counts: dict
 
 
@@ -953,10 +1161,16 @@ def run_study(
 
     all_windows, all_scores, usability, per_record, tag_scores = [], [], [], [], []
     conformal_rows, permutation_rows = [], []
+    drift, layout = [], []
     for record in records:
         record.windows = build_windows(record, window_s, k)
         record.group = assign_group(record, k)
         all_windows.append(record.windows.assign(group=record.group))
+        if record.is_anomaly_free:
+            drift.extend(drift_rows(record, window_s, k_mad))
+        row = stream_layout_rows(record, k)
+        if row is not None:
+            layout.append(row)
         if record.group == GROUP_SHORT:
             reason = f"record has {len(record.windows)} window(s); the first {k} are the baseline"
             tools = {tool: ToolScores() for tool in TOOLS}
@@ -1009,18 +1223,23 @@ def run_study(
         },
         "unusable_tags": int(sum(1 for r in usability if not r["usable"])),
     }
+    tag_score_frame = pd.DataFrame(tag_scores)
     return StudyResult(
         profile_per_tag=profile_frame,
         profile_summary=profile_summary(profile_frame),
         windows=windows,
         scores=scores,
         tag_usability=pd.DataFrame(usability),
-        tag_scores=pd.DataFrame(tag_scores),
+        tag_scores=tag_score_frame,
         per_record=per_record_frame,
         summary=summary,
         conformal=conformal,
         conformal_summary=conformal_summary(conformal, permutation),
         permutation=permutation,
+        drift=pd.DataFrame(drift),
+        window_max_tag=pd.DataFrame(window_max_tag_rows(tag_score_frame)),
+        stream_layout=pd.DataFrame(layout),
+        score_by_phase=pd.DataFrame(score_by_phase_rows(scores, windows)),
         counts=counts,
     )
 
@@ -1039,6 +1258,10 @@ def write_result(result: StudyResult, out: Path) -> None:
         "conformal.csv": result.conformal,
         "conformal_summary.csv": result.conformal_summary,
         "permutation.csv": result.permutation,
+        "drift.csv": result.drift,
+        "window_max_tag.csv": result.window_max_tag,
+        "stream_layout.csv": result.stream_layout,
+        "score_by_phase.csv": result.score_by_phase,
     }
     for name, frame in files.items():
         frame.to_csv(out / name, index=False, lineterminator="\n")

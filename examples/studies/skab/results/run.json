@@ -1,6 +1,6 @@
 {
   "code": {
-    "git_head": "13069b5d79dcc35898bbde5a3fc130c6a7d1e127",
+    "git_head": "0969513e7439a84c52ab3cb3ff39247137bb9956",
     "tsdive_version": "0.3.0"
   },
   "counts": {
@@ -47,5 +47,5 @@
   },
   "upstream_commit": "b2c0d46c2971dcbfe71e26087b6d231998bb91c2",
   "upstream_repo": "waico/SKAB",
-  "wall_seconds": 313.4
+  "wall_seconds": 311.7
 }

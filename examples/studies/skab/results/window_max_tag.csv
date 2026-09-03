@@ -1,0 +1,15 @@
+tool,statistic,tag,n_windows,n_windows_total,share
+screen,largest robust z,Accelerometer1RMS,51,845,0.0604
+screen,largest robust z,Accelerometer2RMS,39,845,0.0462
+screen,largest robust z,Current,50,845,0.0592
+screen,largest robust z,Temperature,146,845,0.1728
+screen,largest robust z,Thermocouple,321,845,0.3799
+screen,largest robust z,Voltage,34,845,0.0402
+screen,largest robust z,Volume Flow RateRMS,204,845,0.2414
+spc,largest rule-hit count,Accelerometer1RMS,155,845,0.1834
+spc,largest rule-hit count,Accelerometer2RMS,37,845,0.0438
+spc,largest rule-hit count,Current,38,845,0.045
+spc,largest rule-hit count,Temperature,251,845,0.297
+spc,largest rule-hit count,Thermocouple,264,845,0.3124
+spc,largest rule-hit count,Voltage,7,845,0.0083
+spc,largest rule-hit count,Volume Flow RateRMS,93,845,0.1101

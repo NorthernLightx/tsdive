@@ -60,7 +60,7 @@ uv run python examples/studies/skab/run_skab.py
 uv run python examples/studies/skab/make_report.py --update-benchmarks
 ```
 
-The scoring run takes 313.4 s. Two runs write byte-identical CSVs.
+The scoring run takes 311.7 s. Two runs write byte-identical CSVs.
 
 ## Results
 
@@ -98,6 +98,59 @@ The clock control fires on every stream window (FAR 100.0%, recovered 0.0%), whi
 | MSPC SPE | 0 / 164 | refused | refused |
 | clock control | 164 / 0 | 2.000 | 100.0% (+0.750 over the 25.0% floor, 164 windows) |
 
+### Level movement on the anomaly-free record
+
+| tag | median, first 10 min | median, last 10 min | change | Spearman rho | flagged after a baseline at min 0-3 (164 min) | min 3-6 (161 min) | min 60-63 (104 min) |
+|---|---|---|---|---|---|---|---|
+| `Accelerometer1RMS` | 0.202 | 0.217 | +0.015 | 0.68 | 92.1% | 97.5% | 72.1% |
+| `Accelerometer2RMS` | 0.277 | 0.271 | -0.005 | -0.66 | 97.6% | 100.0% | 59.6% |
+| `Current` | 2.549 | 2.606 | +0.057 | -0.09 | 76.2% | 99.4% | 45.2% |
+| `Pressure` | 0.055 | 0.055 | +0.000 | 0.13 | refused | refused | refused |
+| `Temperature` | 90.954 | 88.862 | -2.091 | -0.91 | 89.6% | 91.3% | 14.4% |
+| `Thermocouple` | 26.996 | 29.353 | +2.357 | 1.00 | 99.4% | 99.4% | 98.1% |
+| `Voltage` | 228.685 | 229.285 | +0.600 | 0.12 | 9.8% | 98.1% | 69.2% |
+| `Volume Flow RateRMS` | 122.000 | 126.323 | +4.323 | 0.80 | 98.2% | 98.1% | 55.8% |
+| max over usable tags |  |  |  |  | 100.0% | 100.0% | 100.0% |
+
+Each row is one tag on the anomaly-free record. The medians are of the per-minute medians over the first and last ten minutes. Spearman rho is the per-minute median against the minute index. A flagged share is the share of the minutes after the baseline whose largest |value - centre| / scale is above 3, with centre and scale from a three-minute MAD baseline at that position. `Thermocouple` rises from 27.0 to 29.4 over 167 minutes (rho 1.00) and `Temperature` falls from 91.0 to 88.9 (rho -0.91). The last row takes the maximum over the usable tags, the quantity `screen` scores, and flags 100.0%, 100.0% and 100.0% of the later minutes for the three baseline positions. `Pressure` has a zero MAD in every baseline, so its shares are refusals (`refusal` in `drift.csv`).
+
+### Which tag sets the window score
+
+| tag | MAD screen: largest robust z | SPC rules: largest rule-hit count |
+|---|---|---|
+| `Thermocouple` | 38.0% (321) | 31.2% (264) |
+| `Volume Flow RateRMS` | 24.1% (204) | 11.0% (93) |
+| `Temperature` | 17.3% (146) | 29.7% (251) |
+| `Accelerometer1RMS` | 6.0% (51) | 18.3% (155) |
+| `Current` | 5.9% (50) | 4.5% (38) |
+| `Accelerometer2RMS` | 4.6% (39) | 4.4% (37) |
+| `Voltage` | 4.0% (34) | 0.8% (7) |
+
+Share of the 845 scored windows on which the tag holds the per-tag maximum, over all records. `screen` takes the maximum over the usable tags, so that tag sets the window score. `spc` sums the rule hits, so that tag contributes the most of them.
+
+### Where the anomaly span sits in the stream
+
+| per labelled record | mean | median | min | max |
+|---|---|---|---|---|
+| stream windows | 17.1 | 17.0 | 11 | 21 |
+| pre-onset windows | 6.9 | 7.0 | 2 | 11 |
+| in-span windows | 7.5 | 8.0 | 5 | 11 |
+| post-span windows | 2.7 | 3.0 | 0 | 5 |
+
+Over the 34 labelled records, 4 have no window after the anomaly span and 1 (`valve2/1`) holds more than one span.
+
+### Score by phase
+
+| tool | pre-onset median (windows) | in-span median (windows) | post-span median (windows) | post-span / in-span |
+|---|---|---|---|---|
+| MAD screen | 6.37 (230) | 19.20 (255) | 12.81 (92) | 0.667 |
+| SPC rules | 45.50 (230) | 116.00 (255) | 93.50 (92) | 0.806 |
+| MSPC T2 | 1.00 (174) | 0.99 (182) | 0.98 (46) | 0.997 |
+| MSPC SPE | 0.84 (174) | 2.93 (182) | 0.89 (46) | 0.304 |
+| clock control | 6.00 (233) | 13.00 (256) | 18.00 (92) | 1.385 |
+
+Median window score over the labelled records' scored stream windows before the first anomaly window, inside the span and after the last anomaly window. A score is only comparable with itself, so read along a row, never down a column.
+
 ### Refusals
 
 | tool | stream windows refused | cause (windows) |
@@ -125,16 +178,17 @@ Figure 1: `valve1/0`, one window score per tool with its own threshold; the base
 
 ## Discussion
 
-The clock control scores ROC-AUC 0.716 and fires on 100.0% of the pre-onset windows. On 3W the same control outscored every detector because the fault, once present, stayed to the end of the instance. On SKAB the records return to normal, so position stops at 0.716 and a detector has to beat that number to have read anything from the sensors. The gap is +0.019 for SPC rules.
+The clock control scores ROC-AUC 0.716 and fires on 100.0% of the pre-onset windows. On 3W the same control outscored every detector because the fault, once present, stayed to the end of the instance. On SKAB the records return to normal, so position stops at 0.716 and a detector has to beat that number to have read anything from the sensors. The gap is +0.019 for SPC rules. The anomaly span starts after a mean 6.9 pre-onset windows, covers 7.5 and leaves 2.7 post-span windows of a mean 17.1-window stream (`stream_layout.csv`), so the post-span stretch is short and position still orders most anomaly windows above the normal ones.
 
-The alarm rule is a different story from the ranking. The MAD screen fires on 56.1% of the pre-onset windows and 74.7% of the post-recovery windows; the per-tag scores in `tag_scores.csv` show which tag carries the largest z. A drifting tag, such as a temperature that rises through the record, pushes the largest z above any threshold set on the first three minutes, whether or not a fault is present. MSPC T2 fires on 31.0% before onset and detects 53.8% of the records, with 23.9% after recovery.
+The MAD screen fires on 56.1% of the pre-onset windows, 74.7% of the post-recovery windows and 99.4% of the anomaly-free stream. Two tags change level over the anomaly-free record. The `Thermocouple` minute median rises from 27.0 to 29.4 over 167 minutes, Spearman 1.00 against the minute index, and `Temperature` falls from 91.0 to 88.9 (-0.91). A three-minute MAD baseline at minutes 0-3, 3-6 or 60-63 leaves 100.0%, 100.0% and 100.0% of the later minutes above 3 MAD on the maximum over the usable tags (`drift.csv`). A baseline an hour into the record gives the same share as one at the start, so the false-alarm rates on the anomaly-free record and before onset measure that level movement wherever the baseline sits. The tag holding the screen's window maximum is `Thermocouple` on 38.0%, `Volume Flow RateRMS` on 24.1% and `Temperature` on 17.3% of the 845 scored windows (`window_max_tag.csv`). MSPC T2 fires on 31.0% before onset and detects 53.8% of the records, with 23.9% after recovery.
 
 The profile found the two low-information sensors (`Pressure` in 35 of 35 records, `Volume Flow RateRMS` in 1 of 35 records) and the 4 gapped records before any detector ran. The refusal rows carry them through the tables. A zero baseline scale leaves `Pressure` in 30 records, `Volume Flow RateRMS` in 13 records out of a score, and a window inside a gap is refused by name.
 
 ## Limits
 
 - SKAB is a testbed with 34 short records; a 60 s window and a three-window baseline leave 7 to 9 pre-onset windows per record, so every FAR is read against a 25.0% floor.
-- The baseline is the first three minutes by position, which on this bed includes start-up behaviour; a tag that drifts over the record makes every later window an outlier under a static MAD baseline.
+- The baseline is the first three minutes of each record by position and its centre and scale are static. `Thermocouple` moves +2.36 and `Temperature` -2.09 over the anomaly-free record, and the maximum over the usable tags stays above 3 MAD on 100.0% of the later minutes for a baseline placed at minutes 60-63, so the level movement sets the `screen` and `spc` false-alarm rates.
+- The label end may precede the physical recovery of the loop, so a recovered rate read against the labels understates recovery to the pre-fault state. The post-span median score over the in-span median is 0.667 for MAD screen, 0.806 for SPC rules, 0.997 for MSPC T2, 0.304 for MSPC SPE and 1.385 for clock control (`score_by_phase.csv`).
 - `mspc` refuses a baseline whose aligned coverage is under 0.95, so the gapped records and the anomaly-free record carry no MSPC number.
 - The anomaly label is per row and the window label is any anomaly row; the majority label is reported beside it and moves the AUC little.
 - Timestamps are naive and localised as UTC; nothing here depends on the offset.
@@ -154,6 +208,10 @@ The profile found the two low-information sensors (`Pressure` in 35 of 35 record
 | `results/conformal.csv` | the conformal bed per record and delta |
 | `results/conformal_summary.csv` | the conformal bed per group and delta |
 | `results/permutation.csv` | the permutation check per record, delta, seed |
+| `results/drift.csv` | level movement per tag on the anomaly-free record |
+| `results/window_max_tag.csv` | the tag holding the per-tag maximum per window |
+| `results/stream_layout.csv` | pre, span and post window counts per record |
+| `results/score_by_phase.csv` | median score per tool and phase |
 | `results/run.json` | provenance, parameters, counts, wall seconds |
 | `results/benchmarks_section.md` | the BENCHMARKS.md REAL section |
 | `out/01_score_trace.png` | Figure 1 |

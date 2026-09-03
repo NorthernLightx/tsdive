@@ -75,6 +75,7 @@ def load(results: Path) -> dict:
         "profile_per_tag.csv", "profile_summary.csv", "windows.csv", "scores.csv",
         "tag_usability.csv", "tag_scores.csv", "per_record.csv", "summary.csv",
         "conformal.csv", "conformal_summary.csv", "permutation.csv",
+        "drift.csv", "window_max_tag.csv", "stream_layout.csv", "score_by_phase.csv",
     )}
     for name in ("scores", "per_record", "tag_usability"):
         frame = data[name]
@@ -344,6 +345,121 @@ def conformal_table(summary: pd.DataFrame) -> str:
 # ---------------------------------------------------------------- figure
 
 
+def drift_table(drift: pd.DataFrame) -> str:
+    def level(value, nd: int) -> str:
+        return "" if value is None or pd.isna(value) else fmt(value, nd)
+
+    rows = []
+    for r in drift.itertuples():
+        name = r.tag if r.tag == rs.DRIFT_COMBINED else f"`{r.tag}`"
+        rows.append(
+            (
+                name,
+                level(r.median_first_10, 3),
+                level(r.median_last_10, 3),
+                "" if pd.isna(r.change) else signed(r.change),
+                level(r.spearman_rho, 2),
+                pct(r.share_flagged_min_0_3),
+                pct(r.share_flagged_min_3_6),
+                pct(r.share_flagged_min_60_63),
+            )
+        )
+    later = drift.iloc[0]
+    return table(
+        [
+            "tag",
+            "median, first 10 min",
+            "median, last 10 min",
+            "change",
+            "Spearman rho",
+            f"flagged after a baseline at min 0-3 ({num(later.n_later_min_0_3)} min)",
+            f"min 3-6 ({num(later.n_later_min_3_6)} min)",
+            f"min 60-63 ({num(later.n_later_min_60_63)} min)",
+        ],
+        rows,
+    )
+
+
+def window_max_table(window_max: pd.DataFrame) -> str:
+    by_tool = {tool: sub.set_index("tag") for tool, sub in window_max.groupby("tool")}
+    screen = by_tool.get(rs.TOOL_SCREEN, pd.DataFrame())
+    spc = by_tool.get(rs.TOOL_SPC, pd.DataFrame())
+    tags = sorted(
+        set(screen.index) | set(spc.index),
+        key=lambda t: -float(screen["share"].get(t, 0.0)),
+    )
+
+    def cell(frame: pd.DataFrame, tag: str) -> str:
+        if tag not in frame.index:
+            return "0 windows"
+        r = frame.loc[tag]
+        return f"{pct(r.share)} ({num(r.n_windows)})"
+
+    return table(
+        [
+            "tag",
+            f"{SHORT_LABELS[rs.TOOL_SCREEN]}: largest robust z",
+            f"{SHORT_LABELS[rs.TOOL_SPC]}: largest rule-hit count",
+        ],
+        [(f"`{t}`", cell(screen, t), cell(spc, t)) for t in tags],
+    )
+
+
+def stream_layout_table(layout: pd.DataFrame) -> str:
+    rows = []
+    for column, label in (
+        ("n_stream", "stream windows"),
+        ("n_pre", "pre-onset windows"),
+        ("n_span", "in-span windows"),
+        ("n_post", "post-span windows"),
+    ):
+        values = layout[column].astype(float)
+        rows.append(
+            (
+                label,
+                fmt(values.mean(), 1),
+                fmt(values.median(), 1),
+                num(values.min()),
+                num(values.max()),
+            )
+        )
+    return table(["per labelled record", "mean", "median", "min", "max"], rows)
+
+
+def phase_table(phase: pd.DataFrame) -> str:
+    rows = []
+    for tool in rs.TOOLS:
+        sub = phase[phase["tool"] == tool].set_index("phase")
+        if sub.empty:
+            continue
+
+        def cell(name: str, frame: pd.DataFrame = sub) -> str:
+            r = frame.loc[name]
+            return f"{fmt(r.median_score, 2)} ({num(r.n_windows)})"
+
+        span = float(sub.loc[rs.PHASE_SPAN, "median_score"])
+        post = float(sub.loc[rs.PHASE_POST, "median_score"])
+        rows.append(
+            (
+                SHORT_LABELS[tool],
+                cell(rs.PHASE_PRE),
+                cell(rs.PHASE_SPAN),
+                cell(rs.PHASE_POST),
+                fmt(post / span, 3) if span else "refused",
+            )
+        )
+    return table(
+        [
+            "tool",
+            "pre-onset median (windows)",
+            "in-span median (windows)",
+            "post-span median (windows)",
+            "post-span / in-span",
+        ],
+        rows,
+    )
+
+
 def plot_trace(data: dict, out: Path) -> str | None:
     scores = data["scores"]
     per_record = data["per_record"]
@@ -499,6 +615,38 @@ def render_report(data: dict, figure_record: str | None) -> str:
         f"({', '.join(f'`{r}`' for r in recs)})"
         for recs, tools in by_records.items()
     )
+    screen_free = s(rs.TOOL_SCREEN, rs.GROUP_ANOMALY_FREE)
+    drift = data["drift"]
+    drift_tags = drift[drift["tag"] != rs.DRIFT_COMBINED]
+    combined = drift[drift["tag"] == rs.DRIFT_COMBINED].iloc[0]
+    rising = drift_tags.loc[drift_tags["spearman_rho"].idxmax()]
+    falling = drift_tags.loc[drift_tags["spearman_rho"].idxmin()]
+    zero_mad_tags = ", ".join(
+        f"`{t}`" for t in drift_tags[drift_tags["refusal"].fillna("") != ""]["tag"]
+    )
+    window_max = data["window_max_tag"]
+    screen_max = window_max[window_max["tool"] == rs.TOOL_SCREEN].sort_values(
+        "share", ascending=False
+    )
+    top_max = [f"`{r.tag}` on {pct(r.share)}" for r in screen_max.head(3).itertuples()]
+    top_max_text = ", ".join(top_max[:-1]) + " and " + top_max[-1]
+    layout = data["stream_layout"]
+    layout = layout[layout["group"] == rs.GROUP_LABELLED]
+    n_no_post = int((layout["n_post"] == 0).sum())
+    multi_span = layout[layout["n_spans"] > 1]
+    multi_span_text = ", ".join(
+        f"`{r.experiment.replace('__', '/')}`" for r in multi_span.itertuples()
+    )
+    phase = data["score_by_phase"]
+    ratio_parts = []
+    for tool in rs.TOOLS:
+        sub = phase[phase["tool"] == tool].set_index("phase")
+        if sub.empty:
+            continue
+        span_median = float(sub.loc[rs.PHASE_SPAN, "median_score"])
+        post_median = float(sub.loc[rs.PHASE_POST, "median_score"])
+        ratio_parts.append(f"{fmt(post_median / span_median, 3)} for {SHORT_LABELS[tool]}")
+    ratio_text = ", ".join(ratio_parts[:-1]) + " and " + ratio_parts[-1]
 
     lines = [
         "# The detectors and the clock control on SKAB",
@@ -655,6 +803,53 @@ def render_report(data: dict, figure_record: str | None) -> str:
         "",
         anomaly_free_table(summary, per_record),
         "",
+        "### Level movement on the anomaly-free record",
+        "",
+        drift_table(drift),
+        "",
+        "Each row is one tag on the anomaly-free record. The medians are of the "
+        "per-minute medians over the first and last ten minutes. Spearman rho is the "
+        "per-minute median against the minute index. A flagged share is the share of the "
+        "minutes after the baseline whose largest |value - centre| / scale is above "
+        f"{fmt(params['k_mad'], 0)}, with centre and scale from a three-minute MAD baseline "
+        f"at that position. `{rising.tag}` {'rises' if rising.change > 0 else 'falls'} "
+        f"from {fmt(rising.median_first_10, 1)} to {fmt(rising.median_last_10, 1)} over "
+        f"{num(rising.n_windows)} minutes (rho {fmt(rising.spearman_rho, 2)}) and "
+        f"`{falling.tag}` {'falls' if falling.change < 0 else 'rises'} from "
+        f"{fmt(falling.median_first_10, 1)} to {fmt(falling.median_last_10, 1)} "
+        f"(rho {fmt(falling.spearman_rho, 2)}). The last row takes the maximum over the "
+        "usable tags, the quantity `screen` scores, and flags "
+        f"{pct(combined.share_flagged_min_0_3)}, {pct(combined.share_flagged_min_3_6)} and "
+        f"{pct(combined.share_flagged_min_60_63)} of the later minutes for the three "
+        f"baseline positions. {zero_mad_tags} has a zero MAD in every baseline, so its "
+        "shares are refusals (`refusal` in `drift.csv`).",
+        "",
+        "### Which tag sets the window score",
+        "",
+        window_max_table(window_max),
+        "",
+        f"Share of the {num(screen_max['n_windows_total'].iloc[0])} scored windows on which "
+        "the tag holds the per-tag maximum, over all records. `screen` takes the maximum "
+        "over the usable tags, so that tag sets the window score. `spc` sums the rule hits, "
+        "so that tag contributes the most of them.",
+        "",
+        "### Where the anomaly span sits in the stream",
+        "",
+        stream_layout_table(layout),
+        "",
+        f"Over the {num(len(layout))} labelled records, {num(n_no_post)} have no window "
+        f"after the anomaly span and {num(len(multi_span))} "
+        f"({multi_span_text or 'none'}) {'holds' if len(multi_span) == 1 else 'hold'} more "
+        "than one span.",
+        "",
+        "### Score by phase",
+        "",
+        phase_table(phase),
+        "",
+        "Median window score over the labelled records' scored stream windows before the "
+        "first anomaly window, inside the span and after the last anomaly window. A score "
+        "is only comparable with itself, so read along a row, never down a column.",
+        "",
         "### Refusals",
         "",
         refusal_table(data["scores"]),
@@ -693,14 +888,31 @@ def render_report(data: dict, figure_record: str | None) -> str:
         f"{fmt(clock['roc_auc'])} and a detector has to beat that number to have read "
         "anything from the sensors. The gap is "
         f"{signed(float(s(best_auc)['roc_auc']) - float(clock['roc_auc']))} for "
-        f"{SHORT_LABELS[best_auc]}.",
+        f"{SHORT_LABELS[best_auc]}. The anomaly span starts after a mean "
+        f"{fmt(layout['n_pre'].mean(), 1)} pre-onset windows, covers "
+        f"{fmt(layout['n_span'].mean(), 1)} and leaves {fmt(layout['n_post'].mean(), 1)} "
+        f"post-span windows of a mean {fmt(layout['n_stream'].mean(), 1)}-window stream "
+        "(`stream_layout.csv`), so the post-span stretch is short and position still "
+        "orders most anomaly windows above the normal ones.",
         "",
-        "The alarm rule is a different story from the ranking. "
-        f"The MAD screen fires on {pct(screen['far_pre'])} of the pre-onset windows and "
-        f"{pct(screen['far_post'])} of the post-recovery windows; the per-tag scores in "
-        "`tag_scores.csv` show which tag carries the largest z. A drifting tag, such as a "
-        "temperature that rises through the record, pushes the largest z above any "
-        "threshold set on the first three minutes, whether or not a fault is present. "
+        f"The MAD screen fires on {pct(screen['far_pre'])} of the pre-onset windows, "
+        f"{pct(screen['far_post'])} of the post-recovery windows and "
+        f"{pct(screen_free['far_pre'])} of the anomaly-free stream. Two tags change level "
+        f"over the anomaly-free record. The `{rising.tag}` minute median "
+        f"{'rises' if rising.change > 0 else 'falls'} from {fmt(rising.median_first_10, 1)} "
+        f"to {fmt(rising.median_last_10, 1)} over {num(rising.n_windows)} minutes, Spearman "
+        f"{fmt(rising.spearman_rho, 2)} against the minute index, and `{falling.tag}` "
+        f"{'falls' if falling.change < 0 else 'rises'} from "
+        f"{fmt(falling.median_first_10, 1)} to {fmt(falling.median_last_10, 1)} "
+        f"({fmt(falling.spearman_rho, 2)}). A three-minute MAD baseline at minutes 0-3, 3-6 "
+        f"or 60-63 leaves {pct(combined.share_flagged_min_0_3)}, "
+        f"{pct(combined.share_flagged_min_3_6)} and {pct(combined.share_flagged_min_60_63)} "
+        "of the later minutes above 3 MAD on the maximum over the usable tags "
+        "(`drift.csv`). A baseline an hour into the record gives the same share as one at "
+        "the start, so the false-alarm rates on the anomaly-free record and before onset "
+        "measure that level movement wherever the baseline sits. The tag holding the "
+        f"screen's window maximum is {top_max_text} of the "
+        f"{num(screen_max['n_windows_total'].iloc[0])} scored windows (`window_max_tag.csv`). "
         f"MSPC T2 fires on {pct(t2['far_pre'])} before onset and detects "
         f"{pct(t2['detect_rate'])} of the records, with {pct(t2['far_post'])} after "
         "recovery.",
@@ -715,9 +927,16 @@ def render_report(data: dict, figure_record: str | None) -> str:
         "- SKAB is a testbed with 34 short records; a 60 s window and a three-window "
         "baseline leave 7 to 9 pre-onset windows per record, so every FAR is read against "
         f"a {pct(screen['far_floor'])} floor.",
-        "- The baseline is the first three minutes by position, which on this bed includes "
-        "start-up behaviour; a tag that drifts over the record makes every later window "
-        "an outlier under a static MAD baseline.",
+        "- The baseline is the first three minutes of each record by position and its "
+        f"centre and scale are static. `{rising.tag}` moves {signed(rising.change, 2)} and "
+        f"`{falling.tag}` {signed(falling.change, 2)} over the anomaly-free record, and the "
+        "maximum over the usable tags stays above 3 MAD on "
+        f"{pct(combined.share_flagged_min_60_63)} of the later minutes for a baseline placed "
+        "at minutes 60-63, so the level movement sets the `screen` and `spc` false-alarm "
+        "rates.",
+        "- The label end may precede the physical recovery of the loop, so a recovered rate "
+        "read against the labels understates recovery to the pre-fault state. The post-span "
+        f"median score over the in-span median is {ratio_text} (`score_by_phase.csv`).",
         "- `mspc` refuses a baseline whose aligned coverage is under 0.95, so the gapped "
         "records and the anomaly-free record carry no MSPC number.",
         "- The anomaly label is per row and the window label is any anomaly row; the "
@@ -740,6 +959,10 @@ def render_report(data: dict, figure_record: str | None) -> str:
                 ("`results/conformal.csv`", "the conformal bed per record and delta"),
                 ("`results/conformal_summary.csv`", "the conformal bed per group and delta"),
                 ("`results/permutation.csv`", "the permutation check per record, delta, seed"),
+                ("`results/drift.csv`", "level movement per tag on the anomaly-free record"),
+                ("`results/window_max_tag.csv`", "the tag holding the per-tag maximum per window"),
+                ("`results/stream_layout.csv`", "pre, span and post window counts per record"),
+                ("`results/score_by_phase.csv`", "median score per tool and phase"),
                 ("`results/run.json`", "provenance, parameters, counts, wall seconds"),
                 ("`results/benchmarks_section.md`", "the BENCHMARKS.md REAL section"),
                 (f"`out/{FIGURE_NAME}`", "Figure 1"),
