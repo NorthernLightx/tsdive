@@ -81,10 +81,10 @@ def _window_bound(name: str, text: str) -> pd.Timestamp:
 def _window_duration(text: str) -> pd.Timedelta:
     """Parse an ISO 8601 duration in days, hours, minutes and seconds.
 
-    Months and years are refused rather than approximated, and P1M is the
-    reason the units are read here instead of by ``pd.Timedelta``: pandas
-    reads P1M as one minute, so a caller who means a month would get a
-    60-second window and no warning.
+    A month or year unit raises ``ValueError`` naming the accepted units.
+    P1M is the reason the units are read here instead of by
+    ``pd.Timedelta``: pandas reads P1M as one minute, so a caller who
+    means a month would get a 60-second window and no warning.
     """
     match = _DURATION.match(text)
     parts = {k: float(v) for k, v in match.groupdict().items() if v} if match else {}
@@ -276,17 +276,18 @@ def _parse_timestamps(raw: pd.Series, column: str) -> list[pd.Timestamp]:
 
 
 def _to_utc(raw: pd.Series, tz: str | None, column: str) -> pd.Series:
-    """Parse a source timestamp column into UTC, or refuse.
+    """Parse a source timestamp column into UTC, or raise ``SchemaError``.
 
     Naive timestamps carry no offset, so tsdive cannot know what
     instant they name. With ``tz`` the caller states the source's zone and
-    the column is localised then converted; without it, the ingest is
-    refused rather than assuming UTC.
+    the column is localised then converted; without it, a naive column
+    raises ``SchemaError`` naming the column and the ``--tz`` flag.
 
     Rows with different UTC offsets all name real instants and are
     converted individually. A column that mixes naive and offset-bearing
-    rows is refused: ``tz`` would have to be applied to some rows and not
-    others, and the export is telling two stories about its own clock.
+    rows raises ``SchemaError``: ``tz`` would have to be applied to some
+    rows and not others, and the export is telling two stories about its
+    own clock.
     """
     stamps = _parse_timestamps(raw, column)
     aware = [ts.tz is not None for ts in stamps]
