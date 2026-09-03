@@ -149,6 +149,11 @@ Verified on 2026-09-03 against commit
   manifest.
 - Convert: `uv run python examples/studies/skab/build_archives.py`.
   35 experiments, 280 archives, 0 refusals, 18 s.
+- Run: `uv run python examples/studies/skab/run_skab.py`. 35 records,
+  850 windows of 60 s, five tools, 313 s. It writes the tables to
+  `examples/studies/skab/results/`.
+- Read: `examples/studies/skab/REPORT.md` for the method, the tables,
+  the conformal bed and what the profile found before any detector ran.
 
 ### Layout
 
