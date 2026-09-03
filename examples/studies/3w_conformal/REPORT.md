@@ -29,6 +29,7 @@ Per instance and bed:
 6. `worst_baseline`: the window score is its largest sub-group nonconformity; the threshold is `worst_baseline_threshold` over the three baseline windows (in sample, as in the detector study); the alarm is the first stream window where `fires`. Floor `far_floor(3)` = 0.250.
 7. `clock`: the same martingale with nonconformity = position in the record (calibration 0 to 59, stream counting on). Reads no sensor value.
 8. `permutation`: calibration and stream scores concatenated, shuffled with `numpy.random.default_rng(seed)` for seeds 0 to 9, split back at the calibration length, then rule 5. Exchangeability then holds by construction.
+9. `reversed`: rule 5 with the first stream window as the calibration and the calibration window as the stream (a first stream window with fewer than 30 finite scores is a refusal). The outcome is `alarm` or `none`; no label is read. The scores are the same as in rule 5, so a forward rate far above the reversed one says the score grows with distance from the fit hours.
 
 Outcome per instance and rule: the first alarm only. An alarm in a window labelled 1 is a detection (aligned: post0 or post1), in a window labelled 0 a false alarm (aligned: pre), and no crossing is `none`. Rates are over the scored instances of the group. On the aligned bed an instance whose alarm falls in the pre window is a false alarm and is not also a detection; the column `crossed by end of post1` counts an alarm in any of the three stream windows.
 
@@ -39,7 +40,7 @@ uv run python examples/studies/3w_conformal/run_conformal.py
 uv run python examples/studies/3w_conformal/make_report.py --update-benchmarks
 ```
 
-The run takes 20.0 s. Two runs write byte-identical CSVs; the study checked this with a second run into a scratch directory and `cmp` on every file.
+The run takes 21.5 s. Two runs write byte-identical CSVs; the study checked this with a second run into a scratch directory and `cmp` on every file.
 
 ## Results
 
@@ -85,15 +86,30 @@ The detector-study rows come from its frozen `results/aligned_summary.csv` (vari
 
 | rule | delta | scored | crossed by end of post1 | FAR on pre | over floor | detect post0 | detect post1 | median max log10 M | source |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| conformal martingale | 0.05 | 48 of 48 | 85.4% | 47.9% | +0.229 | 33.3% | 37.5% | 32.8 | this study, tsdive 0.2.0 @ `742c28ed` |
-| conformal martingale | 0.01 | 48 of 48 | 81.2% | 45.8% | +0.208 | 33.3% | 35.4% | 32.8 | this study, tsdive 0.2.0 @ `742c28ed` |
-| worst-baseline threshold |  | 48 of 48 | 89.6% | 52.1% | +0.271 | 33.3% | 37.5% |  | this study, tsdive 0.2.0 @ `742c28ed` |
-| clock control (position, no sensor read) | 0.05 | 48 of 48 | 100.0% | 100.0% | +0.750 | 0.0% | 0.0% | 182.6 | this study, tsdive 0.2.0 @ `742c28ed` |
-| clock control (position, no sensor read) | 0.01 | 48 of 48 | 100.0% | 100.0% | +0.750 | 0.0% | 0.0% | 182.6 | this study, tsdive 0.2.0 @ `742c28ed` |
-| permutation check (scores shuffled) | 0.05 | 48 of 48 | 0.00% |  |  |  |  |  | this study, tsdive 0.2.0 @ `742c28ed` |
-| permutation check (scores shuffled) | 0.01 | 48 of 48 | 0.00% |  |  |  |  |  | this study, tsdive 0.2.0 @ `742c28ed` |
+| conformal martingale | 0.05 | 48 of 48 | 85.4% | 47.9% | +0.229 | 33.3% | 37.5% | 32.8 | this study, tsdive 0.2.0 @ `5d40975e` |
+| conformal martingale | 0.01 | 48 of 48 | 81.2% | 45.8% | +0.208 | 33.3% | 35.4% | 32.8 | this study, tsdive 0.2.0 @ `5d40975e` |
+| worst-baseline threshold |  | 48 of 48 | 89.6% | 52.1% | +0.271 | 33.3% | 37.5% |  | this study, tsdive 0.2.0 @ `5d40975e` |
+| clock control (position, no sensor read) | 0.05 | 48 of 48 | 100.0% | 100.0% | +0.750 | 0.0% | 0.0% | 182.6 | this study, tsdive 0.2.0 @ `5d40975e` |
+| clock control (position, no sensor read) | 0.01 | 48 of 48 | 100.0% | 100.0% | +0.750 | 0.0% | 0.0% | 182.6 | this study, tsdive 0.2.0 @ `5d40975e` |
+| permutation check (scores shuffled) | 0.05 | 48 of 48 | 0.00% |  |  |  |  |  | this study, tsdive 0.2.0 @ `5d40975e` |
+| permutation check (scores shuffled) | 0.01 | 48 of 48 | 0.00% |  |  |  |  |  | this study, tsdive 0.2.0 @ `5d40975e` |
 | MAD screen, own history |  | 48 of 48 |  | 62.5% | +0.375 | 81.2% | 91.7% |  | detector study, tagledger 0.1.0 @ `edf2b4ad` |
 | SPC individuals rules, own history |  | 48 of 48 |  | 43.8% | +0.188 | 77.1% | 85.4% |  | detector study, tagledger 0.1.0 @ `edf2b4ad` |
+
+### Forward and reversed order
+
+The forward rate is the conformal rule's alarm rate over the whole stream (the `alarm rate` column above); the reversed rate calibrates on the first stream window and streams the calibration window, on the same scores.
+
+| bed | group | delta | scored (reversed) | forward alarm rate | reversed alarm rate | reversed median max log10 M |
+|---|---|---:|---:|---:|---:|---:|
+| own history | normal | 0.05 | 537 of 538 | 76.3% | 13.2% | -0.3 |
+| own history | normal | 0.01 | 537 of 538 | 73.9% | 11.0% | -0.3 |
+| own history | mixed | 0.05 | 53 of 53 | 100.0% | 7.5% | -0.3 |
+| own history | mixed | 0.01 | 53 of 53 | 100.0% | 5.7% | -0.3 |
+| own history | positive baseline | 0.05 | 54 of 54 | 61.1% | 7.4% | -0.3 |
+| own history | positive baseline | 0.01 | 54 of 54 | 57.4% | 5.6% | -0.3 |
+| aligned | aligned | 0.05 | 48 of 48 | 85.4% | 8.3% | -0.3 |
+| aligned | aligned | 0.01 | 48 of 48 | 81.2% | 6.2% | -0.3 |
 
 ### Permutation check
 
@@ -139,6 +155,8 @@ On the 53 mixed records the martingale fires before the fault on 71.7% and first
 
 On the aligned bed the martingale fires in the pre window on 47.9% of 48 instances at delta 0.05 (+0.229 over the 25.0% floor, 52.1% for the worst-baseline rule on the same scores) and first fires in post0 on 33.3%, by the end of post1 on 37.5%; by the end of post1 it has crossed at some point on 85.4%. The permutation check gives 0.00%. The detector study's MAD screen fires on 62.5% of the pre windows and the SPC rules on 43.8% under the worst-baseline rule. The clock fires in the pre window on every instance (100.0%).
 
+Reversing the order separates drift from spread. On the 505 normal records with one stream window the forward rule (calibrate on hour 3, stream hour 4) fires on 75.4% at delta 0.05; the reversed rule (calibrate on hour 4, stream hour 3) fires on 13.5% with the same fit and the same scores. Hour-to-hour spread alone would give near-equal rates in both directions. The asymmetry says the nonconformity grows with distance from the fit hours: the level moves away from the centre fitted on hours 1 and 2, so hour 4 outscores hour 3 and not the other way round. The clock row is the extreme case of the same mechanism, a score that grows with position by construction (100.0% forward). On the aligned bed the forward rule fires in the pre window on 47.9% and the reversed rule on 8.3%.
+
 What the numbers support: `conformal_p_values`, `mixture_martingale` and `martingale_alarm` hold their false-alarm bound when the calibration and stream scores are exchangeable, and a 3W own-history record scored this way is not exchangeable at the one-hour scale, so the bound does not transfer to it. What they do not support: a detection claim for the steady fault state (the aligned positives are the first two hours of a transient), a claim about the short instances, or a comparison of the bound with the floor as if they measured the same thing.
 
 ## Limits and further work
@@ -160,4 +178,4 @@ What the numbers support: `conformal_p_values`, `mixture_martingale` and `martin
 | `results/benchmarks_section.md` | the BENCHMARKS.md REAL section |
 | `results/run.json` | code head, tsdive version, cache and dataset manifest hashes, parameters, group and refusal counts, wall seconds |
 
-This study: tsdive 0.2.0 @ `742c28ed`. Detector-study rows: tagledger 0.1.0 @ `edf2b4ad`.
+This study: tsdive 0.2.0 @ `5d40975e`. Detector-study rows: tagledger 0.1.0 @ `edf2b4ad`.

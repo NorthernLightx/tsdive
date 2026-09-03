@@ -14,6 +14,9 @@ rules that share one nonconformity score:
 - ``permutation``: the conformal rule on the instance's own scores after
   a shuffle across the calibration and stream, ``--seeds`` times. This
   makes exchangeability true by construction and checks the bound.
+- ``reversed``: the conformal rule with the first stream window as the
+  calibration and the calibration window as the stream. A rate far below
+  the forward one says the scores grow with distance from the fit hours.
 
 Per instance the first two windows are the fit set (median and MAD per
 variable through ``mad_baseline``), the third is the calibration window
@@ -76,9 +79,11 @@ METHOD_CONFORMAL = "conformal"
 METHOD_WORST = "worst_baseline"
 METHOD_CLOCK = "clock"
 METHOD_PERMUTATION = "permutation"
+METHOD_REVERSED = "reversed"
 MARTINGALE_METHODS = (METHOD_CONFORMAL, METHOD_CLOCK)
-PER_INSTANCE_METHODS = (METHOD_CONFORMAL, METHOD_WORST, METHOD_CLOCK)
-OUTCOMES = ("false_alarm", "detection", "none", "refused")
+PER_INSTANCE_METHODS = (METHOD_CONFORMAL, METHOD_WORST, METHOD_CLOCK, METHOD_REVERSED)
+OUTCOMES = ("false_alarm", "detection", "alarm", "none", "refused")
+REVERSED_REFUSAL = "reversed"
 
 GROUP_NORMAL = "normal"
 GROUP_MIXED = "mixed"
@@ -202,6 +207,7 @@ class Scored:
     stream: np.ndarray
     stream_window: np.ndarray  # position in window_index for each stream score
     stream_subgroup: np.ndarray
+    calibration_subgroup: np.ndarray
     window_scores: list[float]  # max nonconformity per window, nan when no finite sub-group
     usable: list[str] = field(default_factory=list)
     unusable: dict[str, str] = field(default_factory=dict)
@@ -313,8 +319,8 @@ def score_instance(
     cols = [variables.index(v) for v in usable]
     fit_list = [fits[v] for v in usable]
     scores = [nonconformity(m[:, cols], fit_list) for m in matrices]
-    cal = scores[k - 1]
-    cal = cal[np.isfinite(cal)]
+    cal_subgroup = np.flatnonzero(np.isfinite(scores[k - 1]))
+    cal = scores[k - 1][cal_subgroup]
     if cal.size < MIN_CALIBRATION:
         return Refused(
             instance,
@@ -341,6 +347,7 @@ def score_instance(
         labels=labels,
         k=k,
         calibration=cal,
+        calibration_subgroup=cal_subgroup,
         stream=np.concatenate(stream_parts),
         stream_window=np.concatenate(pos_parts),
         stream_subgroup=np.concatenate(sub_parts),
@@ -473,6 +480,8 @@ def evaluate_instance(
         }
     )
 
+    rows += reversed_rows(scored, head, deltas)
+
     permutation: list[dict] = []
     pooled = np.concatenate([scored.calibration, scored.stream])
     for seed in range(seeds):
@@ -488,6 +497,52 @@ def evaluate_instance(
                 }
             )
     return rows, permutation
+
+
+def reversed_rows(scored: Scored, head: dict, deltas: tuple[float, ...]) -> list[dict]:
+    """The conformal rule with the first stream window and the calibration window swapped.
+
+    The outcome is ``alarm`` or ``none``; no label is read. The row is a
+    refusal when the first stream window has fewer than ``MIN_CALIBRATION``
+    finite scores. ``alarm_window`` and ``alarm_subgroup`` locate the alarm
+    in the calibration window.
+    """
+    first = scored.stream_window == scored.k
+    calibration = scored.stream[first]
+    base = {
+        **head,
+        "method": METHOD_REVERSED,
+        "n_stream_windows": scored.n_stream_windows,
+        "n_usable_variables": len(scored.usable),
+        "first_fault_window": None,
+        "alarm_window": None,
+        "alarm_subgroup": None,
+        "alarm_label": None,
+        "outcome": "none",
+        "delay_windows": None,
+        "max_log10_martingale": None,
+        "refusal": "",
+    }
+    if calibration.size < MIN_CALIBRATION:
+        reason = (
+            f"{REVERSED_REFUSAL}: first stream window has {calibration.size} finite sub-group "
+            f"scores; {MIN_CALIBRATION} required"
+        )
+        return [
+            {**base, "delta": delta, "outcome": "refused", "refusal": reason} for delta in deltas
+        ]
+    values = martingale_log10(calibration, scored.calibration)
+    peak = round(float(values.max()), 4) if values.size else None
+    rows = []
+    for delta in deltas:
+        idx = alarm_at(values, delta)
+        row = {**base, "delta": delta, "max_log10_martingale": peak}
+        if idx is not None:
+            row["outcome"] = "alarm"
+            row["alarm_window"] = scored.window_index[scored.k - 1]
+            row["alarm_subgroup"] = int(scored.calibration_subgroup[idx])
+        rows.append(row)
+    return rows
 
 
 def refused_rows(item: Refused, deltas: tuple[float, ...]) -> list[dict]:
@@ -507,7 +562,7 @@ def refused_rows(item: Refused, deltas: tuple[float, ...]) -> list[dict]:
         "refusal": item.reason,
     }
     rows = [{**head, "method": METHOD_WORST, "delta": None}]
-    for method in MARTINGALE_METHODS:
+    for method in (*MARTINGALE_METHODS, METHOD_REVERSED):
         rows += [{**head, "method": method, "delta": delta} for delta in deltas]
     return rows
 
@@ -566,7 +621,8 @@ def summarise(per_instance: pd.DataFrame, permutation: pd.DataFrame) -> pd.DataF
     fault, so no alarm there is a false one by the labels); ``detect`` is
     filled for ``mixed`` and ``aligned``; ``detect_post0`` and
     ``detect_post1`` for ``aligned`` only. ``permutation`` rows carry the
-    mean alarm fraction over seeds in ``alarm_rate``.
+    mean alarm fraction over seeds in ``alarm_rate``; ``reversed`` rows
+    carry the alarm rate only.
     """
     rows: list[dict] = []
     keyed = per_instance.assign(delta=per_instance["delta"].fillna(-1.0))
@@ -579,7 +635,7 @@ def summarise(per_instance: pd.DataFrame, permutation: pd.DataFrame) -> pd.DataF
         false_alarms = scored[scored["outcome"] == "false_alarm"]
         detections = scored[scored["outcome"] == "detection"]
         peak = None
-        if method in MARTINGALE_METHODS and n_scored:
+        if method in (*MARTINGALE_METHODS, METHOD_REVERSED) and n_scored:
             peak = round(float(scored["max_log10_martingale"].median()), 4)
         row = {
             "bed": bed,
@@ -600,6 +656,9 @@ def summarise(per_instance: pd.DataFrame, permutation: pd.DataFrame) -> pd.DataF
             "median_delay_windows": None,
             "median_max_log10_martingale": peak,
         }
+        if method == METHOD_REVERSED:
+            rows.append(row)
+            continue
         if group != GROUP_POSITIVE_BASELINE:
             row["far"] = _rate(len(false_alarms), n_scored)
         if group in (GROUP_MIXED, GROUP_ALIGNED):

@@ -34,6 +34,7 @@ RULE_LABELS = {
     rc.METHOD_CONFORMAL: "conformal martingale",
     rc.METHOD_WORST: "worst-baseline threshold",
     rc.METHOD_CLOCK: "clock control (position, no sensor read)",
+    rc.METHOD_REVERSED: "reversed order (calibrate on the first stream window)",
     rc.METHOD_PERMUTATION: "permutation check (scores shuffled)",
 }
 GROUP_LABELS = {
@@ -250,6 +251,69 @@ def permutation_table(data: dict) -> list[str]:
     )
 
 
+def reversed_rate(per_instance: pd.DataFrame, bed: str, delta: float, mask=None) -> float:
+    """Share of scored reversed rows with an alarm, over the rows ``mask`` keeps."""
+    g = per_instance[
+        (per_instance["bed"] == bed)
+        & (per_instance["method"] == rc.METHOD_REVERSED)
+        & (per_instance["delta"] == delta)
+        & (per_instance["outcome"] != "refused")
+    ]
+    if mask is not None:
+        g = g[mask(g)]
+    return float((g["outcome"] == "alarm").mean()) if len(g) else float("nan")
+
+
+def forward_rate(per_instance: pd.DataFrame, bed: str, delta: float, mask=None) -> float:
+    """Share of scored conformal rows with an alarm, over the rows ``mask`` keeps."""
+    g = per_instance[
+        (per_instance["bed"] == bed)
+        & (per_instance["method"] == rc.METHOD_CONFORMAL)
+        & (per_instance["delta"] == delta)
+        & (per_instance["outcome"] != "refused")
+    ]
+    if mask is not None:
+        g = g[mask(g)]
+    return float((g["outcome"] != "none").mean()) if len(g) else float("nan")
+
+
+def reversed_table(summary: pd.DataFrame, deltas: list[float]) -> list[str]:
+    """Forward alarm rate (any stream window) beside the reversed one, per group and delta."""
+    rows = []
+    for bed, groups in (
+        (rc.BED_OWN, (rc.GROUP_NORMAL, rc.GROUP_MIXED, rc.GROUP_POSITIVE_BASELINE)),
+        (rc.BED_ALIGNED, (rc.GROUP_ALIGNED,)),
+    ):
+        for group in groups:
+            for delta in deltas:
+                fwd = summary_row(summary, bed, group, rc.METHOD_CONFORMAL, delta)
+                rev = summary_row(summary, bed, group, rc.METHOD_REVERSED, delta)
+                rows.append(
+                    [
+                        bed.replace("_", " "),
+                        GROUP_LABELS[group],
+                        delta_cell(delta),
+                        f"{int(rev['n_scored'])} of {int(rev['n_instances'])}",
+                        pct(fwd["alarm_rate"]),
+                        pct(rev["alarm_rate"]),
+                        fmt(rev["median_max_log10_martingale"], 1),
+                    ]
+                )
+    return table(
+        [
+            "bed",
+            "group",
+            "delta",
+            "scored (reversed)",
+            "forward alarm rate",
+            "reversed alarm rate",
+            "reversed median max log10 M",
+        ],
+        ["---", "---", "---:", "---:", "---:", "---:", "---:"],
+        rows,
+    )
+
+
 def length_table(per_instance: pd.DataFrame, delta: float) -> list[str]:
     """FAR of the normal group by the number of stream windows, per rule."""
     normal = per_instance[
@@ -362,6 +426,13 @@ def render_report(data: dict) -> str:
         & (pi["method"] == rc.METHOD_WORST) & (pi["outcome"] != "refused")
     ]["first_fault_window"]
     det = data["det_summary"]
+    one_window = (pi["bed"] == rc.BED_OWN) & (pi["group"] == rc.GROUP_NORMAL) & (
+        pi["method"] == rc.METHOD_WORST
+    ) & (pi["outcome"] != "refused") & (pi["n_stream_windows"] == 1)
+    normal_one = lambda g: (g["group"] == rc.GROUP_NORMAL) & (g["n_stream_windows"] == 1)  # noqa: E731
+    fwd_one = forward_rate(pi, rc.BED_OWN, d0, normal_one)
+    rev_one = reversed_rate(pi, rc.BED_OWN, d0, normal_one)
+    rev_ali = reversed_rate(pi, rc.BED_ALIGNED, d0)
 
     add: list[str] = []
     p = add.append
@@ -473,6 +544,13 @@ def render_report(data: dict) -> str:
         f"`numpy.random.default_rng(seed)` for seeds 0 to {seeds - 1}, split back at the "
         "calibration length, then rule 5. Exchangeability then holds by construction."
     )
+    p(
+        f"9. `reversed`: rule 5 with the first stream window as the calibration and the "
+        f"calibration window as the stream (a first stream window with fewer than "
+        f"{rc.MIN_CALIBRATION} finite scores is a refusal). The outcome is `alarm` or `none`; "
+        "no label is read. The scores are the same as in rule 5, so a forward rate far above "
+        "the reversed one says the score grows with distance from the fit hours."
+    )
     p("")
     p(
         "Outcome per instance and rule: the first alarm only. An alarm in a window labelled 1 is "
@@ -529,6 +607,16 @@ def render_report(data: dict) -> str:
     )
     p("")
     add += aligned_table(data, deltas)
+    p("")
+    p("### Forward and reversed order")
+    p("")
+    p(
+        "The forward rate is the conformal rule's alarm rate over the whole stream (the "
+        "`alarm rate` column above); the reversed rate calibrates on the first stream window and "
+        "streams the calibration window, on the same scores."
+    )
+    p("")
+    add += reversed_table(summary, deltas)
     p("")
     p("### Permutation check")
     p("")
@@ -617,6 +705,20 @@ def render_report(data: dict) -> str:
             else ""
         )
         + f"The clock fires in the pre window on every instance ({pct(k_ali['far'])})."
+    )
+    p("")
+    p(
+        f"Reversing the order separates drift from spread. On the {int(one_window.sum())} normal "
+        f"records with one stream window the forward rule (calibrate on hour 3, stream hour 4) "
+        f"fires on {pct(fwd_one)} at delta {d0:g}; the reversed rule (calibrate on hour 4, "
+        f"stream hour 3) fires on {pct(rev_one)} with the same fit and the same scores. Hour-to-"
+        f"hour spread alone would give near-equal rates in both directions. The asymmetry says "
+        f"the nonconformity grows with distance from the fit hours: the level moves away from the "
+        f"centre fitted on hours 1 and 2, so hour 4 outscores hour 3 and not the other way "
+        f"round. The clock row is the extreme case of the same mechanism, a score that grows "
+        f"with position by construction ({pct(k_norm['far'])} forward). On the aligned bed the "
+        f"forward rule fires in the pre window on {pct(c_ali[d0]['far'])} and the reversed rule "
+        f"on {pct(rev_ali)}."
     )
     p("")
     p(
@@ -713,11 +815,13 @@ def render_benchmarks_section(data: dict) -> str:
     for d in deltas:
         c = row(rc.BED_OWN, rc.GROUP_NORMAL, rc.METHOD_CONFORMAL, d)
         pm = row(rc.BED_OWN, rc.GROUP_NORMAL, rc.METHOD_PERMUTATION, d)
+        rv = row(rc.BED_OWN, rc.GROUP_NORMAL, rc.METHOD_REVERSED, d)
         rows.append((
             "none",
             f"conformal martingale alarm, delta {d:g}: FAR over the whole normal record",
             f"FAR {pct(c['far'])} (bound {pct(d)}); permutation check {pct2(pm['alarm_rate'])} "
-            f"over {seeds} seeds",
+            f"over {seeds} seeds; reversed order (calibrate on the first stream window, stream "
+            f"the calibration window) {pct(rv['alarm_rate'])}",
             "own-history", own_split,
         ))
     w = row(rc.BED_OWN, rc.GROUP_NORMAL, rc.METHOD_WORST)

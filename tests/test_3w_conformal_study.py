@@ -129,7 +129,8 @@ def _row(per_instance: pd.DataFrame, bed: str, instance: str, method: str, delta
 def test_every_instance_has_a_row_per_method_and_delta(outputs):
     pi = outputs["per_instance"]
     assert set(pi["outcome"]) <= set(rc.OUTCOMES)
-    expected = {(rc.METHOD_WORST, None), *((m, d) for m in rc.MARTINGALE_METHODS for d in DELTAS)}
+    martingale = (*rc.MARTINGALE_METHODS, rc.METHOD_REVERSED)
+    expected = {(rc.METHOD_WORST, None), *((m, d) for m in martingale for d in DELTAS)}
     for bed in (rc.BED_OWN, rc.BED_ALIGNED):
         for instance in (STABLE, SHIFT, TIE, SHORT):
             g = pi[(pi["bed"] == bed) & (pi["instance"] == instance)]
@@ -152,6 +153,7 @@ def test_stable_instance_has_no_alarm_and_the_tie_variable_is_unusable(outputs):
     for bed in (rc.BED_OWN, rc.BED_ALIGNED):
         for delta in DELTAS:
             assert _row(pi, bed, STABLE, rc.METHOD_CONFORMAL, delta)["outcome"] == "none"
+            assert _row(pi, bed, STABLE, rc.METHOD_REVERSED, delta)["outcome"] == "none"
         assert _row(pi, bed, TIE, rc.METHOD_CONFORMAL, 0.05)["n_usable_variables"] == 5
         assert _row(pi, bed, STABLE, rc.METHOD_CONFORMAL, 0.05)["n_usable_variables"] == 6
 
@@ -191,6 +193,10 @@ def test_summary_arithmetic_matches_per_instance(outputs):
         assert row.n_instances == len(g)
         assert row.n_refused == (g["outcome"] == "refused").sum()
         assert row.n_alarm == (scored["outcome"] != "none").sum()
+        if row.method == rc.METHOD_REVERSED:
+            assert pd.isna(row.far) and pd.isna(row.detect)
+            assert set(scored["outcome"]) <= {"alarm", "none"}
+            continue
         if len(scored) and row.group != rc.GROUP_POSITIVE_BASELINE:
             far = (scored["outcome"] == "false_alarm").sum() / len(scored)
             assert row.far == pytest.approx(far, abs=1e-4)
