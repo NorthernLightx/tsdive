@@ -18,7 +18,7 @@ Stages 1 to 6 are reachable from the CLI (`profile`, `segment`, `screen`,
 `spc`, `mspc`, `compare`). Stage 7 is library-only, because it needs feature rows over
 many windows and the `ml` extra. Every stage ships benchmark rows in
 `BENCHMARKS.md`, computed from the deterministic synthetic backbone and
-compared byte for byte in CI. Three REAL sections follow the synthetic
+compared byte for byte in CI. The REAL sections follow the synthetic
 table, one per study in `examples/studies/`.
 
 Real-data numbers are published under group holdout by asset; each names
