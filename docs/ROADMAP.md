@@ -58,9 +58,12 @@ Parked, each with the measured reason:
   ships as a tool.
 
 Next beds: SKAB is the bed where records return to normal after a fault,
-and its numbers are in `examples/studies/skab/REPORT.md`. Still owed is a
-row that measures what the frozen-sensor and rounding checks change in
-the 3W detector numbers.
+and its numbers are in `examples/studies/skab/REPORT.md`. What the
+frozen-sensor and rounding checks change in the 3W detector numbers is
+measured in `examples/studies/3w_audit_effect/REPORT.md`: the zero-scale
+check drops 690 of 3,870 (instance, variable) pairs, and without it the
+MAD screen scores AUC 0.818 instead of 0.867 and detects 90.6% of the
+faults it now catches at 100%.
 
 ## Stage 0, sources
 
