@@ -119,6 +119,22 @@ is scored beside it as the exchangeability check.
   --update-benchmarks`.
 - Read: [3w_conformal/REPORT.md](../examples/studies/3w_conformal/REPORT.md).
 
+### Baseline drift on the own-history and onset-aligned windows
+
+Three own-history baselines scored by one code path over the same two
+caches: `static` fits the median and MAD of the first three windows'
+minute medians, `differenced` fits the same over the minute-to-minute
+differences, and `rolling` refits over the three windows before every
+scored window. The clock control sits beside them. The alarm rule needs
+seven windows, so it scores 25 of the 538 normal instances and 49 of the
+53 mixed ones; `rolling` is refused on the aligned cache, whose six
+windows leave no predecessors for a threshold window.
+
+- Run: `uv run python examples/studies/baseline_drift/run_drift.py`,
+  then `uv run python examples/studies/baseline_drift/make_report.py
+  --update-benchmarks`.
+- Read: [baseline_drift/REPORT.md](../examples/studies/baseline_drift/REPORT.md).
+
 ### Known upstream issues
 
 - The `dataset/folds` path 404s on `main` (fold splits were removed
@@ -154,6 +170,12 @@ Verified on 2026-09-03 against commit
   `examples/studies/skab/results/`.
 - Read: `examples/studies/skab/REPORT.md` for the method, the tables,
   the conformal bed and what the profile found before any detector ran.
+- Baseline drift: `uv run python
+  examples/studies/baseline_drift/run_drift.py` scores the same 850
+  windows under a static, a differenced and a rolling baseline in 4 s,
+  reading the minute median of each window rather than its 1 s samples.
+  Read:
+  [baseline_drift/REPORT.md](../examples/studies/baseline_drift/REPORT.md).
 
 ### Layout
 

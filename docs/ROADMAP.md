@@ -43,6 +43,15 @@ Parked, each with the measured reason:
 - Control-loop performance (Harris index, stiction). It waits for a loop
   archive with a loop schema. A candidate archive exists (Bauer 2019,
   IECR).
+- Moving baselines in the shipped tools. A baseline refitted over the
+  three windows before each scored window takes the false-alarm rate on
+  3W records with no fault window from 71.2% to 29.3% per window, and on
+  the SKAB anomaly-free record from 95.7% to 47.2%, against a 25.0%
+  floor. It also keeps a 3W fault above its threshold for a median of 2
+  consecutive fault windows where the static baseline keeps it for 10,
+  and it cannot be defined on the six-window onset-aligned design.
+  `screen` and `spc` keep the fixed history. Report:
+  `examples/studies/baseline_drift/REPORT.md`.
 - Zero-shot forecasters as shipped detectors. The Chronos-Bolt study
   gives the only false-alarm rate under the floor (18.2%) and a post1
   detection rate of 27.3%. It stays a benchmark subject. No forecaster
