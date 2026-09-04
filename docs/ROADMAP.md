@@ -18,7 +18,7 @@ Stages 1 to 6 are reachable from the CLI (`profile`, `segment`, `screen`,
 `spc`, `mspc`, `compare`). Stage 7 is library-only, because it needs feature rows over
 many windows and the `ml` extra. Every stage ships benchmark rows in
 `BENCHMARKS.md`, computed from the deterministic synthetic backbone and
-compared byte for byte in CI. Three REAL sections follow the synthetic
+compared byte for byte in CI. The REAL sections follow the synthetic
 table, one per study in `examples/studies/`.
 
 Real-data numbers are published under group holdout by asset; each names
@@ -43,15 +43,27 @@ Parked, each with the measured reason:
 - Control-loop performance (Harris index, stiction). It waits for a loop
   archive with a loop schema. A candidate archive exists (Bauer 2019,
   IECR).
+- Moving baselines in the shipped tools. A baseline refitted over the
+  three windows before each scored window takes the false-alarm rate on
+  3W records with no fault window from 71.2% to 29.3% per window, and on
+  the SKAB anomaly-free record from 95.7% to 47.2%, against a 25.0%
+  floor. It also keeps a 3W fault above its threshold for a median of 2
+  consecutive fault windows where the static baseline keeps it for 10,
+  and it cannot be defined on the six-window onset-aligned design.
+  `screen` and `spc` keep the fixed history. Report:
+  `examples/studies/baseline_drift/REPORT.md`.
 - Zero-shot forecasters as shipped detectors. The Chronos-Bolt study
   gives the only false-alarm rate under the floor (18.2%) and a post1
   detection rate of 27.3%. It stays a benchmark subject. No forecaster
   ships as a tool.
 
 Next beds: SKAB is the bed where records return to normal after a fault,
-and its numbers are in `examples/studies/skab/REPORT.md`. Still owed is a
-row that measures what the frozen-sensor and rounding checks change in
-the 3W detector numbers.
+and its numbers are in `examples/studies/skab/REPORT.md`. What the
+frozen-sensor and rounding checks change in the 3W detector numbers is
+measured in `examples/studies/3w_audit_effect/REPORT.md`: the zero-scale
+check drops 690 of 3,870 (instance, variable) pairs, and without it the
+MAD screen scores AUC 0.818 instead of 0.867 and detects 90.6% of the
+faults it now catches at 100%.
 
 ## Stage 0, sources
 

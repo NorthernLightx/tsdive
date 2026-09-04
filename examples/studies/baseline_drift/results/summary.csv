@@ -1,0 +1,23 @@
+bed,group,scoring,n_records,n_records_scored,n_records_refused,record_refusal,n_stream_windows,n_windows_scored,n_windows_refused,roc_auc,pr_auc,auc_refusal,n_pre_windows,far_window,far_record,far_floor,over_floor,n_detected,detect_rate,median_delay_windows,median_consecutive_fault_fires,n_post_windows,far_post,n_recovery_eligible,recovered_rate
+3w_own_history,mixed,static,53,49,4,record has 5 window(s); the rule needs 7 so three threshold windows sit after the baseline,2893,2893,0,0.8546,0.9777,,319,0.7085,0.5714,0.25,0.4585,48.0,0.9796,0.0,10.0,0.0,,0.0,
+3w_own_history,mixed,differenced,53,49,4,record has 5 window(s); the rule needs 7 so three threshold windows sit after the baseline,2893,2893,0,0.5688,0.9172,,319,0.4013,0.4082,0.25,0.1513,40.0,0.8163,0.5,2.0,0.0,,0.0,
+3w_own_history,mixed,rolling,53,49,4,record has 5 window(s); the rule needs 7 so three threshold windows sit after the baseline,2893,2893,0,0.575,0.9173,,319,0.279,0.4082,0.25,0.029,44.0,0.898,2.0,2.0,0.0,,0.0,
+3w_own_history,mixed,clock,53,49,4,record has 5 window(s); the rule needs 7 so three threshold windows sit after the baseline,2893,2893,0,0.893,0.9845,,319,1.0,0.6735,0.25,0.75,49.0,1.0,0.0,38.0,0.0,,0.0,
+3w_own_history,normal,static,538,25,513,record has 4 window(s); the rule needs 7 so three threshold windows sit after the baseline,372,372,0,,,fold under test carries one class only; no ranking metric exists,372,0.7124,0.6,0.25,0.4624,,,,,,,,
+3w_own_history,normal,differenced,538,25,513,record has 4 window(s); the rule needs 7 so three threshold windows sit after the baseline,372,372,0,,,fold under test carries one class only; no ranking metric exists,372,0.414,0.68,0.25,0.164,,,,,,,,
+3w_own_history,normal,rolling,538,25,513,record has 4 window(s); the rule needs 7 so three threshold windows sit after the baseline,372,372,0,,,fold under test carries one class only; no ranking metric exists,372,0.293,0.72,0.25,0.043,,,,,,,,
+3w_own_history,normal,clock,538,25,513,record has 4 window(s); the rule needs 7 so three threshold windows sit after the baseline,372,372,0,,,fold under test carries one class only; no ranking metric exists,372,1.0,1.0,0.25,0.75,,,,,,,,
+3w_own_history,positive_baseline,none,54,0,54,a fault row lies inside the baseline windows,0,0,0,,,a fault row lies inside the baseline windows,0,,,0.25,,,,,,,,,
+3w_own_history,short,none,468,0,468,"record has 3 window(s) or fewer, all of them baseline",0,0,0,,,fold under test carries one class only; no ranking metric exists,0,,,0.25,,,,,,,,,
+3w_aligned,aligned,static,48,48,0,,144,144,0,0.7423,0.845,,48,0.5417,0.5417,0.25,0.2917,40.0,0.8333,0.0,2.0,0.0,,0.0,
+3w_aligned,aligned,differenced,48,48,0,,144,144,0,0.6215,0.7587,,48,0.2917,0.2917,0.25,0.0417,29.0,0.6042,0.0,2.0,0.0,,0.0,
+3w_aligned,aligned,rolling,48,0,48,"no threshold window scored: a rolling baseline needs 3 windows before the scored window, and the threshold windows of this design are the instance's first three, which have no predecessors in the cache",144,0,144,,,no scored stream window,0,,,0.25,,,,,,,,,
+3w_aligned,aligned,clock,48,48,0,,144,144,0,1.0,1.0,,48,1.0,1.0,0.25,0.75,48.0,1.0,0.0,2.0,0.0,,0.0,
+skab,labelled,static,34,34,0,,479,477,2,0.6173,0.6853,,131,0.3664,0.5294,0.25,0.1164,28.0,0.8235,0.0,6.0,92.0,0.6739,26.0,0.3077
+skab,labelled,differenced,34,33,1,no threshold window scored: no usable variable has a finite minute median in this window,479,463,16,0.5466,0.6419,,131,0.2824,0.6364,0.25,0.0324,25.0,0.7576,1.0,2.0,87.0,0.3563,22.0,0.8636
+skab,labelled,rolling,34,33,1,no threshold window scored: no usable variable has a finite minute median in this window,479,476,3,0.5305,0.5701,,131,0.2901,0.6364,0.25,0.0401,28.0,0.8485,1.0,2.0,87.0,0.3678,25.0,0.76
+skab,labelled,clock,34,34,0,,479,479,0,0.5912,0.5505,,132,1.0,0.9706,0.25,0.75,34.0,1.0,0.0,8.0,92.0,1.0,30.0,0.0
+skab_anomaly_free,anomaly_free,static,1,1,0,,161,161,0,,,fold under test carries one class only; no ranking metric exists,161,0.9565,1.0,0.25,0.7065,,,,,,,,
+skab_anomaly_free,anomaly_free,differenced,1,1,0,,161,161,0,,,fold under test carries one class only; no ranking metric exists,161,0.6832,1.0,0.25,0.4332,,,,,,,,
+skab_anomaly_free,anomaly_free,rolling,1,1,0,,161,161,0,,,fold under test carries one class only; no ranking metric exists,161,0.472,1.0,0.25,0.222,,,,,,,,
+skab_anomaly_free,anomaly_free,clock,1,1,0,,161,161,0,,,fold under test carries one class only; no ranking metric exists,161,1.0,1.0,0.25,0.75,,,,,,,,

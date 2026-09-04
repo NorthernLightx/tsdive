@@ -119,6 +119,38 @@ is scored beside it as the exchangeability check.
   --update-benchmarks`.
 - Read: [3w_conformal/REPORT.md](../examples/studies/3w_conformal/REPORT.md).
 
+### Baseline drift on the own-history and onset-aligned windows
+
+Three own-history baselines scored by one code path over the same two
+caches: `static` fits the median and MAD of the first three windows'
+minute medians, `differenced` fits the same over the minute-to-minute
+differences, and `rolling` refits over the three windows before every
+scored window. The clock control sits beside them. The alarm rule needs
+seven windows, so it scores 25 of the 538 normal instances and 49 of the
+53 mixed ones; `rolling` is refused on the aligned cache, whose six
+windows leave no predecessors for a threshold window.
+
+- Run: `uv run python examples/studies/baseline_drift/run_drift.py`,
+  then `uv run python examples/studies/baseline_drift/make_report.py
+  --update-benchmarks`.
+- Read: [baseline_drift/REPORT.md](../examples/studies/baseline_drift/REPORT.md).
+
+### What the own-history checks change
+
+The own-history design run twice over `data/3w_windows` and one code path.
+`checked` is the shipped behaviour, where a pair whose baseline raises
+`InsufficientQuality` or whose MAD scale is zero is dropped. `unchecked`
+keeps every pair and uses a zero scale the way naive code does. On this
+cache the zero-scale check drops 690 of 3,870 pairs and the quality check
+drops none.
+
+- Run: `uv run python examples/studies/3w_audit_effect/run_audit_effect.py`,
+  then `uv run python examples/studies/3w_audit_effect/make_report.py
+  --update-benchmarks`. It also reads
+  `examples/studies/3w_profile/results/per_tag.csv` for the frozen-tag
+  population.
+- Read: [3w_audit_effect/REPORT.md](../examples/studies/3w_audit_effect/REPORT.md).
+
 ### Known upstream issues
 
 - The `dataset/folds` path 404s on `main` (fold splits were removed
@@ -154,6 +186,12 @@ Verified on 2026-09-03 against commit
   `examples/studies/skab/results/`.
 - Read: `examples/studies/skab/REPORT.md` for the method, the tables,
   the conformal bed and what the profile found before any detector ran.
+- Baseline drift: `uv run python
+  examples/studies/baseline_drift/run_drift.py` scores the same 850
+  windows under a static, a differenced and a rolling baseline in 4 s,
+  reading the minute median of each window rather than its 1 s samples.
+  Read:
+  [baseline_drift/REPORT.md](../examples/studies/baseline_drift/REPORT.md).
 
 ### Layout
 

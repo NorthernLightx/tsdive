@@ -1,0 +1,67 @@
+{
+  "cache": {
+    "cache": "data/3w_windows",
+    "manifest_sha256": "bfff4f2e897b",
+    "masked_beyond_float32": {
+      "features": {
+        "n_cells": 80,
+        "n_rows": 80
+      },
+      "subgroups": {
+        "n_cells": 4795,
+        "n_rows": 80
+      }
+    },
+    "n_instances": 1113,
+    "n_windows": 6992,
+    "subgroup_cols": 60,
+    "window_s": 3600.0
+  },
+  "code": {
+    "git_head": "54c04f3db5156982e85f2dc3b7d0fb3a46bd11a9",
+    "tsdive_version": "0.3.0"
+  },
+  "dataset_manifest_sha256": "14bc1397d3ee",
+  "frozen_population": {
+    "available": true,
+    "n_frozen_in_cached_instances": 744,
+    "n_frozen_in_scored_instances": 504,
+    "n_frozen_on_common_variables": 748,
+    "n_frozen_whole_archive": 1643,
+    "n_measurement_tags": 7337,
+    "per_tag": "examples/studies/3w_profile/results/per_tag.csv",
+    "per_variable": {
+      "P-ANULAR": 7,
+      "P-JUS-CKGL": 31,
+      "P-PDG": 652,
+      "P-TPT": 38,
+      "T-TPT": 20
+    }
+  },
+  "group_counts": {
+    "mixed": 53,
+    "normal": 538,
+    "positive_baseline": 54,
+    "short": 468
+  },
+  "n_rows": {
+    "pairs": 7740,
+    "per_record": 6678,
+    "summary": 30,
+    "window_scores": 38580
+  },
+  "parameters": {
+    "far_floor": 0.25,
+    "k_baseline_windows": 3,
+    "variables": [
+      "P-ANULAR",
+      "P-JUS-CKGL",
+      "P-MON-CKP",
+      "P-PDG",
+      "P-TPT",
+      "T-TPT"
+    ]
+  },
+  "study": "3w_audit_effect",
+  "wall_seconds": 19.9
+}
