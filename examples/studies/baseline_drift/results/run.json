@@ -1,0 +1,54 @@
+{
+  "beds": {
+    "3w_aligned": {
+      "cache": "data/3w_windows_aligned",
+      "manifest_sha256": "6f4f097fcd4a",
+      "n_instances": 48,
+      "n_windows": 288
+    },
+    "3w_own_history": {
+      "cache": "data/3w_windows",
+      "manifest_sha256": "bfff4f2e897b",
+      "n_instances": 1113,
+      "n_windows": 6992
+    },
+    "skab": {
+      "archives": "data/skab_archives",
+      "n_records": 35,
+      "n_windows": 850
+    }
+  },
+  "code": {
+    "git_head": "e1e07a4445535797b587624cb935541b42164493",
+    "tsdive_version": "0.3.0"
+  },
+  "dataset_manifest_sha256": {
+    "3w": "14bc1397d3ee",
+    "skab": "c0d612939333"
+  },
+  "group_counts": {
+    "3w_aligned:aligned": 48,
+    "3w_own_history:mixed": 53,
+    "3w_own_history:normal": 538,
+    "3w_own_history:positive_baseline": 54,
+    "3w_own_history:short": 468,
+    "skab:labelled": 34,
+    "skab_anomaly_free:anomaly_free": 1
+  },
+  "n_rows": {
+    "per_record": 2696,
+    "scores": 19388,
+    "summary": 22,
+    "usability": 882,
+    "windows": 4847
+  },
+  "parameters": {
+    "far_floor": 0.25,
+    "k_fit_windows": 3,
+    "recovery_windows": 2,
+    "skab_window_s": 60,
+    "w_rolling_windows": 3
+  },
+  "study": "baseline_drift",
+  "wall_seconds": 3.3
+}
