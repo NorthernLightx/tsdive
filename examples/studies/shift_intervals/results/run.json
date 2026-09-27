@@ -1,0 +1,88 @@
+{
+  "beds": {
+    "synthetic": {
+      "budget_seconds": 1200,
+      "code": {
+        "git_head": "2eb117174b0c483d8e86b6978cbe2307fb3be4d6",
+        "tsdive_version": "0.3.0"
+      },
+      "grid": {
+        "affected_delta": [
+          0.25,
+          0.5,
+          1.0
+        ],
+        "affected_rho": 0.9,
+        "covariate_step_fraction": 0.5,
+        "delta": [
+          0.0,
+          0.25,
+          0.5,
+          1.0
+        ],
+        "drift": [
+          0.0,
+          1.0
+        ],
+        "n_per_period": [
+          120,
+          480
+        ],
+        "phi": [
+          0.0,
+          0.5,
+          0.9,
+          0.98
+        ],
+        "rho": [
+          0.0,
+          0.5,
+          0.9
+        ],
+        "sd_ratio": [
+          1.0,
+          0.7,
+          0.5
+        ]
+      },
+      "n_cells": {
+        "affected_covariate": 24,
+        "level": 192,
+        "spread": 24
+      },
+      "n_rows": 4176,
+      "over_budget": false,
+      "replicates": 200,
+      "seed_rule": "first 8 bytes, little endian, of sha256 over the cell's sorted name=repr(value) pairs joined by '|'; the seed column of synthetic.csv",
+      "wall_seconds": 145.2
+    }
+  },
+  "parameters": {
+    "alpha": 0.05,
+    "andrews_bartlett_constant": 1.1447,
+    "bootstrap_min_block": 10,
+    "bootstrap_replicates": 200,
+    "bootstrap_seed": 42,
+    "covariate_outside_percentiles": [
+      1.0,
+      99.0
+    ],
+    "min_samples": 30,
+    "refusal_sets": {
+      "base": [],
+      "base+R1": [
+        "before_trend"
+      ],
+      "base+R1+R3": [
+        "before_trend",
+        "covariate_shifted"
+      ],
+      "base+R3": [
+        "covariate_shifted"
+      ]
+    },
+    "trend_t": 1.96,
+    "z95": 1.959964
+  },
+  "study": "shift_intervals"
+}
