@@ -254,3 +254,258 @@ def test_synthetic_run_writes_identical_csvs_on_rerun(small_grid, tmp_path):
     assert set(level["method"]) == set(sh.LEVEL_METHODS)
     assert level.loc[level["delta"] == 0, "detect_rate"].isna().all()
     assert level.loc[level["delta"] > 0, "claim_rate"].isna().all()
+
+
+# ---------------------------------------------------------------- real-shaped beds
+#
+# Values are integers on short periodic patterns (periods 6 and 4) and every
+# period holds a whole number of cycles, so a placebo's before and after
+# arrays are identical and its estimate is exactly 0.
+
+PATTERN_A = np.array([0, 2, 5, 1, 3, 4] * 10, dtype=float)
+PATTERN_B = np.array([1, 0, 3, 2] * 15, dtype=float)
+FROZEN = 7.0
+T0 = pd.Timestamp("2015-01-01T00:00:00+00:00")
+SKAB_T0 = pd.Timestamp("2020-03-09T10:00:00+00:00")
+SKAB_ONSET, SKAB_END, SKAB_ROWS = 960, 1260, 1500
+SKAB_GAP_AT, SKAB_GAP_S = 1400, 90
+MANIFEST = '{"common_variables": ["P-PDG", "P-TPT", "T-TPT"], "subgroups": 60}\n'
+
+
+def _minutes(values: np.ndarray) -> dict:
+    return {f"s{i:02d}": float(values[i]) for i in range(60)}
+
+
+def _instance(
+    instance: str, well: str, indices: list[int], labels: list[int], pdg_levels: list[float]
+) -> tuple[list, list]:
+    windows, medians = [], []
+    for index, label, level in zip(indices, labels, pdg_levels, strict=True):
+        start = T0 + pd.Timedelta(3600 * index, unit="s")
+        windows.append(
+            {
+                "instance": instance,
+                "well": well,
+                "window_index": index,
+                "window_start": start.isoformat(),
+                "label": label,
+                "design_label": label,
+            }
+        )
+        for variable, values in (
+            ("P-PDG", level + PATTERN_A),
+            ("P-TPT", 50.0 + PATTERN_B),
+            ("T-TPT", np.full(60, FROZEN)),
+        ):
+            medians.append(
+                {"instance": instance, "window_index": index, "variable": variable}
+                | _minutes(values)
+            )
+    return windows, medians
+
+
+def _write_3w(path: Path, parts: list[tuple[list, list]]) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    windows = [w for part in parts for w in part[0]]
+    medians = [m for part in parts for m in part[1]]
+    pd.DataFrame(windows).to_parquet(path / "windows.parquet", index=False)
+    pd.DataFrame(medians).to_parquet(path / "subgroup_medians.parquet", index=False)
+    (path / "MANIFEST.json").write_text(MANIFEST, encoding="utf-8", newline="\n")
+
+
+def build_3w_normal(path: Path) -> None:
+    _write_3w(
+        path,
+        [
+            _instance("WELL-00001_a", "WELL-00001", [1, 2, 3, 4, 5], [0] * 5, [100.0] * 5),
+            _instance("WELL-00002_b", "WELL-00002", [3, 4, 5, 6], [0] * 4, [100.0] * 4),
+            _instance("WELL-00002_fault", "WELL-00002", [1, 2, 3, 4], [0, 0, 0, 1], [100.0] * 4),
+            _instance("WELL-00003_short", "WELL-00003", [1, 2, 4, 5], [0] * 4, [100.0] * 4),
+        ],
+    )
+
+
+def build_3w_aligned(path: Path) -> None:
+    windows, medians = _instance(
+        "WELL-00009_step",
+        "WELL-00009",
+        [1, 2, 3, 4, 6, 7],
+        [0, 0, 0, 0, 1, 1],
+        [1000.0] * 4 + [2000.0] * 2,
+    )
+    for row, offset in zip(windows, (-5, -4, -3, -2, 0, 1), strict=True):
+        row["onset_offset"] = offset
+    _write_3w(path, [(windows, medians)])
+
+
+def _skab_record(directory: Path, rows: int, step: float, labelled: bool) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    position = np.arange(rows)
+    stamps = SKAB_T0 + pd.to_timedelta(position, unit="s")
+    if labelled:
+        stamps = stamps.where(
+            position < SKAB_GAP_AT, stamps + pd.Timedelta(SKAB_GAP_S, unit="s")
+        )
+    in_span = (position >= SKAB_ONSET) & (position < SKAB_END) & labelled
+    columns = {
+        "Current": 10.0 + np.resize(PATTERN_A, rows) + step * in_span,
+        "Voltage": np.resize(PATTERN_B, rows),
+        "Pressure": np.full(rows, FROZEN),
+    }
+    for tag, values in columns.items():
+        pd.DataFrame({"timestamp": stamps, "value": values, "quality": "GOOD"}).to_parquet(
+            directory / f"{tag}.parquet", index=False
+        )
+    if labelled:
+        pd.DataFrame(
+            {"timestamp": stamps, "anomaly": in_span.astype(int), "changepoint": 0}
+        ).to_parquet(directory / "labels.parquet", index=False)
+
+
+def build_skab(path: Path) -> None:
+    _skab_record(path / "valve1__1", SKAB_ROWS, 50.0, labelled=True)
+    _skab_record(path / "anomaly-free__anomaly-free", 2500, 0.0, labelled=False)
+
+
+@pytest.fixture(scope="module")
+def real_beds(tmp_path_factory) -> tuple[dict, Path, Path]:
+    root = tmp_path_factory.mktemp("shift_intervals")
+    build_3w_normal(root / "windows")
+    build_3w_aligned(root / "aligned")
+    build_skab(root / "archives")
+    kwargs = {
+        "windows": root / "windows",
+        "aligned": root / "aligned",
+        "archives": root / "archives",
+        "source_3w": None,
+        "source_skab": None,
+    }
+    beds = (rs.BED_PLACEBO, rs.BED_KNOWN)
+    info = rs.run(root / "a", beds, **kwargs)
+    rs.run(root / "b", beds, **kwargs)
+    return info, root / "a", root / "b"
+
+
+def test_first_run_finds_the_first_block_of_consecutive_windows():
+    assert rs.first_run([1, 2, 3, 5, 6, 7, 8], 4) == 3
+    assert rs.first_run([1, 2, 3, 4], 4) == 0
+    assert rs.first_run([1, 2, 4, 5], 4) is None
+
+
+def test_placebo_bed_scores_the_normal_instances_only(real_beds):
+    info, out, _ = real_beds
+    counts = info["beds"][rs.BED_PLACEBO]["3w_cache"]
+    assert counts["n_instances_no_fault_window"] == 3
+    assert counts["n_instances_scored"] == 2
+    assert counts["n_instances_too_short"] == 1
+    placebo = rs.read_rows(out / rs.PLACEBO_CSV)
+    assert set(placebo.loc[placebo["design"] == rs.DESIGN_3W_PLACEBO, "record"]) == {
+        "WELL-00001_a",
+        "WELL-00002_b",
+    }
+    designs = info["beds"][rs.BED_PLACEBO]["designs"]
+    assert designs[rs.DESIGN_SKAB_FREE]["n_splits"] == 2
+    assert designs[rs.DESIGN_SKAB_PRE]["n_splits"] == 1
+    first = placebo[placebo["record"] == "WELL-00001_a"].iloc[0]
+    assert first["n_before"] == 120 and first["n_after"] == 120
+
+
+def test_a_periodic_placebo_does_not_clear(real_beds):
+    _, out, _ = real_beds
+    placebo = rs.read_rows(out / rs.PLACEBO_CSV)
+    answered = placebo[placebo["refused"] == 0]
+    assert len(answered) > 0
+    assert (answered["clears"] == 0).all()
+    assert (answered["estimate"] == 0).all()
+
+
+def test_the_step_clears(real_beds):
+    info, out, _ = real_beds
+    known = rs.read_rows(out / rs.KNOWN_CSV)
+    step = known[
+        (known["record"] == "WELL-00009_step")
+        & (known["tag"] == "P-PDG")
+        & (known["quantity"] == sh.LEVEL)
+    ]
+    assert len(step) == 2 * len(sh.LEVEL_METHODS)
+    assert (step["refused"] == 0).all()
+    assert (step["clears"] == 1).all()
+    adjusted = step[step["adjustment"] == sh.ADJUSTED]
+    assert adjusted["variance_ratio_after"].notna().all()
+    assert step.loc[step["adjustment"] == sh.RAW, "variance_ratio_after"].isna().all()
+    assert set(step["n_before"]) == {180} and set(step["n_after"]) == {120}
+    skab = known[
+        (known["design"] == rs.DESIGN_SKAB_ONSET)
+        & (known["tag"] == "Current")
+        & (known["quantity"] == sh.LEVEL)
+        & (known["adjustment"] == sh.RAW)
+    ]
+    assert (skab["clears"] == 1).all()
+    assert set(skab["n_before"]) == {SKAB_ONSET}
+    assert set(skab["n_after"]) == {SKAB_END - SKAB_ONSET}
+    counts = info["beds"][rs.BED_KNOWN]["3w_cache"]
+    assert counts["before_onset_offsets"] == [-4, -3, -2]
+    assert counts["after_onset_offsets"] == [0, 1]
+
+
+def test_refused_rows_carry_their_reason(real_beds):
+    info, out, _ = real_beds
+    known = rs.read_rows(out / rs.KNOWN_CSV)
+    frozen = known[known["tag"].isin(["T-TPT", "Pressure"])]
+    assert len(frozen) > 0
+    assert (frozen["refused"] == 1).all()
+    assert set(frozen["reason"]) == {sh.NO_SPREAD}
+    moved_covariate = known[
+        (known["record"] == "WELL-00009_step")
+        & (known["tag"] == "P-TPT")
+        & (known["adjustment"] == sh.ADJUSTED)
+    ]
+    assert set(moved_covariate["reason"]) == {sh.COVARIATE_OUTSIDE}
+    assert (moved_covariate["covariate_outside"] == 1).all()
+    assert known.loc[known["refused"] == 0, "reason"].isna().all()
+    gaps = info["beds"][rs.BED_KNOWN]["skab_gaps_over_60_s"]
+    assert gaps == [
+        {
+            "record": "valve1__1",
+            "rows": SKAB_ROWS,
+            "n_gaps": 1,
+            "longest_gap_s": SKAB_GAP_S + 1.0,
+        }
+    ]
+
+
+def test_summary_reads_the_rows(real_beds):
+    _, out, _ = real_beds
+    summary = pd.read_csv(out / rs.SUMMARY_CSV)
+    placebo = summary[
+        (summary["design"] == rs.DESIGN_3W_PLACEBO)
+        & (summary["quantity"] == sh.LEVEL)
+        & (summary["method"] == sh.HAC)
+        & (summary["refusal_set"] == "base")
+    ]
+    assert set(placebo["adjustment"]) == {sh.RAW, sh.ADJUSTED}
+    assert (placebo["clear_rate_pooled"] == 0).all()
+    assert (placebo["record_clear_rate"] == 0).all()
+    assert (placebo["n_groups"] == 2).all()
+    onset = summary[
+        (summary["design"] == rs.DESIGN_3W_ONSET)
+        & (summary["quantity"] == sh.LEVEL)
+        & (summary["adjustment"] == sh.RAW)
+        & (summary["refusal_set"] == "base")
+    ]
+    assert (onset["record_clear_rate"] == 1).all()
+    raw_sets = summary.loc[summary["adjustment"] == sh.RAW, "refusal_set"]
+    assert set(raw_sets) == set(sh.RAW_REFUSAL_SETS)
+
+
+def test_a_rerun_writes_identical_csvs(real_beds):
+    _, first, second = real_beds
+    for name in (rs.PLACEBO_CSV, rs.KNOWN_CSV, rs.SUMMARY_CSV):
+        assert filecmp.cmp(first / name, second / name, shallow=False), name
+
+
+def test_run_json_carries_no_machine_path(real_beds):
+    _, out, _ = real_beds
+    text = (out / "run.json").read_text("utf-8")
+    for fragment in (":\\\\", ":/", "Users", "tmp"):
+        assert fragment not in text, fragment

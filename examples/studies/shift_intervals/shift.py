@@ -113,14 +113,21 @@ def autocovariances(u: np.ndarray) -> np.ndarray:
     return np.fft.irfft(spec * np.conj(spec), size)[:n] / n
 
 
+def lag1(u: np.ndarray) -> float:
+    """OLS AR(1) coefficient of the demeaned series, NaN when it has no spread."""
+    c = u - u.mean()
+    denom = float(np.dot(c[:-1], c[:-1]))
+    if len(u) < 3 or denom <= 0:
+        return math.nan
+    return float(np.dot(c[1:], c[:-1])) / denom
+
+
 def andrews_bandwidth(u: np.ndarray) -> float:
     """Andrews (1991) AR(1) plug-in bandwidth for the Bartlett kernel, capped at n - 1."""
     n = len(u)
-    c = u - u.mean()
-    denom = float(np.dot(c[:-1], c[:-1]))
-    if n < 3 or denom <= 0:
+    rho = lag1(u)
+    if math.isnan(rho):
         return 0.0
-    rho = float(np.dot(c[1:], c[:-1])) / denom
     rho = min(max(rho, -AR1_CLIP), AR1_CLIP)
     alpha = 4.0 * rho**2 / ((1.0 - rho) ** 2 * (1.0 + rho) ** 2)
     return min(ANDREWS_BARTLETT * (alpha * n) ** (1.0 / 3.0), float(n - 1))
@@ -316,10 +323,13 @@ def _row(
         "refused": False,
         "reason": "",
         "trend_t": math.nan,
+        "lag1": math.nan,
+        "hac_bandwidth": math.nan,
         "before_trend": None,
         "covariate_outside": None,
         "covariate_shifted": None,
         "variance_reduction": math.nan,
+        "variance_ratio_after": math.nan,
     }
 
 
@@ -355,13 +365,20 @@ def _arm_rows(
     """Every (quantity, method) row of one arm that passed its hard refusals."""
     nb, na = len(before), len(after)
     t = trend_t(before)
+    diagnostics = {"lag1": lag1(before), "hac_bandwidth": andrews_bandwidth(before)}
     rows = []
     for quantity, methods in QUANTITY_METHODS:
         if quantity not in quantities:
             continue
         for method in methods:
             row = _row(quantity, method, adjustment, nb, na, n_covariates)
-            row.update(trend_t=t, before_trend=bool(abs(t) > TREND_T), scale=scale, **extra)
+            row.update(
+                trend_t=t,
+                before_trend=bool(abs(t) > TREND_T),
+                scale=scale,
+                **diagnostics,
+                **extra,
+            )
             if quantity == LEVEL:
                 interval = level_interval(before, after, method)
             elif after.std(ddof=1) == 0:
@@ -398,7 +415,8 @@ def score_target(
     missing and position-aligned across tags. ``covariates`` are the tags the
     adjusted arm regresses on, declared before any interval is computed.
     Level rows carry values in the target's units; ``scale`` is the target's
-    before-period SD over the rows the arm used.
+    before-period SD over the rows the arm used. ``variance_ratio_after`` is
+    var(residual after) / var(target after) under the before-period fit.
     """
     yb_all, ya_all = before[target], after[target]
     fb, fa = np.isfinite(yb_all), np.isfinite(ya_all)
@@ -433,6 +451,8 @@ def score_target(
         return rows + _refused_rows(
             quantities, ADJUSTED, NO_SPREAD, nb, na, k, variance_reduction=reduction, **flags
         )
+    var_after = float(ya2.var(ddof=1))
+    ratio_after = float(resid_a.var(ddof=1)) / var_after if var_after > 0 else math.nan
     return rows + _arm_rows(
         quantities,
         resid_b,
@@ -441,6 +461,7 @@ def score_target(
         ADJUSTED,
         k,
         variance_reduction=reduction,
+        variance_ratio_after=ratio_after,
         **flags,
     )
 

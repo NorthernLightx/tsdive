@@ -1,9 +1,124 @@
 {
   "beds": {
+    "known_change": {
+      "3w_cache": {
+        "after_onset_offsets": [
+          0,
+          1
+        ],
+        "before_onset_offsets": [
+          -4,
+          -3,
+          -2
+        ],
+        "cache": "data/3w_windows_aligned",
+        "manifest_sha256": "6f4f097fcd4a",
+        "n_instances_scored": 48,
+        "n_instances_with_a_period_not_consecutive": 0,
+        "n_wells_scored": 21
+      },
+      "code": {
+        "git_head": "f5ce045f4ed4d86c2be7c9092fdc9ca196e01fbf",
+        "tsdive_version": "0.3.0"
+      },
+      "dataset_manifest_sha256": {
+        "3w": "14bc1397d3ee",
+        "skab": "c0d612939333"
+      },
+      "designs": {
+        "3w_aligned_onset": {
+          "n_groups": 21,
+          "n_records": 48,
+          "n_splits": 48
+        },
+        "skab_labelled_onset": {
+          "n_groups": 3,
+          "n_records": 34,
+          "n_splits": 34
+        }
+      },
+      "n_rows": 5600,
+      "skab": {
+        "archives": "data/skab_archives",
+        "n_labelled": 34,
+        "n_records": 35,
+        "n_with_an_anomaly_row": 34
+      },
+      "skab_gaps_over_60_s": [
+        {
+          "longest_gap_s": 247.0,
+          "n_gaps": 1,
+          "record": "other__2",
+          "rows": 780
+        },
+        {
+          "longest_gap_s": 76.0,
+          "n_gaps": 1,
+          "record": "valve1__2",
+          "rows": 1075
+        },
+        {
+          "longest_gap_s": 65.0,
+          "n_gaps": 1,
+          "record": "valve1__7",
+          "rows": 1094
+        },
+        {
+          "longest_gap_s": 64.0,
+          "n_gaps": 1,
+          "record": "valve2__1",
+          "rows": 1063
+        }
+      ],
+      "wall_seconds": 2.2
+    },
+    "placebo": {
+      "3w_cache": {
+        "cache": "data/3w_windows",
+        "manifest_sha256": "bfff4f2e897b",
+        "n_instances_no_fault_window": 640,
+        "n_instances_scored": 538,
+        "n_instances_too_short": 102,
+        "n_wells_scored": 16
+      },
+      "code": {
+        "git_head": "f5ce045f4ed4d86c2be7c9092fdc9ca196e01fbf",
+        "tsdive_version": "0.3.0"
+      },
+      "dataset_manifest_sha256": {
+        "3w": "14bc1397d3ee",
+        "skab": "c0d612939333"
+      },
+      "designs": {
+        "3w_placebo": {
+          "n_groups": 16,
+          "n_records": 538,
+          "n_splits": 538
+        },
+        "skab_free_placebo": {
+          "n_groups": 1,
+          "n_records": 1,
+          "n_splits": 8
+        },
+        "skab_preonset_placebo": {
+          "n_groups": 3,
+          "n_records": 34,
+          "n_splits": 34
+        }
+      },
+      "n_rows": 35640,
+      "skab": {
+        "archives": "data/skab_archives",
+        "n_labelled": 34,
+        "n_records": 35,
+        "n_with_an_anomaly_row": 34
+      },
+      "wall_seconds": 5.9
+    },
     "synthetic": {
       "budget_seconds": 1200,
       "code": {
-        "git_head": "2eb117174b0c483d8e86b6978cbe2307fb3be4d6",
+        "git_head": "f5ce045f4ed4d86c2be7c9092fdc9ca196e01fbf",
         "tsdive_version": "0.3.0"
       },
       "grid": {
@@ -54,7 +169,7 @@
       "over_budget": false,
       "replicates": 200,
       "seed_rule": "first 8 bytes, little endian, of sha256 over the cell's sorted name=repr(value) pairs joined by '|'; the seed column of synthetic.csv",
-      "wall_seconds": 145.2
+      "wall_seconds": 91.4
     }
   },
   "parameters": {
