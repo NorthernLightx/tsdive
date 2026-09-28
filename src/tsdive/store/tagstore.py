@@ -461,7 +461,9 @@ class TagStore:
         in_window = df[(df["timestamp"] >= start_ts) & (df["timestamp"] <= end_ts)]
         meta = meta_from_parquet(path)
         annotated = annotate_severity(in_window, meta.quality_codes)
-        annotated = null_digital_state_values(annotated, role=meta.role, tag=identity)
+        annotated = null_digital_state_values(
+            annotated, role=meta.role, tag=identity, codes=meta.quality_codes
+        )
 
         # A MODE tag's value is a state label, not a measurement: "R1" is
         # present and usable, and asking whether it is a finite float is

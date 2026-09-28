@@ -17,12 +17,16 @@ Invariants enforced here:
   code space that disagrees with UA at both ends, and an export in it
   must declare ``quality_codes`` on the tag -- ``{"192": "GOOD",
   "64": "UNCERTAIN", "0": "BAD"}`` -- rather than be sniffed for.
-- A non-numeric value on a measurement tag is a schema error, not a null.
-  Only tags declared ``role=MODE`` may carry string states.
+- A non-numeric value on a measurement tag is a schema error, not a null,
+  unless the tag's ``quality_codes`` names it: PI writes states such as
+  ``I/O Timeout`` in the value column, and a declared one is nulled at
+  its declared severity. Only tags declared ``role=MODE`` may carry
+  string states as values.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from enum import StrEnum
 
@@ -297,18 +301,47 @@ def _to_float_or_none(v: object) -> float | None:
         return None
 
 
+def declared_value_state(value: object, codes: QualityCodes = None) -> Severity | None:
+    """The severity ``codes`` declares for a non-numeric ``value``, or None.
+
+    A historian can write a state in place of the value: PI writes
+    ``I/O Timeout`` or ``Shutdown`` in the value column. A string that
+    names a key of the tag's ``quality_codes`` (matched as
+    ``quality_codes`` keys are matched against the quality column) is a
+    declared state. A numeric value never is, so ``{"0": "BAD"}`` cannot
+    drop a reading of 0.
+
+    Examples:
+        >>> from tsdive.store.quality import declared_value_state
+        >>> declared_value_state("I/O Timeout", {"I/O Timeout": "BAD"})
+        <Severity.BAD: 'BAD'>
+        >>> declared_value_state("0", {"0": "BAD"}) is None
+        True
+    """
+    if not isinstance(value, str) or _to_float_or_none(value) is not None:
+        return None
+    return _declared_severity(value, codes)
+
+
 def null_digital_state_values(
     df: pd.DataFrame,
     *,
     role: Role | None = None,
     tag: object = None,
+    codes: QualityCodes = None,
 ) -> pd.DataFrame:
     """Force value to null wherever quality is a known digital state.
 
     This is the guard against coercion: an archive that stores the state
     number in the value field must not leak 257.0 into statistics.
 
-    What survives that guard must be numeric. A leftover string on a
+    A string in the value column that names a key of the tag's
+    ``quality_codes`` (``codes``) is a declared state as well: its value
+    is nulled and, when ``df`` carries ``severity``, the row takes the
+    declared severity, or keeps its quality column's severity when that
+    one is worse. This holds on every role, ``MODE`` included.
+
+    What survives these guards must be numeric. A leftover string on a
     measurement tag is a schema error naming the tag and the first
     offending value, because nulling it would delete data the caller never
     said was unusable. ``role=MODE`` is the one legal string-valued path: a
@@ -320,6 +353,26 @@ def null_digital_state_values(
         out["quality"], lambda q: digital_state_label(q) is not None
     ).astype(bool)
     out.loc[pd.Series(is_state, index=out.index), "value"] = pd.NA
+    if codes and not pd.api.types.is_numeric_dtype(out["value"]):
+        # Only text that does not read as a number can be a declared state,
+        # so a numeric column costs one to_numeric pass and no per-value call.
+        text = out["value"].notna() & pd.to_numeric(out["value"], errors="coerce").isna()
+        stated = pd.Series(
+            per_distinct_code(
+                out.loc[text, "value"], lambda v: declared_value_state(v, codes)
+            ),
+            index=out.index[text],
+            dtype=object,
+        )
+        hit = stated[stated.notna()]
+        if len(hit):
+            if "severity" in out.columns:
+                worse = [
+                    min(Severity(have), declared, key=lambda s: SEVERITY_RANK[s])
+                    for have, declared in zip(out.loc[hit.index, "severity"], hit, strict=True)
+                ]
+                out.loc[hit.index, "severity"] = pd.Series(worse, index=hit.index, dtype=object)
+            out.loc[hit.index, "value"] = pd.NA
     if role is Role.MODE:
         return out
     values = out["value"]
@@ -335,10 +388,13 @@ def null_digital_state_values(
         parsed = _to_float_or_none(v)
         if parsed is None:
             where = f"tag {tag}: " if tag is not None else ""
+            example = json.dumps({str(v): "BAD"})
             raise SchemaError(
-                f"{where}value {v!r} is not numeric and no digital state explains it; "
-                "declare the tag role=MODE if it carries string states, otherwise fix "
-                "the export - tsdive will not null a value it was not told to drop"
+                f"{where}value {v!r} is not numeric and no digital state or "
+                "quality_codes entry explains it; if it is a historian state such as "
+                f"a PI digital state, map it in the tag's quality_codes, for example "
+                f"{example}, and declare role=MODE only for a tag whose values are "
+                "string states"
             )
         coerced[int(pos)] = parsed
     out["value"] = pd.array(coerced, dtype="Float64")

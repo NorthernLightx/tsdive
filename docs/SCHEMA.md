@@ -30,7 +30,7 @@ about the surrounding directory, which is what the CLI uses.
 | column | dtype | rule |
 |---|---|---|
 | `timestamp` | `datetime64[ns, UTC]` (any tz-aware datetime64) | must be timezone-aware |
-| `value` | numeric, or null (string only on `role: MODE` tags) | digital states are nulled on read, never coerced |
+| `value` | numeric, or null (string only on `role: MODE` tags, or as a state the tag's `quality_codes` names) | digital states are nulled on read, never coerced |
 | `quality` | string or integer | mandatory; stored verbatim |
 
 Extra columns are carried through untouched.
@@ -126,6 +126,15 @@ After digital-state rows are nulled, what is left in `value` must be
 numeric. A leftover string on a measurement tag raises `SchemaError`
 naming the tag and the first offending value: nulling it would delete
 data nobody said was unusable, and coercing it would invent a number.
+
+Some historians write a state in the value column instead of a number:
+PI writes `I/O Timeout`, `Shutdown` or `Pt Created`. Map each such state
+in the tag's `quality_codes`, for example `{"I/O Timeout": "BAD"}`. A
+value that names a key of the map is a declared state: the archive keeps
+the text verbatim, the read nulls the value, and the row takes the
+declared severity, or its quality column's severity when that one is
+worse. A numeric value never matches a key, so `{"0": "BAD"}` does not
+drop readings of 0.
 
 The one legal string-valued path is a tag whose metadata declares
 `role: MODE`. A mode tag's value *is* a state label (`"R1"`), so it
@@ -299,7 +308,7 @@ the source's own codes are never overwritten.
 |---|---|
 | missing `timestamp`, `value` or `quality` | `SchemaError` |
 | naive timestamps | `SchemaError` |
-| non-numeric `value` on a tag that is not `role: MODE` | `SchemaError`, naming the tag and value |
+| non-numeric `value` on a tag that is not `role: MODE`, and not a state its `quality_codes` names | `SchemaError`, naming the tag and value |
 | no `tsdive.meta` on the file | `SchemaError` |
 | `tsdive.meta` missing a required key | `SchemaError`, naming the key |
 | a key `tsdive.meta` does not define, at any level | `SchemaError`, naming the closest known key |

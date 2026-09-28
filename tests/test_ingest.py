@@ -511,6 +511,38 @@ def test_ingest_refuses_a_string_value_on_a_measurement_tag(tmp_path):
         )
 
 
+def _pi_export(tmp_path):
+    path = tmp_path / "pi.csv"
+    pd.DataFrame(
+        {
+            "ts": ["2024-03-01T00:00:00Z", "2024-03-01T00:01:00Z", "2024-03-01T00:02:00Z"],
+            "v": ["50.0", "I/O Timeout", "52.0"],
+            "q": ["Good", "Bad", "Good"],
+        }
+    ).to_csv(path, index=False)
+    return path
+
+
+def test_a_pi_digital_state_in_the_value_column_ingests_once_declared(tmp_path, capsys):
+    common = dict(timestamp_col="ts", value_col="v", quality_col="q")
+    with pytest.raises(SchemaError, match=r"quality_codes, for example \{\"I/O Timeout\": "
+                       r"\"BAD\"\}"):
+        tsdive.ingest(_pi_export(tmp_path), out=tmp_path / "bare.parquet",
+                      meta=tsdive.read_meta_json(_meta_file(tmp_path)), **common)
+
+    codes = {"Good": "GOOD", "Bad": "BAD", "I/O Timeout": "BAD"}
+    out = tsdive.ingest(_pi_export(tmp_path), out=tmp_path / "pi.parquet",
+                        meta=tsdive.read_meta_json(_meta_file(tmp_path, quality_codes=codes)),
+                        **common)
+    stored = pd.read_parquet(out)
+    assert list(stored["value"]) == ["50.0", "I/O Timeout", "52.0"]  # verbatim
+    p = tsdive.profile(out)
+    counts = {k.value: n for k, n in p.physics.severity_counts.items()}
+    assert counts == {"GOOD": 2, "UNCERTAIN": 0, "BAD": 1}
+    assert pd.isna(p.frame["value"].iloc[1])
+    assert p.stats.features.max == 52.0
+
+
 def test_mode_tag_string_states_ingest_cleanly(tmp_path):
     path = tmp_path / "mode.csv"
     pd.DataFrame({"ts": AWARE, "v": ["R0", "R1", "R1"], "q": ["GOOD"] * 3}).to_csv(

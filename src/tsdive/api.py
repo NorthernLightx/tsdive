@@ -29,6 +29,7 @@ from tsdive.store.identity import TagIdentity, TagMeta
 from tsdive.store.quality import (
     Severity,
     annotate_severity,
+    declared_value_state,
     good_mask,
     null_digital_state_values,
 )
@@ -172,7 +173,13 @@ def reference_history(
         return [], []
     boundaries = pd.DatetimeIndex([*edges, edges[-1] + span])
 
-    good = table[good_mask(table, codes) & table["value"].notna()].reset_index(drop=True)
+    # A value-column state the tag declares in quality_codes (PI's "I/O
+    # Timeout") is no reading, exactly as on the assessed window.
+    stated = pd.Series(False, index=table.index)
+    if codes and not pd.api.types.is_numeric_dtype(table["value"]):
+        stated = table["value"].map(lambda v: declared_value_state(v, codes) is not None)
+    usable = good_mask(table, codes) & table["value"].notna() & ~stated.astype(bool)
+    good = table[usable].reset_index(drop=True)
     # Which reference window each GOOD sample belongs to. Rows at or after
     # the last boundary sit between the references and the assessed
     # window; searchsorted puts them out of range and they are dropped.
@@ -504,6 +511,7 @@ def _prepare_archive(
         annotate_severity(out_frame, stamped.quality_codes),
         role=stamped.role,
         tag=stamped.identity,
+        codes=stamped.quality_codes,
     )
     return out_frame, stamped
 
