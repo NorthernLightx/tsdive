@@ -195,6 +195,7 @@ it is refused: tsdive will not invent an identity for an archive.
 | `eng_range_zero` | number or null | engineering range zero |
 | `eng_range_span` | number or null | engineering range span; needed for clipping detection |
 | `sample_rate_s` | number or null | declared scan rate, used to classify sparse gaps |
+| `retrieval_mode` | `RECORDED`/`INTERPOLATED` or null | how the export retrieved its samples; every read states it in the contract, and null reads as `RECORDED` |
 | `asset` | string or null | unit or equipment the tag belongs to |
 | `loop_id` | string or null | control loop id |
 | `role` | `PV`/`SP`/`OP`/`MODE` or null | role within that loop |

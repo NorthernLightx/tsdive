@@ -43,7 +43,7 @@ from tsdive.store.quality import (
     severity_meets,
     validate_schema,
 )
-from tsdive.store.sampling_contract import SamplingContract
+from tsdive.store.sampling_contract import RetrievalMode, SamplingContract
 from tsdive.store.timebase import TimestampAuditReport, require_utc, timestamp_audit
 
 META_KEY = "tsdive.meta"
@@ -173,6 +173,7 @@ def meta_to_dict(meta: TagMeta) -> dict:
         "eng_range_zero": meta.eng_range.zero if meta.eng_range else None,
         "eng_range_span": meta.eng_range.span if meta.eng_range else None,
         "sample_rate_s": meta.sample_rate_s,
+        "retrieval_mode": meta.retrieval_mode.value if meta.retrieval_mode else None,
         "asset": meta.asset,
         "loop_id": meta.loop_id,
         "role": meta.role.value if meta.role else None,
@@ -191,6 +192,7 @@ META_KEYS = (
     "eng_range_zero",
     "eng_range_span",
     "sample_rate_s",
+    "retrieval_mode",
     "asset",
     "loop_id",
     "role",
@@ -297,6 +299,12 @@ def _check_meta_dict(d: object, label: str) -> None:
         raise SchemaError(
             f"{label}: role {role!r} is not one of {', '.join(r.value for r in Role)}"
         )
+    mode = d.get("retrieval_mode")
+    if mode is not None and mode not in {m.value for m in RetrievalMode}:
+        raise SchemaError(
+            f"{label}: retrieval_mode {mode!r} is not one of "
+            f"{', '.join(m.value for m in RetrievalMode)}"
+        )
     codes = d.get("quality_codes")
     if codes is not None and not isinstance(codes, dict):
         raise SchemaError(
@@ -353,6 +361,9 @@ def meta_from_dict(d: dict, *, label: str = META_KEY) -> TagMeta:
         asset=d.get("asset"),
         loop_id=d.get("loop_id"),
         role=Role(d["role"]) if d.get("role") else None,
+        retrieval_mode=(
+            RetrievalMode(d["retrieval_mode"]) if d.get("retrieval_mode") else None
+        ),
         quality_codes=dict(d["quality_codes"]) if d.get("quality_codes") else None,
         quality_assumed=bool(d.get("quality_assumed", False)),
     )
@@ -497,6 +508,11 @@ class TagStore:
         and coverage. A window with no samples reports ``coverage=0.0`` and
         one ``unknown`` gap spanning the window - never a fake 1.0.
 
+        When the tag's metadata declares ``retrieval_mode``, the window's
+        contract carries that mode in place of the one ``contract`` states:
+        the export fixed how its samples were retrieved, and no read of the
+        archive can change it.
+
         A window whose timestamps go backwards is refused with
         [`NonMonotonicIndex`][tsdive.NonMonotonicIndex] before any physics is
         computed. Gaps and coverage over a re-sorted index would describe
@@ -514,6 +530,8 @@ class TagStore:
         end_ts = cast(pd.Timestamp, pd.Timestamp(end))
         in_window = df[(df["timestamp"] >= start_ts) & (df["timestamp"] <= end_ts)]
         meta = meta_from_parquet(path)
+        if meta.retrieval_mode is not None:
+            contract = replace(contract, retrieval_mode=meta.retrieval_mode)
         annotated = annotate_severity(in_window, meta.quality_codes)
         annotated = null_digital_state_values(
             annotated, role=meta.role, tag=identity, codes=meta.quality_codes

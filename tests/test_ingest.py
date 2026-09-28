@@ -755,6 +755,7 @@ TEMPLATE_KEYS = [
     "eng_range_zero",
     "eng_range_span",
     "sample_rate_s",
+    "retrieval_mode",
     "asset",
     "loop_id",
     "role",
@@ -779,7 +780,7 @@ def test_init_meta_writes_one_template_per_tag_in_schema_order(tmp_path):
     assert payload["identity"] == {"source_id": "plant1", "point_id": "FIC101.PV"}
     assert payload["name"] == "FIC101.PV"
     assert payload["quality_codes"] == {"Bad": "BAD", "Good": "GOOD", "Questionable": None}
-    assert all(payload[k] is None for k in TEMPLATE_KEYS[2:10])
+    assert all(payload[k] is None for k in TEMPLATE_KEYS[2:11])
     assert payload["quality_assumed"] is None
 
 
@@ -925,3 +926,35 @@ def test_a_misspelt_comment_key_is_refused(tmp_path):
     path = _meta_file(tmp_path, _comment={"unit_raw": "m3/h"})
     with pytest.raises(SchemaError, match="unknown key '_comment'; did you mean '_comments'"):
         tsdive.read_meta_json(path)
+
+
+def test_a_declared_retrieval_mode_reaches_every_read(tmp_path, capsys):
+    out = tmp_path / "interp.parquet"
+    tsdive.ingest(
+        _csv(tmp_path, stamps=AWARE),
+        out=out,
+        meta=tsdive.read_meta_json(_meta_file(tmp_path, retrieval_mode="INTERPOLATED")),
+        timestamp_col="ts",
+        value_col="v",
+        quality_col="q",
+    )
+    assert meta_from_parquet(out).retrieval_mode == tsdive.RetrievalMode.INTERPOLATED
+    p = tsdive.profile(out)
+    assert p.window.contract.retrieval_mode == tsdive.RetrievalMode.INTERPOLATED
+    assert "contract  TIME_WEIGHTED  INTERPOLATED  NONE" in p.render()
+    assert cmd_profile([str(out), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["contract"]["retrieval_mode"] == "INTERPOLATED"
+
+    plain = tmp_path / "recorded.parquet"
+    tsdive.ingest(_csv(tmp_path, stamps=AWARE, name="plain.csv"), out=plain,
+                  meta=tsdive.read_meta_json(_meta_file(tmp_path)), timestamp_col="ts",
+                  value_col="v", quality_col="q")
+    recorded = tsdive.profile(plain).window.contract
+    assert recorded.retrieval_mode == tsdive.RetrievalMode.RECORDED
+    assert recorded.digest() != p.window.contract.digest()
+
+
+def test_an_unknown_retrieval_mode_is_refused(tmp_path):
+    with pytest.raises(SchemaError, match="retrieval_mode 'interpolated' is not one of "
+                       "RECORDED, INTERPOLATED"):
+        tsdive.read_meta_json(_meta_file(tmp_path, retrieval_mode="interpolated"))

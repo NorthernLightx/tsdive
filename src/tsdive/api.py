@@ -836,6 +836,7 @@ _META_TEMPLATE_KEYS = (
     "eng_range_zero",
     "eng_range_span",
     "sample_rate_s",
+    "retrieval_mode",
     "asset",
     "loop_id",
     "role",
@@ -950,6 +951,8 @@ _KEY_NOTES = {
     "the clipping check",
     "eng_range_span": "width of the engineering range, greater than 0",
     "sample_rate_s": "declared scan rate in seconds; compare and mspc align on it",
+    "retrieval_mode": "RECORDED or INTERPOLATED, how the export retrieved its "
+    "samples; null reads as RECORDED",
     "asset": "unit or equipment the tag belongs to",
     "loop_id": "control loop id",
     "role": "PV, SP, OP or MODE; MODE for a tag whose values are string states",
