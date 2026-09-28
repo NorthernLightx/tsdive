@@ -20,6 +20,9 @@ claim below has a provoking test in `tests/`.
   `NonMonotonicIndex`.
 - A source with no quality column and no `--assume-quality` raises
   `SchemaError`.
+- A metadata file or `tsdive.meta` object carrying a key tsdive does
+  not define raises `SchemaError` naming the closest known key
+  (`tests/test_ingest.py`).
 - An unresolvable unit raises `UnresolvedUnitError` when an operation
   needs the canonical unit.
 - A reference-condition unit with no declared reference state raises

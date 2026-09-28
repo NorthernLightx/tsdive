@@ -267,7 +267,9 @@ tsdive ingest export.csv \
 
 `--meta` is a JSON file holding exactly the `tsdive.meta` object
 documented above, so the metadata you write for ingest is the metadata
-you read back off the archive. Only the three named columns are carried
+you read back off the archive. A key the table does not list raises
+`SchemaError` naming the closest known key, so a misspelt `unit` cannot
+leave the archive without its unit. Only the three named columns are carried
 over; anything else in the export is left behind, so the archive holds
 exactly what its schema promises.
 
@@ -294,6 +296,8 @@ the source's own codes are never overwritten.
 | non-numeric `value` on a tag that is not `role: MODE` | `SchemaError`, naming the tag and value |
 | no `tsdive.meta` on the file | `SchemaError` |
 | `tsdive.meta` missing a required key | `SchemaError`, naming the key |
+| a key `tsdive.meta` does not define, at any level | `SchemaError`, naming the closest known key |
+| one end of the engineering range without the other, or a span of 0 or less | `SchemaError` |
 | `quality_codes` naming a severity that does not exist | `SchemaError` |
 | ingesting naive timestamps without `--tz` | `SchemaError` |
 | ingesting a source with no quality column and no `--assume-quality` | `SchemaError` |

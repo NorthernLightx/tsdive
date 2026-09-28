@@ -12,7 +12,9 @@ than editing them: it refuses an existing file unless the caller says
 
 from __future__ import annotations
 
+import difflib
 import json
+import math
 import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -114,7 +116,7 @@ def meta_from_parquet(path: Path) -> TagMeta:
     raw = schema.metadata.get(META_KEY.encode("ascii")) if schema.metadata else None
     if raw is None:
         raise SchemaError(f"{path.name}: no {META_KEY} metadata; refusing to invent tag metadata")
-    return meta_from_dict(json.loads(raw))
+    return meta_from_dict(json.loads(raw), label=path.name)
 
 
 def meta_to_dict(meta: TagMeta) -> dict:
@@ -134,20 +136,160 @@ def meta_to_dict(meta: TagMeta) -> dict:
     }
 
 
-def meta_from_dict(d: dict) -> TagMeta:
+# Every key a tsdive.meta object may carry, in the order docs/SCHEMA.md
+# lists them, and the keys of its "identity" object.
+META_KEYS = (
+    "identity",
+    "name",
+    "unit_raw",
+    "unit_canonical",
+    "eng_range_zero",
+    "eng_range_span",
+    "sample_rate_s",
+    "asset",
+    "loop_id",
+    "role",
+    "quality_codes",
+    "quality_assumed",
+)
+IDENTITY_KEYS = ("source_id", "point_id")
+_TEXT_KEYS = ("name", "unit_raw", "unit_canonical", "asset", "loop_id")
+
+
+def _unknown_key(label: str, key: str, known: tuple[str, ...], prefix: str = "") -> SchemaError:
+    """The refusal for a key tsdive does not read, naming the closest known key."""
+    shown = f"{prefix}{key}"
+    if not prefix and key == "eng_range":
+        return SchemaError(
+            f"{label}: unknown key 'eng_range'; write the range as eng_range_zero "
+            "and eng_range_span, two numbers at the top level"
+        )
+    close = difflib.get_close_matches(key, known, n=1)
+    if close:
+        return SchemaError(
+            f"{label}: unknown key {shown!r}; did you mean {prefix + close[0]!r}?"
+        )
+    return SchemaError(
+        f"{label}: unknown key {shown!r}; the known keys are {', '.join(known)}"
+    )
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _check_meta_dict(d: object, label: str) -> None:
+    """Raise ``SchemaError`` unless ``d`` is a well-formed ``tsdive.meta`` object.
+
+    Every key is checked at every level, so a misspelt key raises instead
+    of dropping the fact it carried. Values are checked for type, and the
+    engineering range for both ends being present and a positive span.
+    """
+    if not isinstance(d, dict):
+        raise SchemaError(f"{label}: expected a JSON object of tag metadata")
+    for key in d:
+        if key not in META_KEYS:
+            raise _unknown_key(label, str(key), META_KEYS)
+    if "identity" not in d:
+        raise SchemaError(f"{label}: missing required key 'identity'")
+    ident = d["identity"]
+    if not isinstance(ident, dict):
+        raise SchemaError(
+            f"{label}: identity must be an object with source_id and point_id"
+        )
+    for key in ident:
+        if key not in IDENTITY_KEYS:
+            raise _unknown_key(label, str(key), IDENTITY_KEYS, prefix="identity.")
+    for key in IDENTITY_KEYS:
+        if key not in ident:
+            raise SchemaError(f"{label}: missing required key 'identity.{key}'")
+        if not isinstance(ident[key], str) or not ident[key]:
+            raise SchemaError(
+                f"{label}: identity.{key} must be a non-empty string, not {ident[key]!r}"
+            )
+    if "name" not in d:
+        raise SchemaError(f"{label}: missing required key 'name'")
+    for key in _TEXT_KEYS:
+        value = d.get(key)
+        if value is not None and not isinstance(value, str):
+            raise SchemaError(f"{label}: {key} must be a string or null, not {value!r}")
+    if not isinstance(d["name"], str):
+        raise SchemaError(f"{label}: name must be a string, not {d['name']!r}")
+    zero, span = d.get("eng_range_zero"), d.get("eng_range_span")
+    if (zero is None) != (span is None):
+        given, missing = (
+            ("eng_range_zero", "eng_range_span") if span is None
+            else ("eng_range_span", "eng_range_zero")
+        )
+        raise SchemaError(
+            f"{label}: {given} is set and {missing} is not; state both ends of the "
+            "range or neither"
+        )
+    for key, value in (("eng_range_zero", zero), ("eng_range_span", span)):
+        if value is not None and not (_is_number(value) and math.isfinite(value)):
+            raise SchemaError(f"{label}: {key} must be a finite number, not {value!r}")
+    if span is not None and span <= 0:
+        raise SchemaError(
+            f"{label}: eng_range_span must be greater than 0, not {span!r}; the range "
+            "runs from eng_range_zero to eng_range_zero + eng_range_span"
+        )
+    rate = d.get("sample_rate_s")
+    if rate is not None and not (_is_number(rate) and math.isfinite(rate) and rate > 0):
+        raise SchemaError(
+            f"{label}: sample_rate_s must be a number of seconds greater than 0, "
+            f"not {rate!r}"
+        )
+    role = d.get("role")
+    if role is not None and role not in {r.value for r in Role}:
+        raise SchemaError(
+            f"{label}: role {role!r} is not one of {', '.join(r.value for r in Role)}"
+        )
+    codes = d.get("quality_codes")
+    if codes is not None and not isinstance(codes, dict):
+        raise SchemaError(
+            f"{label}: quality_codes must be an object mapping raw codes to severities"
+        )
+    severities = {s.value for s in Severity}
+    for code, declared in (codes or {}).items():
+        if not isinstance(declared, str) or declared.strip().upper() not in severities:
+            raise SchemaError(
+                f"{label}: quality_codes maps {code!r} to {declared!r}; "
+                f"expected one of {', '.join(sorted(severities))}"
+            )
+    assumed = d.get("quality_assumed")
+    if assumed is not None and not isinstance(assumed, bool):
+        raise SchemaError(f"{label}: quality_assumed must be true or false, not {assumed!r}")
+
+
+def meta_from_dict(d: dict, *, label: str = META_KEY) -> TagMeta:
+    """Build a [`TagMeta`][tsdive.TagMeta] from a ``tsdive.meta`` object.
+
+    ``label`` names the object's origin (a file name) in every refusal.
+
+    Raises:
+        SchemaError: a key tsdive does not read, at the top level or under
+            ``identity`` (the message names the closest known key); a
+            missing required key; a value of the wrong type; one end of the
+            engineering range without the other; a span or sample rate of
+            0 or less; or a ``quality_codes`` entry that names no severity.
+
+    Examples:
+        >>> from tsdive.store.tagstore import meta_from_dict
+        >>> meta_from_dict({"identity": {"source_id": "plant1", "point_id": "FIC101.PV"},
+        ...                 "name": "FIC-101 flow", "unit": "m3/h"}, label="meta.json")
+        Traceback (most recent call last):
+        ...
+        tsdive.errors.SchemaError: meta.json: unknown key 'unit'; did you mean 'unit_raw'?
+    """
     from tsdive.store.identity import EngRange
 
+    _check_meta_dict(d, label)
     eng_range = None
     if d.get("eng_range_zero") is not None and d.get("eng_range_span") is not None:
         eng_range = EngRange(zero=float(d["eng_range_zero"]), span=float(d["eng_range_span"]))
-    try:
-        ident = d["identity"]
-        identity = TagIdentity(source_id=ident["source_id"], point_id=ident["point_id"])
-        name = d["name"]
-    except KeyError as e:
-        raise SchemaError(
-            f"{META_KEY} is missing required key {e.args[0]!r}; refusing to invent tag metadata"
-        ) from e
+    ident = d["identity"]
+    identity = TagIdentity(source_id=ident["source_id"], point_id=ident["point_id"])
+    name = d["name"]
     return TagMeta(
         identity=identity,
         name=name,

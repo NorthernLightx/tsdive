@@ -233,6 +233,16 @@ def read_meta_json(path: str | Path) -> TagMeta:
     block, so metadata written for ingest is readable back off the
     archive without a second format to keep in step.
 
+    Every key is checked, at the top level and under ``identity``. A key
+    tsdive does not read raises ``SchemaError`` naming the closest known
+    key, so a misspelt ``"unit"`` cannot leave the archive without its
+    unit.
+
+    Raises:
+        SchemaError: invalid JSON, an unknown or missing key, a value of
+            the wrong type, one end of the engineering range without the
+            other, or a ``quality_codes`` entry that names no severity.
+
     Examples:
         >>> import json
         >>> import tsdive
@@ -243,22 +253,23 @@ def read_meta_json(path: str | Path) -> TagMeta:
         >>> read = tsdive.read_meta_json("FIC101.PV.json")
         >>> str(read.identity), read.unit_raw, read.sample_rate_s
         ('plant1:FIC101.PV', 'm3/h', 3.0)
+
+        A misspelt key raises instead of being dropped:
+
+        >>> meta["unit"] = meta.pop("unit_raw")
+        >>> with open("FIC101.PV.json", "w", encoding="utf-8") as f:
+        ...     json.dump(meta, f)
+        >>> tsdive.read_meta_json("FIC101.PV.json")
+        Traceback (most recent call last):
+        ...
+        tsdive.errors.SchemaError: FIC101.PV.json: unknown key 'unit'; did you mean 'unit_raw'?
     """
     text = Path(path).read_text(encoding="utf-8")
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as e:
         raise SchemaError(f"{Path(path).name}: not valid JSON ({e})") from e
-    if not isinstance(payload, dict):
-        raise SchemaError(f"{Path(path).name}: expected a JSON object of tag metadata")
-    severities = {s.value for s in Severity}
-    for code, declared in (payload.get("quality_codes") or {}).items():
-        if not isinstance(declared, str) or declared.strip().upper() not in severities:
-            raise SchemaError(
-                f"{Path(path).name}: quality_codes maps {code!r} to {declared!r}; "
-                f"expected one of {', '.join(sorted(severities))}"
-            )
-    return meta_from_dict(payload)
+    return meta_from_dict(payload, label=Path(path).name)
 
 
 def _read_source(path: Path) -> pd.DataFrame:

@@ -913,7 +913,10 @@ def _parser_ingest() -> argparse.ArgumentParser:
         help="archive to create; with --wide, directory for one archive per tag",
     )
     parser.add_argument(
-        "--meta", default=None, help="JSON file of tag metadata (the tsdive.meta object)"
+        "--meta",
+        default=None,
+        help="JSON file of tag metadata (the tsdive.meta object); a key it does not "
+        "define raises SchemaError",
     )
     parser.add_argument(
         "--timestamp-col", default="timestamp", help="timestamp column of the export"

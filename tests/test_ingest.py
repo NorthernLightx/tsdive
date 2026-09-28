@@ -295,6 +295,87 @@ def test_meta_json_missing_a_required_key_is_refused(tmp_path):
         tsdive.read_meta_json(path)
 
 
+def test_unknown_meta_keys_are_refused_with_the_closest_known_key(tmp_path, capsys):
+    """SCOPE claim: a metadata key tsdive does not read raises SchemaError."""
+    payload = {k: v for k, v in META.items() if k not in ("unit_raw", "eng_range_zero",
+                                                          "eng_range_span")}
+    path = _meta_file(tmp_path)
+    path.write_text(json.dumps({**payload, "unit": "m3/h"}), encoding="utf-8")
+    with pytest.raises(SchemaError, match=r"meta\.json: unknown key 'unit'; did you mean "
+                       r"'unit_raw'\?"):
+        tsdive.read_meta_json(path)
+
+    out = tmp_path / "FIC101.PV.parquet"
+    rc = cmd_ingest([str(_csv(tmp_path, stamps=AWARE)), "--out", str(out), "--meta", str(path),
+                     "--timestamp-col", "ts", "--value-col", "v", "--quality-col", "q"])
+    assert rc != 0
+    assert "unknown key 'unit'" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_a_nested_eng_range_is_refused_naming_the_flat_keys(tmp_path):
+    path = _meta_file(tmp_path)
+    payload = {k: v for k, v in META.items() if not k.startswith("eng_range")}
+    path.write_text(json.dumps({**payload, "eng_range": {"zero": 0, "span": 200}}),
+                    encoding="utf-8")
+    with pytest.raises(SchemaError, match="unknown key 'eng_range'; write the range as "
+                       "eng_range_zero and eng_range_span"):
+        tsdive.read_meta_json(path)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"identity": {"source": "plant1", "point_id": "X"}},
+         r"unknown key 'identity\.source'; did you mean 'identity\.source_id'\?"),
+        ({"eng_range_span": None}, "eng_range_zero is set and eng_range_span is not"),
+        ({"eng_range_zero": None}, "eng_range_span is set and eng_range_zero is not"),
+        ({"eng_range_span": 0}, "eng_range_span must be greater than 0"),
+        ({"eng_range_zero": "0"}, "eng_range_zero must be a finite number"),
+        ({"sample_rate_s": -1}, "sample_rate_s must be a number of seconds greater than 0"),
+        ({"role": "pv"}, "role 'pv' is not one of PV, SP, OP, MODE"),
+        ({"unit_raw": 3}, "unit_raw must be a string or null"),
+        ({"quality_assumed": "yes"}, "quality_assumed must be true or false"),
+        ({"flow_units": "m3/h"}, r"unknown key 'flow_units'; the known keys are identity, "),
+    ],
+)
+def test_malformed_meta_values_are_refused(tmp_path, overrides, message):
+    with pytest.raises(SchemaError, match=message):
+        tsdive.read_meta_json(_meta_file(tmp_path, **overrides))
+
+
+def test_wide_ingest_refuses_an_unknown_key_in_a_meta_file_before_writing(tmp_path):
+    meta_dir = _wide_meta_dir(tmp_path)
+    path = meta_dir / "TIC201.PV.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**payload, "units": "degC"}), encoding="utf-8")
+    with pytest.raises(SchemaError, match=r"TIC201\.PV\.json: unknown key 'units'"):
+        tsdive.ingest_wide(
+            _wide_csv(tmp_path),
+            out_dir=tmp_path / "archive",
+            meta_dir=meta_dir,
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
+def test_an_archive_whose_meta_carries_an_unknown_key_is_refused(tmp_path):
+    import pyarrow as pa
+    from pyarrow import parquet
+
+    frame = pd.DataFrame({"timestamp": pd.to_datetime(AWARE), "value": [1.0, 2.0, 3.0],
+                          "quality": ["GOOD"] * 3})
+    table = pa.Table.from_pandas(frame, preserve_index=False).replace_schema_metadata(
+        {"tsdive.meta": json.dumps({**META, "unit": "m3/h"})}
+    )
+    path = tmp_path / "odd.parquet"
+    parquet.write_table(table, path)
+    with pytest.raises(SchemaError, match=r"odd\.parquet: unknown key 'unit'"):
+        meta_from_parquet(path)
+
+
 def test_ingest_refuses_an_unsupported_input(tmp_path):
     src = tmp_path / "export.xlsx"
     src.write_bytes(b"not really a spreadsheet")
