@@ -1188,7 +1188,9 @@ def switchback_analyze(
         target: the tag, as ``source:point`` or a point id that one
             archive carries.
         covariates: tags declared before the analysis for the adjusted
-            estimate.
+            estimate. Each one's own B - A difference is tested with the
+            same design, and ``covariate_checks`` flags one the setting
+            moves (p < 0.05), whose adjustment can absorb the difference.
 
     Raises:
         ScheduleMismatch: the plan was edited or is not balanced.
@@ -1213,6 +1215,8 @@ def switchback_analyze(
         (0.6024, 0.154)
         >>> round(result.adjusted.estimate, 4), round(result.adjusted.p_value, 3)
         (0.2847, 0.001)
+        >>> [(check.tag, check.moves) for check in result.covariate_checks]
+        [('demo:FI200.PV', False), ('demo:TT001.PV', False)]
     """
     resolved = plan if isinstance(plan, SwitchbackPlan) else SwitchbackPlan.read_json(plan)
     return analyze_archives(archives, resolved, target=target, covariates=tuple(covariates))

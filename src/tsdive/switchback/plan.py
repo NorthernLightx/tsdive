@@ -349,8 +349,9 @@ def verify_plan(plan: SwitchbackPlan) -> Design:
     if actual != plan.digest:
         raise ScheduleMismatch(
             f"plan digest {plan.digest[:12]} does not match its schedule "
-            f"({actual[:12]}); the plan was edited after it was written, so plan "
-            "the trial again"
+            f"({actual[:12]}); the plan was edited after it was written, so restore "
+            f"the plan file whose digest starts {plan.digest[:12]}: the analysis "
+            "needs the plan as drawn"
         )
     k = _block_count(plan.start, plan.end, plan.block_s)
     if plan.k != k:

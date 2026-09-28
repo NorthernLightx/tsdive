@@ -609,7 +609,10 @@ SWITCHBACK_DOC = """tsdive switchback - plan and analyze a randomized trial of s
 def _parser_switchback_plan() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tsdive switchback plan")
     parser.add_argument(
-        "--window", required=True, help="ISO 8601 START/END in UTC the schedule runs over"
+        "--window",
+        required=True,
+        help="ISO 8601 START/END the schedule runs over; bounds with a UTC offset "
+        "are converted to UTC",
     )
     parser.add_argument(
         "--block", required=True, help="block length as an ISO 8601 duration, like PT1H"
@@ -638,7 +641,8 @@ def _parser_switchback_plan() -> argparse.ArgumentParser:
     parser.add_argument(
         "--history-window",
         default=None,
-        help="ISO 8601 START/END in UTC of the history, at least as long as the schedule",
+        help="ISO 8601 START/END of the history, at least as long as the schedule; "
+        "bounds with a UTC offset are converted to UTC",
     )
     return _add_output_flags(parser)
 

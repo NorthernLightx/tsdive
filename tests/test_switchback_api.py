@@ -338,3 +338,68 @@ def test_a_short_history_refuses_the_readout_not_the_plan(tmp_path):
     assert plan.power is not None and plan.power.reason == "history_short"
     assert "the history window spans 8 h and the schedule 16 h" in (plan.power.detail or "")
     assert "refused   history_short" in plan.render()
+
+
+def test_a_covariate_the_setting_moves_is_flagged_not_refused(tmp_path):
+    plan = _plan()
+    target, feed = _trial(tmp_path, plan, shift=0.0)
+    n = int((plan.schedule_end - plan.start).total_seconds() // 60)
+    z = plan.observed[np.arange(n) // 60].astype(float)
+    rng = np.random.default_rng(3)
+    output = 40.0 + 6.0 * lag_response(z, np.arange(n, dtype=float), 3.0) + rng.normal(0, 0.2, n)
+    stamps = _minutes(plan.start, n)
+    target = _write(tmp_path / "ti201.parquet", stamps,
+                    120.0 + 0.1 * (output - 40.0) + rng.normal(0, 0.3, n), "TI201.PV")
+    op = _write(tmp_path / "fc200.parquet", stamps, output, "FC200.OP", unit="%")
+    a = tsdive.switchback_analyze([target, feed, op], plan, target="TI201.PV",
+                                  covariates=["FI200.PV", "FC200.OP"])
+    assert [c.tag for c in a.covariate_checks] == ["unit1:FI200.PV", "unit1:FC200.OP"]
+    assert [c.tag for c in a.moving_covariates] == ["unit1:FC200.OP"]
+    moved = a.moving_covariates[0].difference
+    assert moved.p_value is not None and moved.p_value < 0.05
+    assert not a.direct.refused and a.adjusted is not None and not a.adjusted.refused
+    text = a.render()
+    assert "covariate unit1:FC200.OP moves with the setting (p " in text
+    assert "report the unadjusted one" in " ".join(text.split())
+    assert "covariate unit1:FI200.PV moves" not in text
+    checks = a.to_dict()["covariate_checks"]
+    assert [c["moves_with_setting"] for c in checks] == [False, True]
+    assert checks[1]["unit"] == "percent" and checks[1]["p_value"] == moved.p_value
+
+
+def test_an_edited_plan_names_the_digest_to_restore(tmp_path):
+    plan = _plan()
+    target, feed = _trial(tmp_path, plan, shift=0.0)
+    path = plan.write_json(tmp_path / "plan.json")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    first = doc["schedule"][0]
+    first["setting"] = "A" if first["setting"] == "B" else "B"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(ScheduleMismatch) as info:
+        tsdive.switchback_analyze([target, feed], path, target="TI201.PV")
+    message = str(info.value)
+    assert f"restore the plan file whose digest starts {plan.digest[:12]}" in message
+    assert "the analysis needs the plan as drawn" in message
+    assert "plan the trial again" not in message
+
+
+def test_a_short_history_line_states_the_window_passed_and_the_span_needed(tmp_path):
+    path, _ = _history(tmp_path)
+    h_start = START - pd.Timedelta(8, unit="h")
+    plan = _plan(history=path, history_window=f"{h_start}/{START}".replace(" ", "T"))
+    assert plan.power is not None
+    assert (plan.power.start, plan.power.end) == (h_start, START)
+    history = next(ln for ln in plan.render().splitlines() if ln.startswith("  history"))
+    assert history.endswith("2024-03-03 16:00:00Z -> 2024-03-04 00:00:00Z   "
+                            "(the schedule needs 16 h)")
+
+
+def test_the_plan_window_help_states_the_offset_conversion():
+    from tsdive.cli import _parser_switchback_plan
+
+    helps = {a.dest: a.help for a in _parser_switchback_plan()._actions}
+    assert "converted to UTC" in helps["window"]
+    assert "converted to UTC" in helps["history_window"]
+    plan = _plan(start=pd.Timestamp("2024-03-04 02:00:00+02:00"),
+                 end=pd.Timestamp("2024-03-04 18:00:00+02:00"))
+    assert plan.start == START
