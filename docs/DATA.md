@@ -380,9 +380,10 @@ Verified on 2026-08-28; testing files verified on 2026-09-28.
   … `xmeas_41`, `xmv_1` … `xmv_11`. `xmv_12` (the agitator speed, the one
   manipulated variable the base-case controller never moves) is not in
   this distribution. Nothing here is constant by design.
-- Sampling is every 180 s. Training runs are 500 samples (25 h) with the
-  fault stepped in at sample 20; testing runs are 960 samples (48 h) with
-  the fault stepped in at sample 160. 500 runs per fault in each split.
+- Sampling is every 180 s. Training runs are 500 samples (25 h) and the
+  first faulty sample is 21. Testing runs are 960 samples (48 h) and the
+  first faulty sample is 161. Fault 6 zeroes `xmeas_1` from sample 21 in
+  all 500 training runs. 500 runs per fault in each split.
 - TEP has no clock. A row is numbered, not stamped. tsdive stores UTC
   only, so `scripts/convert_tep.py` synthesises a timestamp
   (`2000-01-01T00:00:00Z + 180 s × (sample - 1)`) and writes
@@ -404,8 +405,9 @@ Verified on 2026-08-28; testing files verified on 2026-09-28.
   `docs/SCHEMA.md` documents), `mol%` (a composition basis, not a bare
   percent), `kscmh` (a reference-condition flow, like `Nm3/h`) and `kW`
   (a plain table gap).
-- Ground truth is per row: `LABEL_fault` is a `role=MODE` archive holding
-  `"0"` before the onset sample and the fault number after it.
+- Ground truth is per row: `LABEL_fault` is a `role=MODE` archive. It holds
+  `"0"` on every sample before the first faulty sample, and the fault
+  number from sample 21 (training) or 161 (testing) to the end of the run.
 
 Findings from the executed profile study are in
 [examples/studies/tep_profile/REPORT.md](../examples/studies/tep_profile/REPORT.md).
@@ -420,7 +422,7 @@ Findings from the executed profile study are in
   process to a peak working set of 15.4 GiB.
 - Onset: fault 6 zeroes `xmeas_1` from sample 161, so samples 1-160 of a
   testing run precede the fault. `scripts/convert_tep.py` labels sample
-  160 as the first fault sample.
+  161 as the first fault sample.
 - The fault-free testing runs start with a lower spread: over runs 1-250
   the log SD ratio of samples 161-320 over 1-160 has a median of 0.038
   over the 52 variables and reaches 0.45.

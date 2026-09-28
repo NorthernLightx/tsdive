@@ -61,10 +61,11 @@ SOURCES = {
     "TEP_Faulty_Testing.RData": "test",
 }
 
-# Sample index at which the fault is introduced. Training runs are 500
-# samples (25 h) with the fault stepped in after 1 h; testing runs are
-# 960 samples (48 h) with the fault stepped in after 8 h.
-ONSET_SAMPLE = {"train": 20, "test": 160}
+# First sample index that carries the fault. Training runs are 500
+# samples (25 h) and the fault is introduced after the first 20 (1 h).
+# Testing runs are 960 samples (48 h) and the fault is introduced after
+# the first 160 (8 h). docs/DATA.md records the fault 6 check.
+ONSET_SAMPLE = {"train": 21, "test": 161}
 
 T0 = pd.Timestamp("2000-01-01T00:00:00Z")
 SAMPLE_RATE_S = 180.0
@@ -174,7 +175,7 @@ def timestamps(samples: pd.Series) -> pd.Series:
 
 
 def fault_labels(samples: pd.Series, fault: int, onset: int) -> list[str]:
-    """Per-row ground truth: "0" before the onset sample, the fault after.
+    """Per-row ground truth: "0" before the onset sample, the fault from it on.
 
     A fault-free run is "0" throughout, which this rule already gives:
     its fault number is 0.

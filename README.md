@@ -200,7 +200,7 @@ Tags that changed
 
 Pairs that decoupled  (Pearson on first differences, 95% block bootstrap)
   pair                   before   after   delta  interval
-  FIC101.PV ~ TIC101.PV    0.69    0.17   -0.53  [-0.74, -0.35]
+  FIC101.PV ~ TIC101.PV    0.69    0.17   -0.53  [-0.76, -0.26]
 
 Joint structure  (PCA fitted on before, 2 of 2 tags aligned)
   components 1 of 2   explained 0.9839 -> 0.2643 on after

@@ -1246,13 +1246,22 @@ def render_report(summary: dict, rows: list[dict], run_meta: dict) -> str:
         "real-world contact is the part the library declines to guess about is a "
         "fair description of what a simulator is worth here."
     )
+    # scripts/convert_tep.py labelled the training onset at sample 20 until
+    # it moved to 21, the first sample the fault acts on.
+    early_onset = (
+        " The archives this study read were converted with the onset one sample "
+        "early (sample 20, one extra faulty row per faulty run), and the profile "
+        "reads no label."
+        if conv["onset_samples"] == [20]
+        else ""
+    )
     add(
         "5. **Ground truth is the thing it does have.** Every run carries "
         "`LABEL_fault` with the fault number per row and the onset sample recorded "
         f"in `RUN.json` ({conv['n_faulty_rows']:,d} faulty rows over "
         f"{conv['n_rows']:,d}). The profile does not use it. Stages 3 and above will, and "
         "TEP is where a detector number can be checked against a fault whose start "
-        "time is known exactly rather than inferred from a folder name."
+        f"time is known exactly rather than inferred from a folder name.{early_onset}"
     )
     add("")
 
