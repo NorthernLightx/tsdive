@@ -167,6 +167,21 @@ synthetic AR(1) bed with a known shift runs beside them.
   --update-benchmarks`.
 - Read: [shift_intervals/REPORT.md](../examples/studies/shift_intervals/REPORT.md).
 
+### Switchback schedules on the placebo instances
+
+The same 538 instances as the placebo bed above, each as one record of
+240 minute medians. Settings A and B are assigned at random to 15, 30
+and 60 min blocks, and the study injects a known shift into the B blocks.
+The 60 min design has 6 assignments and is refused (`design_too_small`).
+Nothing is fitted across instances.
+
+- Run: `uv run python examples/studies/switchback/run_switchback.py
+  --beds 3w`, 62 s on the first draws and 63 s on the fresh ones, 8
+  worker processes. `--draw-offset 100000 --out
+  examples/studies/switchback/results/confirm` reruns any bed on fresh
+  assignments.
+  Read: [switchback/REPORT.md](../examples/studies/switchback/REPORT.md).
+
 ### Known upstream issues
 
 - The `dataset/folds` path 404s on `main` (fold splits were removed
@@ -216,6 +231,11 @@ Verified on 2026-09-03 against commit
   its anomaly span, on the 1 s rows as recorded. Both beds, with the 3W
   ones, run in 9 s. Read:
   [shift_intervals/REPORT.md](../examples/studies/shift_intervals/REPORT.md).
+- Switchback schedules: `uv run python
+  examples/studies/switchback/run_switchback.py --beds skab` assigns
+  settings A and B to 5 and 10 min calendar blocks of the anomaly-free
+  record, 500 draws, 73 s on the first draws and 72 s on the fresh ones.
+  Read: [switchback/REPORT.md](../examples/studies/switchback/REPORT.md).
 
 ### Layout
 
@@ -313,6 +333,12 @@ Verified on 2026-09-28 against Zenodo record 5516556.
 - Shift intervals: `uv run python
   examples/studies/shift_intervals/run_shift.py --beds turbine`, 3 s.
   Read: [shift_intervals/REPORT.md](../examples/studies/shift_intervals/REPORT.md).
+- Switchback schedules: `uv run python
+  examples/studies/switchback/run_switchback.py --beds turbine` assigns
+  settings A and B to 1 and 3 day calendar blocks of each pair's rows
+  before its upgrade. The holes leave some blocks empty. 250 draws per
+  pair, 56 s on the first draws and 56 s on the fresh ones.
+  Read: [switchback/REPORT.md](../examples/studies/switchback/REPORT.md).
 
 ## TEP
 
@@ -429,6 +455,19 @@ Findings from the executed profile study are in
 - Run: `uv run python examples/studies/shift_intervals/run_shift.py
   --beds tep`, 167 s. Per-row results stay in the cache directory.
   Read: [shift_intervals/REPORT.md](../examples/studies/shift_intervals/REPORT.md).
+
+### Switchback schedules on the fault-free testing runs
+
+- Cache: `uv run python examples/studies/switchback/build_tep_cache.py`
+  reads `TEP_FaultFree_Testing.RData` only and keeps runs 251-350, all
+  960 samples, as one float32 parquet under `data/tep_switchback_cache/`
+  (96,000 rows, cache sha256 `49ffa27703fe`, 3 s).
+- Run: `uv run python examples/studies/switchback/run_switchback.py
+  --beds tep`, 430 s on the first draws and 436 s on the fresh ones, 8
+  worker processes. Settings A and B go to 2 h and 4 h blocks, every
+  variable is the target in turn, and the adjusted arm regresses on the
+  other 51. Per-row results stay in `data/switchback_rows/`.
+  Read: [switchback/REPORT.md](../examples/studies/switchback/REPORT.md).
 
 ## Verification
 

@@ -1,0 +1,17 @@
+bed,adjustment,quantity,n_cells,n_units,value,mcse
+3w,raw,claim_rate_delta_0,6,43832,0.0408,0.0019
+3w,raw,coverage_registered_washout,18,131496,0.9588,0.0019
+3w,adjusted,claim_rate_delta_0,6,42256,0.0393,0.0018
+3w,adjusted,coverage_registered_washout,18,126768,0.9613,0.0018
+tep,raw,claim_rate_delta_0,6,312000,0.0495,0.0011
+tep,raw,coverage_registered_washout,18,936000,0.9505,0.0011
+tep,adjusted,claim_rate_delta_0,4,208000,0.0495,0.001
+tep,adjusted,coverage_registered_washout,12,624000,0.9523,0.001
+turbine,raw,claim_rate_delta_0,6,3000,0.0483,0.0052
+turbine,raw,coverage_registered_washout,18,9000,0.9517,0.0052
+turbine,adjusted,claim_rate_delta_0,6,3000,0.053,0.0049
+turbine,adjusted,coverage_registered_washout,18,9000,0.9471,0.0049
+skab,raw,claim_rate_delta_0,6,21000,0.045,0.0037
+skab,raw,coverage_registered_washout,18,63000,0.9549,0.0037
+skab,adjusted,claim_rate_delta_0,6,21000,0.0527,0.003
+skab,adjusted,coverage_registered_washout,18,63000,0.9474,0.003

@@ -24,7 +24,7 @@
         "n_wells_scored": 16,
         "source_manifest_sha256": "14bc1397d3ee"
       },
-      "draw_offset": 0,
+      "draw_offset": 100000,
       "draws": 4,
       "draws_registered": 4,
       "n_groups": 16,
@@ -32,9 +32,9 @@
       "n_rows": 8521920,
       "n_targets": 3228,
       "n_usable_targets": 1833,
-      "scoring_seconds": 55.2,
+      "scoring_seconds": 55.7,
       "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
-      "wall_seconds": 61.6
+      "wall_seconds": 62.6
     },
     "skab": {
       "block_labels": [
@@ -58,7 +58,7 @@
         "n_with_an_anomaly_row": 34,
         "source_manifest_sha256": "c0d612939333"
       },
-      "draw_offset": 0,
+      "draw_offset": 100000,
       "draws": 500,
       "draws_registered": 500,
       "n_groups": 1,
@@ -66,9 +66,9 @@
       "n_rows": 1601280,
       "n_targets": 8,
       "n_usable_targets": 7,
-      "scoring_seconds": 71.7,
+      "scoring_seconds": 70.9,
       "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
-      "wall_seconds": 73.1
+      "wall_seconds": 72.2
     },
     "tep": {
       "block_labels": [
@@ -93,7 +93,7 @@
         ],
         "source_manifest_sha256": "f57ab3ee3443"
       },
-      "draw_offset": 0,
+      "draw_offset": 100000,
       "draws": 10,
       "draws_registered": 10,
       "n_groups": 100,
@@ -101,9 +101,9 @@
       "n_rows": 21632000,
       "n_targets": 5200,
       "n_usable_targets": 5200,
-      "scoring_seconds": 415.1,
+      "scoring_seconds": 419.1,
       "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
-      "wall_seconds": 430.1
+      "wall_seconds": 436.2
     },
     "turbine": {
       "block_labels": [
@@ -161,7 +161,7 @@
           "n_upgraded_rows_at_v_9_unmodified": 7
         }
       },
-      "draw_offset": 0,
+      "draw_offset": 100000,
       "draws": 250,
       "draws_registered": 250,
       "n_groups": 2,
@@ -169,9 +169,9 @@
       "n_rows": 200320,
       "n_targets": 2,
       "n_usable_targets": 2,
-      "scoring_seconds": 55.7,
+      "scoring_seconds": 55.3,
       "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
-      "wall_seconds": 56.2
+      "wall_seconds": 55.9
     }
   },
   "budget_seconds": 1800,
@@ -179,7 +179,7 @@
     "git_head": "46c064d5df3e6370abf68d87475b03b795adbb85",
     "tsdive_version": "0.3.0"
   },
-  "draw_offset": 0,
+  "draw_offset": 100000,
   "draws_reduced": null,
   "parameters": {
     "alpha": 0.05,
@@ -222,6 +222,6 @@
     "tau": "0, L/10, L/4 steps",
     "washout": "0 and ceil(3 tau) steps"
   },
-  "wall_seconds_all_beds": 621.0,
+  "wall_seconds_all_beds": 626.9,
   "workers": 8
 }
