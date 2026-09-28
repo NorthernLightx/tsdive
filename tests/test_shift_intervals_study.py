@@ -586,3 +586,188 @@ def test_run_json_carries_no_machine_path(real_beds):
     text = (out / "run.json").read_text("utf-8")
     for fragment in (":\\\\", ":/", "Users", "tmp"):
         assert fragment not in text, fragment
+
+
+# ---------------------------------------------------------------- turbine-shaped bed
+#
+# Every column repeats with a period that divides one week of 10 min rows
+# (1008), so two placebo weeks hold identical arrays and the placebo
+# estimate is exactly 0.
+
+WEEK_ROWS = 1008
+TURBINE_T0 = pd.Timestamp("2010-04-29 06:20")
+PITCH_AFTER = 600
+
+
+def _periodic(values: list[float], rows: int) -> np.ndarray:
+    return np.resize(np.array(values, dtype=float), rows)
+
+
+def _turbine_frame(rows: int) -> pd.DataFrame:
+    v = _periodic([4.0, 6.0, 8.0, 10.0, 12.0, 7.0], rows)
+    frame = pd.DataFrame(
+        {
+            "V": v,
+            "D": _periodic([100.0, 140.0, 180.0, 220.0], rows),
+            "rho": _periodic([1.1, 1.2, 1.15], rows),
+            "S": _periodic([0.2, 0.4, 0.3, 0.5], rows),
+            "I": _periodic([0.05, 0.09, 0.07, 0.06, 0.08, 0.04, 0.1], rows),
+            "VcosD": _periodic([1.0, -2.0, 3.0, 0.5, -1.5, 2.5, -0.5, 1.5, 0.0], rows),
+            "VsinD": _periodic([2.0, 0.0, -1.0, 1.0, 3.0, -2.0] * 2, rows),
+        }
+    )
+    pattern = _periodic([0.0, 0.03, 0.01, 0.05, 0.02, 0.04, 0.06, 0.0, 0.02] * 2, rows)
+    frame["y_test"] = 0.08 * v + pattern
+    frame["y_ctrl"] = 0.08 * v + _periodic([0.01, 0.0, 0.03, 0.02] * 3 + [0.0, 0.01], rows)
+    return frame
+
+
+def _stamps(rows: int, gap_at: int | None = None) -> pd.Series:
+    step = pd.to_timedelta(np.arange(rows) * 10, unit="min")
+    stamps = pd.Series(TURBINE_T0 + step)
+    if gap_at is not None:
+        stamps[gap_at:] = stamps[gap_at:] + pd.Timedelta(2, unit="D")
+    return stamps
+
+
+def _write_pair(path: Path, frame: pd.DataFrame, stamps: pd.Series, status, names) -> None:
+    status_name, y_name, c_name = names
+    out = pd.DataFrame(
+        {
+            "time": stamps.dt.strftime("%m/%d/%Y %H:%M"),
+            status_name: status,
+            "V": frame["V"],
+            "D": frame["D"],
+            "rho": frame["rho"],
+            "S": frame["S"],
+            "I": frame["I"],
+            "VcosD": frame["VcosD"],
+            "VsinD": frame["VsinD"],
+            y_name: frame["y_test"],
+            c_name: frame["y_ctrl"],
+        }
+    )
+    out.index = range(1, len(out) + 1)
+    out.to_csv(path, lineterminator="\n")
+
+
+def build_turbine(root: Path) -> None:
+    raw = root / "raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    vg_rows = 4 * WEEK_ROWS + 500
+    vg = _turbine_frame(vg_rows)
+    vg_status = (np.arange(vg_rows) >= 4 * WEEK_ROWS).astype(int)
+    _write_pair(
+        raw / "Turbine Upgrade Dataset(VG Pair).csv",
+        vg,
+        _stamps(vg_rows),
+        vg_status,
+        ("upgrade status", "y_test (normalized)", "y_ctrl (normalized)"),
+    )
+    pitch_rows = 2 * WEEK_ROWS + PITCH_AFTER
+    pitch = _turbine_frame(pitch_rows)
+    upgraded = np.arange(pitch_rows) >= 2 * WEEK_ROWS
+    windy = upgraded & (pitch["V"].to_numpy() > 9.0)
+    base = pitch["y_test"].to_numpy().copy()
+    table = {}
+    for r in rs.TURBINE_TABLE_R:
+        table[f"y_test(r={r:.2f}, normalized)"] = np.where(windy, base * (1 + r), base)
+    main = pitch.assign(y_test=table["y_test(r=0.05, normalized)"])
+    stamps = _stamps(pitch_rows, gap_at=WEEK_ROWS + 3)
+    _write_pair(
+        raw / "Turbine Upgrade Dataset(Pitch Angle Pair).csv",
+        main,
+        stamps,
+        upgraded.astype(int),
+        ("upgrade status", "y_test(normalized)", "y_ctrl(normalized)"),
+    )
+    t73 = pd.DataFrame(
+        {
+            "time": stamps.dt.strftime("%m/%d/%Y %H:%M"),
+            "upgrade.status": upgraded.astype(int),
+            **{c: pitch[c] for c in ("V", "D", "rho", "S", "I", "VcosD", "VsinD")},
+            **table,
+            "y_ctrl(normalized)": pitch["y_ctrl"],
+        }
+    )
+    t73.to_csv(
+        raw / "Turbine Upgrade Dataset(Pitch Angle Pair, Table7.3).csv",
+        index=False,
+        lineterminator="\n",
+    )
+
+
+@pytest.fixture(scope="module")
+def turbine_bed(tmp_path_factory) -> tuple[dict, Path, Path]:
+    root = tmp_path_factory.mktemp("turbine")
+    build_turbine(root / "turbine")
+    info = rs.run(root / "a", (rs.BED_TURBINE,), turbine=root / "turbine")
+    rs.run(root / "b", (rs.BED_TURBINE,), turbine=root / "turbine")
+    return info, root / "a", root / "b"
+
+
+def test_turbine_loader_reads_the_published_headers(turbine_bed):
+    info, _, _ = turbine_bed
+    dataset = info["beds"][rs.BED_TURBINE]["dataset"]
+    table = dataset["pitch_table"]
+    assert table["modified_rows_match_upgraded_and_v_over_9"]
+    assert table["main_file_y_test_equals_r_0.05"]
+    assert table["n_rows_modified"] == 200  # V in {10, 12}: 2 of every 6 upgraded rows
+    vg = dataset["pairs"][rs.PAIR_VG]
+    assert vg["n_rows"] == 4 * WEEK_ROWS + 500
+    assert vg["n_upgraded_rows"] == 500
+    assert dataset["pairs"][rs.PAIR_PITCH]["steps_minutes"]["over_1440"] == 1
+
+
+def test_turbine_placebo_weeks_do_not_clear_and_injection_carries_its_truth(turbine_bed):
+    info, out, _ = turbine_bed
+    rows = rs.read_rows(out / rs.TURBINE_CSV)
+    designs = info["beds"][rs.BED_TURBINE]["designs"]
+    assert designs[rs.DESIGN_TURBINE_PLACEBO]["n_splits"] == 3  # 2 VG pairs, 1 pitch pair
+    level = rows[rows["quantity"] == sh.LEVEL]
+    placebo = level[(level["design"] == rs.DESIGN_TURBINE_PLACEBO) & (level["refused"] == 0)]
+    assert len(placebo) > 0
+    assert (placebo["estimate"] == 0).all()
+    assert (placebo["clears"] == 0).all()
+    assert (placebo["truth"] == 0).all()
+    injected = level[level["design"] == rs.DESIGN_TURBINE_INJECTED.format(r=0.09)]
+    answered = injected[injected["refused"] == 0]
+    assert len(answered) > 0
+    assert (answered["truth"] > 0).all()
+    assert (answered["estimate"] - answered["truth"]).abs().max() < 1e-3
+    hac = answered[answered["method"] == sh.HAC]
+    assert (hac["clears"] == 1).all()
+
+
+def test_turbine_pitch_change_scores_each_published_r(turbine_bed):
+    _, out, _ = turbine_bed
+    rows = rs.read_rows(out / rs.TURBINE_CSV)
+    pitch = rows[
+        (rows["design"] == rs.DESIGN_TURBINE_PITCH)
+        & (rows["quantity"] == sh.LEVEL)
+        & (rows["method"] == sh.HAC)
+        & (rows["adjustment"] == sh.RAW)
+    ]
+    assert len(pitch) == 1 + len(rs.TURBINE_TABLE_R)
+    assert set(pitch["n_before"]) == {PITCH_AFTER} and set(pitch["n_after"]) == {PITCH_AFTER}
+    truth = pitch.set_index("record")["truth"]
+    assert truth["pitch_pair_r0.00"] == 0
+    assert truth["pitch_pair_r0.02"] < truth["pitch_pair_r0.05"] < truth["pitch_pair_r0.09"]
+    vg = rows[(rows["design"] == rs.DESIGN_TURBINE_VG) & (rows["quantity"] == sh.LEVEL)]
+    assert vg["truth"].isna().all()
+    assert set(vg["n_after"]) == {500}
+
+
+def test_turbine_rerun_writes_identical_csvs(turbine_bed):
+    _, first, second = turbine_bed
+    for name in (rs.TURBINE_CSV, rs.SUMMARY_CSV):
+        assert filecmp.cmp(first / name, second / name, shallow=False), name
+    summary = pd.read_csv(first / rs.SUMMARY_CSV)
+    injected = summary[
+        (summary["design"] == rs.DESIGN_TURBINE_INJECTED.format(r=0.09))
+        & (summary["quantity"] == sh.LEVEL)
+        & (summary["method"] == sh.HAC)
+        & (summary["adjustment"] == sh.RAW)
+        & (summary["refusal_set"] == "base")
+    ]
+    assert injected["coverage"].notna().all()

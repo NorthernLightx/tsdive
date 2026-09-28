@@ -29,8 +29,24 @@ Estimators and rules live in ``shift.py``.
 - ``skab_labelled_onset``: rows before the first anomaly row against the
   first to the last anomaly row.
 
-Every tag of a split is the target in turn; its covariates are every other
-tag that passes R0 on the split. Nothing is fitted across records.
+``turbine`` reads the Turbine Upgrade Dataset (two turbine pairs, 10 min
+rows as recorded, ``y_test`` the target):
+
+- ``turbine_placebo``: each pair's rows before its upgrade, non-overlapping
+  1 week before and 1 week after pairs from the first timestamp.
+- ``turbine_injected_r<r>``: the same pairs with the after week's ``y_test``
+  times (1 + r) where V > 9, the rule the dataset applies to its pitch pair;
+  the truth is the mean injected increment over the after rows.
+- ``turbine_pitch_change``: the published pitch change, the 7,000 upgraded
+  rows against the 7,000 before them, once per published r and once on the
+  reconstructed unmodified ``y_test``.
+- ``turbine_vg_change``: the vortex generator retrofit, the upgraded rows
+  against as many rows before them; no truth is known.
+
+In the 3W and SKAB beds every tag of a split is the target in turn and its
+covariates are every other tag that passes R0 on the split. In the turbine
+bed the target is ``y_test`` and the covariates are the declared tags that
+pass R0. Nothing is fitted across records.
 
 Outputs in ``--out``:
 
@@ -47,11 +63,14 @@ Outputs in ``--out``:
   bandwidth of the before period of the series the arm reads, and for the
   adjusted arm the variance reduction over the before period and
   var(residual) / var(target) over the after period.
+- ``turbine.csv``: the same rows for the turbine bed, with the truth in the
+  estimate's units where one is known.
 - ``summary.csv``: one row per (design, quantity, method, adjustment,
-  refusal set) over both CSVs: clear rate pooled and averaged per well or
-  folder, the record-level rate at alpha 0.05 / k over the k answered tags,
-  widths, width ratio adjusted over raw, refusal rates, the median lag-1
-  autocorrelation and the share of HAC bandwidths at their n - 1 cap.
+  refusal set) over the row CSVs: clear rate pooled and averaged per well,
+  folder or pair, coverage where a truth is known, the record-level rate at
+  alpha 0.05 / k over the k answered tags, widths, width ratio adjusted over
+  raw, refusal rates, the median lag-1 autocorrelation and the share of HAC
+  bandwidths at their n - 1 cap.
 - ``run.json``: provenance, parameters, seeds, counts and wall seconds per bed.
 """
 
@@ -64,7 +83,7 @@ import math
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import product
 from pathlib import Path
 
@@ -85,29 +104,75 @@ DEFAULT_ALIGNED = "data/3w_windows_aligned"
 DEFAULT_3W_SOURCE = "data/3w"
 DEFAULT_ARCHIVES = "data/skab_archives"
 DEFAULT_SKAB_SOURCE = "data/skab"
+DEFAULT_TURBINE = "data/turbine_upgrade"
 DEFAULT_REPLICATES = 200
 SYNTHETIC_BUDGET_S = 1200
 
 BED_SYNTHETIC = "synthetic"
 BED_PLACEBO = "placebo"
 BED_KNOWN = "known_change"
-BEDS = (BED_SYNTHETIC, BED_PLACEBO, BED_KNOWN)
+BED_TURBINE = "turbine"
+BEDS = (BED_SYNTHETIC, BED_PLACEBO, BED_KNOWN, BED_TURBINE)
 
 DESIGN_3W_PLACEBO = "3w_placebo"
 DESIGN_SKAB_FREE = "skab_free_placebo"
 DESIGN_SKAB_PRE = "skab_preonset_placebo"
 DESIGN_3W_ONSET = "3w_aligned_onset"
 DESIGN_SKAB_ONSET = "skab_labelled_onset"
+DESIGN_TURBINE_PLACEBO = "turbine_placebo"
+DESIGN_TURBINE_INJECTED = "turbine_injected_r{r:.2f}"
+DESIGN_TURBINE_PITCH = "turbine_pitch_change"
+DESIGN_TURBINE_VG = "turbine_vg_change"
 
 PLACEBO_CSV = "placebo.csv"
 KNOWN_CSV = "known_change.csv"
 SUMMARY_CSV = "summary.csv"
+TURBINE_CSV = "turbine.csv"
 
 SUBGROUP_COLS = [f"s{i:02d}" for i in range(60)]
 PLACEBO_WINDOWS = 2  # per period
 ONSET_BEFORE_WINDOWS = 3
 SKAB_PAIR = pd.Timedelta(600, unit="s")
 SKAB_GAP_S = 60.0
+
+TURBINE_RAW = "raw"
+PAIR_VG = "vg_pair"
+PAIR_PITCH = "pitch_pair"
+TURBINE_FILES = {
+    PAIR_VG: (
+        "Turbine Upgrade Dataset(VG Pair).csv",
+        {
+            "upgrade status": "status",
+            "y_test (normalized)": "y_test",
+            "y_ctrl (normalized)": "y_ctrl",
+        },
+    ),
+    PAIR_PITCH: (
+        "Turbine Upgrade Dataset(Pitch Angle Pair).csv",
+        {
+            "upgrade status": "status",
+            "y_test(normalized)": "y_test",
+            "y_ctrl(normalized)": "y_ctrl",
+        },
+    ),
+}
+TURBINE_TABLE = "Turbine Upgrade Dataset(Pitch Angle Pair, Table7.3).csv"
+TURBINE_TABLE_STATUS = "upgrade.status"
+TURBINE_TABLE_R = (0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09)
+TURBINE_TABLE_COLUMN = "y_test(r={r:.2f}, normalized)"
+TURBINE_TABLE_MAIN_R = 0.05  # the pitch pair file's y_test equals this column
+TURBINE_TIME_FORMAT = "%m/%d/%Y %H:%M"
+TURBINE_TARGET = "y_test"
+TURBINE_COVARIATES = ("V", "VcosD", "VsinD", "rho", "S", "I", "y_ctrl")
+TURBINE_COLUMNS = (
+    "time", "status", "V", "D", "rho", "S", "I", "VcosD", "VsinD", "y_test", "y_ctrl"
+)
+TURBINE_INJECT_R = (0.02, 0.05, 0.09)
+# The dataset scales y_test on upgraded pitch rows with V > 9 (V is recorded
+# to 0.01, so this is V >= 9.01); rows at exactly 9.00 are left as they are.
+TURBINE_INJECT_V = 9.0
+TURBINE_WEEK = pd.Timedelta(7, unit="D")
+TURBINE_STEP = pd.Timedelta(10, unit="min")
 
 GRID_LEVEL = "level"
 GRID_AFFECTED = "affected_covariate"
@@ -396,6 +461,9 @@ class Split:
     segment: int
     before: dict[str, np.ndarray]
     after: dict[str, np.ndarray]
+    targets: tuple[str, ...] | None = None  # None: every tag
+    covariate_pool: tuple[str, ...] | None = None  # None: every tag
+    truth: dict[str, float] = field(default_factory=dict)  # level truth per target
 
 
 def rel(path: Path) -> str:
@@ -674,13 +742,17 @@ def onset_skab(records: list[SkabRecord]) -> list[Split]:
 
 
 def score_split(split: Split) -> list[dict]:
-    """Rows for every tag of the split as the target.
+    """Rows for every target of the split.
 
-    The covariates of a target are every other tag that passes R0 on this
-    split, declared before any interval is computed.
+    The covariates of a target are every other tag of the covariate pool
+    that passes R0 on this split, declared before any interval is computed.
+    A level row carries the split's truth for its target, NaN when none is
+    known.
     """
     tags = sorted(split.before)
-    usable_tags = [t for t in tags if sh.usable(split.before[t], split.after[t]) == ""]
+    targets = list(split.targets) if split.targets is not None else tags
+    pool = list(split.covariate_pool) if split.covariate_pool is not None else tags
+    usable_tags = [t for t in pool if sh.usable(split.before[t], split.after[t]) == ""]
     head = {
         "design": split.design,
         "record": split.record,
@@ -688,10 +760,12 @@ def score_split(split: Split) -> list[dict]:
         "segment": split.segment,
     }
     rows = []
-    for tag in tags:
+    for tag in targets:
         covariates = [t for t in usable_tags if t != tag]
+        truth = split.truth.get(tag, math.nan)
         for row in sh.score_target(split.before, split.after, tag, covariates):
-            rows.append({**head, "tag": tag, **row})
+            level_truth = truth if row["quantity"] == sh.LEVEL else math.nan
+            rows.append({**head, "tag": tag, **row, "truth": level_truth})
     return rows
 
 
@@ -743,19 +817,23 @@ ROW_FLAGS = ["clears", "before_trend", "covariate_outside", "covariate_shifted",
 ROW_ORDER = ["design", "record", "segment", "tag", "quantity", "method", "adjustment"]
 
 
-def rows_frame(rows: list[dict]) -> pd.DataFrame:
-    """Rows as written: level values in before-period SDs of the target, rounded."""
+def rows_frame(rows: list[dict], with_truth: bool = False) -> pd.DataFrame:
+    """Rows as written: level values in before-period SDs of the target, rounded.
+
+    With ``with_truth`` the frame keeps a ``truth`` column in the same units.
+    """
     frame = pd.DataFrame(rows)
     level = frame["quantity"] == sh.LEVEL
-    for column in ("estimate", "lo", "hi"):
+    for column in ("estimate", "lo", "hi", "truth"):
         frame.loc[level, column] = frame.loc[level, column] / frame.loc[level, "scale"]
     frame["width"] = frame["hi"] - frame["lo"]
     for column in ROW_FLAGS:
         frame[column] = frame[column].map({True: 1, False: 0}).astype("Int8")
     frame["refused"] = frame["refused"].astype(int)
-    frame = round_frame(frame, ROW_FLOATS)
+    columns = [*ROW_COLUMNS, "truth"] if with_truth else ROW_COLUMNS
+    frame = round_frame(frame, [*ROW_FLOATS, "truth"] if with_truth else ROW_FLOATS)
     frame = frame.sort_values(ROW_ORDER, kind="stable").reset_index(drop=True)
-    return frame[ROW_COLUMNS]
+    return frame[columns]
 
 
 def read_rows(path: Path) -> pd.DataFrame:
@@ -807,6 +885,10 @@ def summarise(frame: pd.DataFrame) -> list[dict]:
             refused = refused_mask(group, refusal_set)
             answered = group[~refused]
             clears = answered["clears"].eq(1)
+            truth = answered["truth"] if "truth" in answered else pd.Series(np.nan, answered.index)
+            known = answered[truth.notna()]
+            covered = (known["lo"] <= truth[known.index]) & (truth[known.index] <= known["hi"])
+            coverage = _share(covered)
             per_group = clears.groupby(answered["group"]).mean()
             per_record = answered.groupby(["record", "segment"])["p_value"].agg(["min", "size"])
             record_clears = per_record["min"] < sh.ALPHA / per_record["size"]
@@ -846,6 +928,11 @@ def summarise(frame: pd.DataFrame) -> list[dict]:
                         else None
                     ),
                     "clear_rate_pooled": _share(clears),
+                    "coverage": coverage,
+                    "coverage_mcse": (
+                        math.sqrt(coverage * (1 - coverage) / len(known)) if len(known) else None
+                    ),
+                    "n_with_truth": len(known),
                     "clear_rate_group_avg": float(per_group.mean()) if len(per_group) else None,
                     "n_groups_answered": len(per_group),
                     "record_clear_rate": _share(record_clears),
@@ -883,6 +970,8 @@ SUMMARY_FLOATS = [
     "rate_covariate_outside",
     "rate_covariate_shifted",
     "clear_rate_pooled",
+    "coverage",
+    "coverage_mcse",
     "clear_rate_group_avg",
     "record_clear_rate",
     "median_width",
@@ -895,8 +984,9 @@ SUMMARY_FLOATS = [
 
 
 def write_summary(out: Path) -> int:
-    """summary.csv from the placebo and known-change CSVs on disk."""
-    frames = [read_rows(out / name) for name in (PLACEBO_CSV, KNOWN_CSV) if (out / name).exists()]
+    """summary.csv from the row CSVs on disk."""
+    names = (PLACEBO_CSV, KNOWN_CSV, TURBINE_CSV)
+    frames = [read_rows(out / name) for name in names if (out / name).exists()]
     if not frames:
         return 0
     summary = pd.DataFrame(summarise(pd.concat(frames, ignore_index=True)))
@@ -960,6 +1050,224 @@ def run_known(aligned: Path, archives: Path, sources: dict, out: Path) -> dict:
     }
 
 
+# ---------------------------------------------------------------- turbine
+
+
+@dataclass
+class TurbinePair:
+    """One turbine pair's rows as recorded, oldest first."""
+
+    name: str
+    frame: pd.DataFrame
+
+
+def _read_turbine_csv(path: Path, renames: dict[str, str]) -> pd.DataFrame:
+    frame = pd.read_csv(path)
+    missing = [c for c in [*renames, "time"] if c not in frame.columns]
+    if missing:
+        raise KeyError(f"{path.name}: columns {missing} not found")
+    frame = frame.rename(columns=renames)
+    frame["time"] = pd.to_datetime(frame["time"], format=TURBINE_TIME_FORMAT)
+    return frame.sort_values("time", kind="stable").reset_index(drop=True)
+
+
+def load_turbine(directory: Path) -> tuple[dict[str, TurbinePair], pd.DataFrame, dict]:
+    """Both pairs, the pitch pair's Table 7.3 columns with the unmodified y_test, counts.
+
+    The unmodified ``y_test`` of the pitch pair is the mean over the published
+    r of y_r / (1 + r) on the rows where the r columns differ, and y_r itself
+    elsewhere.
+    """
+    raw = directory / TURBINE_RAW
+    pairs = {}
+    for name, (filename, renames) in TURBINE_FILES.items():
+        frame = _read_turbine_csv(raw / filename, renames)
+        pairs[name] = TurbinePair(name, frame[list(TURBINE_COLUMNS)])
+    table = _read_turbine_csv(
+        raw / TURBINE_TABLE,
+        {TURBINE_TABLE_STATUS: "status", "y_ctrl(normalized)": "y_ctrl"},
+    )
+    ys = np.column_stack(
+        [table[TURBINE_TABLE_COLUMN.format(r=r)].to_numpy(dtype=float) for r in TURBINE_TABLE_R]
+    )
+    modified = ~np.all(ys == ys[:, [0]], axis=1)
+    factors = 1.0 + np.array(TURBINE_TABLE_R)
+    base = np.where(modified, (ys / factors[None, :]).mean(axis=1), ys[:, 0])
+    table["y_base"] = base
+    pitch = pairs[PAIR_PITCH].frame
+    main_column = TURBINE_TABLE_COLUMN.format(r=TURBINE_TABLE_MAIN_R)
+    upgraded = table["status"].to_numpy() == 1
+    rule = upgraded & (table["V"].to_numpy() > TURBINE_INJECT_V)
+    counts = {
+        "directory": rel(directory),
+        "manifest_sha256": source_sha(directory),
+        "pairs": {name: _turbine_counts(pair.frame) for name, pair in pairs.items()},
+        "pitch_table": {
+            "n_rows_modified": int(modified.sum()),
+            "modified_rows_match_upgraded_and_v_over_9": bool(np.array_equal(modified, rule)),
+            "n_upgraded_rows_at_v_9_unmodified": int(
+                (upgraded & (table["V"].to_numpy() == TURBINE_INJECT_V)).sum()
+            ),
+            "base_max_spread_across_r": r4(
+                np.max(np.abs(ys[modified] / factors[None, :] - base[modified, None]))
+                if modified.any()
+                else 0.0
+            ),
+            "main_file_y_test_equals_r_0.05": bool(
+                np.array_equal(pitch["y_test"].to_numpy(), table[main_column].to_numpy())
+            ),
+        },
+    }
+    return pairs, table, counts
+
+
+def _turbine_counts(frame: pd.DataFrame) -> dict:
+    steps = frame["time"].diff().dt.total_seconds().div(60).to_numpy()[1:]
+    upgraded = frame.loc[frame["status"] == 1, "time"]
+    return {
+        "n_rows": len(frame),
+        "first": frame["time"].iloc[0].isoformat(),
+        "last": frame["time"].iloc[-1].isoformat(),
+        "n_upgraded_rows": int((frame["status"] == 1).sum()),
+        "upgrade_starts": upgraded.iloc[0].isoformat() if len(upgraded) else None,
+        "min_v": r4(frame["V"].min()),
+        "steps_minutes": {
+            "10": int((steps == 10).sum()),
+            "20_to_60": int(((steps > 10) & (steps <= 60)).sum()),
+            "70_to_1440": int(((steps > 60) & (steps <= 1440)).sum()),
+            "over_1440": int((steps > 1440).sum()),
+            "longest": r4(steps.max()),
+        },
+    }
+
+
+def _turbine_values(frame: pd.DataFrame, mask: np.ndarray) -> dict[str, np.ndarray]:
+    chosen = frame.loc[mask]
+    return {c: chosen[c].to_numpy(dtype=float) for c in (TURBINE_TARGET, *TURBINE_COVARIATES)}
+
+
+def _turbine_split(
+    design: str, record: str, group: str, segment: int, before: dict, after: dict, truth: float
+) -> Split:
+    return Split(
+        design=design,
+        record=record,
+        group=group,
+        segment=segment,
+        before=before,
+        after=after,
+        targets=(TURBINE_TARGET,),
+        covariate_pool=TURBINE_COVARIATES,
+        truth={TURBINE_TARGET: truth},
+    )
+
+
+def turbine_weeks(frame: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Non-overlapping 1 week before / 1 week after masks over the rows before the upgrade."""
+    before_upgrade = (frame["status"] == 0).to_numpy()
+    stamps = frame["time"]
+    t0 = stamps[before_upgrade].iloc[0]
+    t_end = stamps[before_upgrade].iloc[-1] + TURBINE_STEP
+    out = []
+    pair = 0
+    while t0 + (2 * pair + 2) * TURBINE_WEEK <= t_end:
+        edges = [t0 + (2 * pair + k) * TURBINE_WEEK for k in range(3)]
+        before = before_upgrade & ((stamps >= edges[0]) & (stamps < edges[1])).to_numpy()
+        after = before_upgrade & ((stamps >= edges[1]) & (stamps < edges[2])).to_numpy()
+        out.append((before, after))
+        pair += 1
+    return out
+
+
+def turbine_placebo_splits(pairs: dict[str, TurbinePair]) -> list[Split]:
+    """Placebo weeks and the same weeks with the injected shift, per pair."""
+    splits = []
+    for name, pair in pairs.items():
+        frame = pair.frame
+        for segment, (before_mask, after_mask) in enumerate(turbine_weeks(frame)):
+            before = _turbine_values(frame, before_mask)
+            after = _turbine_values(frame, after_mask)
+            splits.append(
+                _turbine_split(DESIGN_TURBINE_PLACEBO, name, name, segment, before, after, 0.0)
+            )
+            windy = frame.loc[after_mask, "V"].to_numpy() > TURBINE_INJECT_V
+            for r in TURBINE_INJECT_R:
+                y = after[TURBINE_TARGET]
+                injected = np.where(windy, y * (1.0 + r), y)
+                truth = float(np.mean(injected - y)) if len(y) else math.nan
+                splits.append(
+                    _turbine_split(
+                        DESIGN_TURBINE_INJECTED.format(r=r),
+                        name,
+                        name,
+                        segment,
+                        before,
+                        {**after, TURBINE_TARGET: injected},
+                        truth,
+                    )
+                )
+    return splits
+
+
+def turbine_change_splits(pairs: dict[str, TurbinePair], table: pd.DataFrame) -> list[Split]:
+    """The published pitch change per r and on the unmodified y_test, and the VG retrofit."""
+    splits = []
+    upgraded = np.flatnonzero(table["status"].to_numpy() == 1)
+    n_after = len(upgraded)
+    rows = np.arange(len(table))
+    after_mask = rows >= upgraded[0]
+    before_mask = (rows >= upgraded[0] - n_after) & (rows < upgraded[0])
+    base = table["y_base"].to_numpy(dtype=float)
+    for segment, r in enumerate((0.0, *TURBINE_TABLE_R)):
+        y = base if r == 0.0 else table[TURBINE_TABLE_COLUMN.format(r=r)].to_numpy(dtype=float)
+        frame = table.assign(y_test=y)
+        truth = float(np.mean(y[after_mask] - base[after_mask]))
+        splits.append(
+            _turbine_split(
+                DESIGN_TURBINE_PITCH,
+                f"{PAIR_PITCH}_r{r:.2f}",
+                PAIR_PITCH,
+                segment,
+                _turbine_values(frame, before_mask),
+                _turbine_values(frame, after_mask),
+                truth,
+            )
+        )
+    frame = pairs[PAIR_VG].frame
+    upgraded = np.flatnonzero(frame["status"].to_numpy() == 1)
+    rows = np.arange(len(frame))
+    after_mask = rows >= upgraded[0]
+    before_mask = (rows >= upgraded[0] - len(upgraded)) & (rows < upgraded[0])
+    splits.append(
+        _turbine_split(
+            DESIGN_TURBINE_VG,
+            PAIR_VG,
+            PAIR_VG,
+            0,
+            _turbine_values(frame, before_mask),
+            _turbine_values(frame, after_mask),
+            math.nan,
+        )
+    )
+    return splits
+
+
+def run_turbine(directory: Path, out: Path) -> dict:
+    started = time.perf_counter()
+    pairs, table, counts = load_turbine(directory)
+    splits = turbine_placebo_splits(pairs) + turbine_change_splits(pairs, table)
+    rows = [row for split in splits for row in score_split(split)]
+    frame = rows_frame(rows, with_truth=True)
+    write_csv(frame, out / TURBINE_CSV)
+    return {
+        "code": code_version(),
+        "dataset": counts,
+        "designs": _design_counts(splits),
+        "n_rows": len(frame),
+        "wall_seconds": round(time.perf_counter() - started, 1),
+    }
+
+
 # ---------------------------------------------------------------- main
 
 
@@ -1002,6 +1310,7 @@ def run(
     archives: Path = ROOT / DEFAULT_ARCHIVES,
     source_3w: Path | None = ROOT / DEFAULT_3W_SOURCE,
     source_skab: Path | None = ROOT / DEFAULT_SKAB_SOURCE,
+    turbine: Path = ROOT / DEFAULT_TURBINE,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     sources = {"3w": source_sha(source_3w), "skab": source_sha(source_skab)}
@@ -1012,7 +1321,9 @@ def run(
         sections[BED_PLACEBO] = run_placebo(windows, archives, sources, out)
     if BED_KNOWN in beds:
         sections[BED_KNOWN] = run_known(aligned, archives, sources, out)
-    if BED_PLACEBO in beds or BED_KNOWN in beds:
+    if BED_TURBINE in beds:
+        sections[BED_TURBINE] = run_turbine(turbine, out)
+    if BED_PLACEBO in beds or BED_KNOWN in beds or BED_TURBINE in beds:
         write_summary(out)
     return update_run_json(out, sections)
 
@@ -1024,6 +1335,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--archives", default=DEFAULT_ARCHIVES)
     parser.add_argument("--source", default=DEFAULT_3W_SOURCE)
     parser.add_argument("--skab-source", default=DEFAULT_SKAB_SOURCE)
+    parser.add_argument("--turbine", default=DEFAULT_TURBINE)
     parser.add_argument("--out", default=str(HERE / "results"))
     parser.add_argument("--beds", nargs="+", choices=BEDS, default=list(BEDS))
     parser.add_argument("--replicates", type=int, default=DEFAULT_REPLICATES)
@@ -1037,6 +1349,7 @@ def main(argv: list[str] | None = None) -> int:
         archives=Path(args.archives),
         source_3w=Path(args.source),
         source_skab=Path(args.skab_source),
+        turbine=Path(args.turbine),
     )
     for bed in args.beds:
         print(f"{bed}: {info['beds'][bed]['wall_seconds']} s, {info['beds'][bed]['n_rows']} rows")

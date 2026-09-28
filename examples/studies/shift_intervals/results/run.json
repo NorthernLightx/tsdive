@@ -170,6 +170,89 @@
       "replicates": 200,
       "seed_rule": "first 8 bytes, little endian, of sha256 over the cell's sorted name=repr(value) pairs joined by '|'; the seed column of synthetic.csv",
       "wall_seconds": 117.6
+    },
+    "turbine": {
+      "code": {
+        "git_head": "78bce5d9004d5485f243096199f40761de3b4b40",
+        "tsdive_version": "0.3.0"
+      },
+      "dataset": {
+        "directory": "data/turbine_upgrade",
+        "manifest_sha256": "31b2b0c7e33a",
+        "pairs": {
+          "pitch_pair": {
+            "first": "2010-07-30T22:40:00",
+            "last": "2011-06-25T18:30:00",
+            "min_v": 3.5,
+            "n_rows": 28486,
+            "n_upgraded_rows": 7000,
+            "steps_minutes": {
+              "10": 27467,
+              "20_to_60": 748,
+              "70_to_1440": 265,
+              "longest": 82020.0,
+              "over_1440": 5
+            },
+            "upgrade_starts": "2011-04-25T21:50:00"
+          },
+          "vg_pair": {
+            "first": "2010-04-29T06:20:00",
+            "last": "2011-08-15T07:50:00",
+            "min_v": 3.5,
+            "n_rows": 45114,
+            "n_upgraded_rows": 5000,
+            "steps_minutes": {
+              "10": 43311,
+              "20_to_60": 1263,
+              "70_to_1440": 527,
+              "longest": 43040.0,
+              "over_1440": 12
+            },
+            "upgrade_starts": "2011-06-20T00:00:00"
+          }
+        },
+        "pitch_table": {
+          "base_max_spread_across_r": 0.0001,
+          "main_file_y_test_equals_r_0.05": true,
+          "modified_rows_match_upgraded_and_v_over_9": true,
+          "n_rows_modified": 2666,
+          "n_upgraded_rows_at_v_9_unmodified": 7
+        }
+      },
+      "designs": {
+        "turbine_injected_r0.02": {
+          "n_groups": 2,
+          "n_records": 2,
+          "n_splits": 44
+        },
+        "turbine_injected_r0.05": {
+          "n_groups": 2,
+          "n_records": 2,
+          "n_splits": 44
+        },
+        "turbine_injected_r0.09": {
+          "n_groups": 2,
+          "n_records": 2,
+          "n_splits": 44
+        },
+        "turbine_pitch_change": {
+          "n_groups": 1,
+          "n_records": 9,
+          "n_splits": 9
+        },
+        "turbine_placebo": {
+          "n_groups": 2,
+          "n_records": 2,
+          "n_splits": 44
+        },
+        "turbine_vg_change": {
+          "n_groups": 1,
+          "n_records": 1,
+          "n_splits": 1
+        }
+      },
+      "n_rows": 2232,
+      "wall_seconds": 2.7
     }
   },
   "parameters": {
