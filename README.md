@@ -13,21 +13,19 @@ raises a typed error naming the check.
 
 ## Install
 
-tsdive needs Python 3.12 or newer. To try it on the demo data, clone the
-repository:
+tsdive needs Python 3.12 or newer. Install it, then write the demo
+archives the examples read into `data/`:
 
 ```console
-git clone https://github.com/NorthernLightx/tsdive.git && cd tsdive
-pip install -e .
-python scripts/make_demo_archive.py
+pip install "git+https://github.com/NorthernLightx/tsdive.git"
+tsdive demo data
 ```
 
-To use it on your own archives without a clone:
-`pip install "git+https://github.com/NorthernLightx/tsdive.git"`. Built
-wheels are on the
+Built wheels are on the
 [releases page](https://github.com/NorthernLightx/tsdive/releases). Add
 `[ml]` to the install for the IsolationForest detector (scikit-learn) or
-`[mcp]` for the MCP server. The package is not on PyPI.
+`[mcp]` for the MCP server. The package is not on PyPI. The `run`
+transcript reads `examples/plans/demo.toml` from a clone.
 
 The library and CLI make no network calls. The dataset fetch scripts
 under `scripts/` download on request and print their size first.

@@ -80,13 +80,7 @@ validation:
 
 nav:
   - Home: index.md
-  - Usage: usage.md
-  - Guides:
-      - Archive schema: SCHEMA.md
-      - Source adapters: SOURCES.md
-      - Switchback trials: SWITCHBACK.md
-      - Evaluation protocol: EVAL.md
-      - MCP server: MCP.md
+  - Getting started: getting-started.md
   - User guide:
       - Concepts:
           - Windows and time zones: guide/concepts/windows-and-time.md
@@ -114,6 +108,8 @@ nav:
           - Use tsdive from Python and pandas: guide/howto/python.md
           - Connect an AI assistant: guide/howto/mcp.md
           - Test a controller tuning: guide/howto/switchback-trial.md
+      - Command tour: usage.md
+      - Switchback trials: SWITCHBACK.md
   - Reference:
       - CLI: reference/cli.md
       - API reference:
@@ -126,9 +122,13 @@ nav:
           - Errors: reference/api/errors.md
       - Errors and refusals: reference/errors.md
       - Glossary: reference/glossary.md
+      - Archive schema: SCHEMA.md
+      - Source adapters: SOURCES.md
+      - MCP server: MCP.md
   - Project:
       - Scope: SCOPE.md
       - Roadmap: ROADMAP.md
       - Datasets and studies: DATA.md
+      - Evaluation protocol: EVAL.md
       - Benchmarks: benchmarks.md
       - Changelog: changelog.md

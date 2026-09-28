@@ -257,6 +257,8 @@ def test_index_carries_the_readme_introduction(hooks: ModuleType) -> None:
 
 # The user guide: each page must exist and say something.
 REQUIRED_PAGES = [
+    "index.md",
+    "getting-started.md",
     *(
         f"guide/concepts/{name}.md"
         for name in (

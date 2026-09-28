@@ -103,6 +103,9 @@ wrong setting stays in the analysis under the setting the plan gave it.
 to `data/switchback_demo/`: two days of history and one day on which the
 plant follows the plan below. Setting B raises the outlet temperature by
 0.25 degC through a 5-minute lag, and a drifting feed flow moves it too.
+Without a clone, `tsdive demo data` writes the same three archives. The
+[controller trial how-to](guide/howto/switchback-trial.md) walks through
+sizing and reading a trial for a process engineer.
 
 ```console
 $ python examples/switchback/make_trial.py
