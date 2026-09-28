@@ -305,6 +305,34 @@ def _read_source(path: Path) -> pd.DataFrame:
 # 01/02/2026, 1.2.26, 13-02-2026. Year-first forms such as ISO 8601 do
 # not match, so they never reach the day/month decision.
 _DAY_MONTH = re.compile(r"\s*(\d{1,2})([/.\-])(\d{1,2})\2(\d{4}|\d{2})(?!\d)(.*)\Z", re.DOTALL)
+# The time after a numeric date, as exports write it: a space or T, hours
+# and minutes, then optional seconds, fraction, AM/PM and UTC offset.
+_TIME_TAIL = re.compile(
+    r"(?P<sep>[ T])\d{1,2}:\d{2}(?P<s>:\d{2})?(?P<f>\.\d+)?"
+    r"(?P<ampm> ?[AaPp][Mm])?(?P<tz>Z|[+-]\d{2}:?\d{2})?\s*\Z"
+)
+
+
+def _day_first_format(value: str) -> str:
+    """A day-first strptime format with the shape of ``value``, a numeric date.
+
+    ``01/02/2026 00:00`` gives ``%d/%m/%Y %H:%M``. A time part the shape
+    rules do not cover gets ``%H:%M:%S`` after the date.
+    """
+    m = cast(re.Match[str], _DAY_MONTH.match(value))
+    sep, year, tail = m.group(2), m.group(4), m.group(5)
+    fmt = f"%d{sep}%m{sep}{'%Y' if len(year) == 4 else '%y'}"
+    if not tail.strip():
+        return fmt
+    time = _TIME_TAIL.match(tail)
+    if time is None:
+        return f"{fmt} %H:%M:%S"
+    fmt += f"{time['sep']}{'%I' if time['ampm'] else '%H'}:%M"
+    fmt += ":%S" if time["s"] else ""
+    fmt += ".%f" if time["f"] else ""
+    if time["ampm"]:
+        fmt += " %p" if time["ampm"].startswith(" ") else "%p"
+    return fmt + ("%z" if time["tz"] else "")
 
 
 def _date_order(raw: pd.Series, column: str, *, dayfirst: bool) -> bool:
@@ -347,7 +375,7 @@ def _date_order(raw: pd.Series, column: str, *, dayfirst: bool) -> bool:
             f"month {first}, day {second} of {year}; pass "
             f"{option('dayfirst', '--dayfirst', None if cli_active() else 'True')} to read "
             f"day first, or {argname('timestamp_format', '--timestamp-format')} with a "
-            "strptime format such as '%d/%m/%Y %H:%M:%S'"
+            f"strptime format such as '{_day_first_format(ambiguous)}'"
         )
     if day_only is not None and month_only is not None:
         raise SchemaError(
