@@ -65,6 +65,10 @@ def _design_line(plan: SwitchbackPlan) -> str:
     )
 
 
+def _washout(plan: SwitchbackPlan) -> str:
+    return "none" if plan.washout_s == 0 else fmt_duration(plan.washout_s)
+
+
 def _counts(plan: SwitchbackPlan) -> str:
     n_b = sum(1 for b in plan.blocks if b.setting == SETTING_B)
     return f"{SETTING_A} {plan.k - n_b}{SEP}{SETTING_B} {n_b}"
@@ -103,8 +107,8 @@ def _power_lines(power: PowerReadout) -> list[str]:
     return header + indent(head)
 
 
-def plan_lines(plan: SwitchbackPlan) -> list[str]:
-    """The ``tsdive switchback plan`` report for one plan, without its ``wrote`` line."""
+def plan_lines(plan: SwitchbackPlan, wrote: str | None = None) -> list[str]:
+    """The ``tsdive switchback plan`` report for one plan; ``wrote`` names the plan file."""
     lines = [
         f"switchback plan{SEP}{plan.k} blocks of {fmt_duration(plan.block_s)}{SEP}"
         f"{_counts(plan)}{SEP}digest {plan.digest[:DIGEST_SHOWN]}",
@@ -118,9 +122,14 @@ def plan_lines(plan: SwitchbackPlan) -> list[str]:
             "schedule",
             f"{fmt_span(plan.start, plan.schedule_end)}{SEP}seed {plan.seed}",
         ),
-        label_line("washout", f"{fmt_duration(plan.washout_s)} at the start of every block"),
+        label_line(
+            "washout",
+            "none" if plan.washout_s == 0 else f"{_washout(plan)} at the start of every block",
+        ),
         _design_line(plan),
     ]
+    if wrote is not None:
+        lines.append(label_line("wrote", wrote))
     lines.extend(rule("Schedule", "(the plan file lists every block)"))
     lines.extend(
         indent(f"{b.index:>4}  {fmt_ts(b.start)}  {b.setting}" for b in plan.blocks[:BLOCKS_SHOWN])
@@ -208,7 +217,7 @@ def analysis_lines(a: SwitchbackAnalysis) -> list[str]:
         label_line(
             "blocks",
             f"{plan.k} of {fmt_duration(plan.block_s)}{SEP}{_counts(plan)}{SEP}"
-            f"washout {fmt_duration(plan.washout_s)}",
+            f"washout {_washout(plan)}",
         ),
         _design_line(plan),
         label_line("units", _units_value(a)),
