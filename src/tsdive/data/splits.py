@@ -190,8 +190,8 @@ def group_holdout(
     A group is never divided: a well contributing 500 instances lands in
     exactly one fold, and the fold it lands in is 500 instances larger
     than its siblings. That imbalance is the shape of the data, and
-    :attr:`GroupSplit.fold_sizes` reports it rather than hiding it behind
-    a row-level cut.
+    [`GroupSplit.fold_sizes`][tsdive.eval.GroupSplit.fold_sizes] reports it rather than
+    hiding it behind a row-level cut.
 
     Examples:
         >>> import pandas as pd

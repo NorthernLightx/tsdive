@@ -1,9 +1,10 @@
 """MkDocs hooks that build the documentation site from the repository sources.
 
 ``mkdocs.yml`` loads this file. On every build it generates the usage page
-from README.md, the CLI reference from the command parsers, the Python API
-pages from ``__all__``, and the changelog and benchmarks pages from the
-root markdown files. None of them is committed. A relative link whose
+from README.md, the CLI reference from the command parsers, the API
+reference (an index, one page per group and one page per public object)
+from ``__all__``, and the changelog and benchmarks pages from the root
+markdown files. None of them is committed. A relative link whose
 target lies outside ``docs/`` is rewritten to the file on GitHub, so the
 pages under ``docs/`` keep working both on GitHub and on the site.
 
@@ -15,6 +16,8 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import functools
+import inspect
 import io
 import logging
 import os
@@ -39,28 +42,24 @@ ROOT_PAGES = {"CHANGELOG.md": "changelog.md", "BENCHMARKS.md": "benchmarks.md"}
 
 USAGE_PAGE = "usage.md"
 CLI_PAGE = "reference/cli.md"
-API_PAGES = {
-    "tsdive": "reference/api/tsdive.md",
-    "tsdive.eval": "reference/api/eval.md",
-    "tsdive.switchback": "reference/api/switchback.md",
-}
-GENERATED = {USAGE_PAGE, CLI_PAGE, *ROOT_PAGES.values(), *API_PAGES.values()}
+API_DIR = "reference/api"
+API_INDEX = f"{API_DIR}/index.md"
 
-# The top-level API page lists every name in tsdive.__all__ under one of
-# these headings. A name missing here, or listed here and not exported,
-# stops the build with the names.
+# Groups of the API index, in order.
+API_GROUPS = [
+    "Reading and ingest",
+    "Analyses",
+    "Switchback",
+    "Evaluation",
+    "Archive, sampling contract and types",
+    "Errors",
+    "Package",
+]
+
+# Every name in tsdive.__all__ goes under one group. A name missing here,
+# or listed here and not exported, stops the build with the names.
 TOP_LEVEL_GROUPS: dict[str, list[str]] = {
-    "Reading and ingest": [
-        "ingest",
-        "ingest_wide",
-        "init_meta",
-        "read_meta_json",
-        "write_tag",
-        "TagStore",
-        "SingleFileStore",
-        "Window",
-        "Source",
-    ],
+    "Reading and ingest": ["ingest", "ingest_wide", "init_meta", "read_meta_json", "write_tag"],
     "Analyses": [
         "profile",
         "Profile",
@@ -82,7 +81,11 @@ TOP_LEVEL_GROUPS: dict[str, list[str]] = {
         "SwitchbackAnalysis",
         "SwitchbackEstimate",
     ],
-    "Types": [
+    "Archive, sampling contract and types": [
+        "TagStore",
+        "SingleFileStore",
+        "Window",
+        "Source",
         "TagMeta",
         "TagIdentity",
         "Role",
@@ -107,6 +110,33 @@ TOP_LEVEL_GROUPS: dict[str, list[str]] = {
         "UnresolvedUnitError",
     ],
     "Package": ["__version__"],
+}
+
+# Every name in a subpackage's __all__ goes under its group, functions
+# first, then classes, then constants.
+SUBPACKAGE_GROUPS = {"tsdive.switchback": "Switchback", "tsdive.eval": "Evaluation"}
+
+# Group -> (page slug, intro). An intro that names a subpackage shows its
+# module docstring. The Package group has no page of its own.
+GROUP_PAGES = {
+    "Reading and ingest": (
+        "reading-and-ingest",
+        "These functions write archives from CSV or parquet exports and read tag "
+        "metadata files.",
+    ),
+    "Analyses": (
+        "analyses",
+        "Each function reads archives over a window and returns a result object. "
+        "`render()` on the result returns the text the command of the same name prints.",
+    ),
+    "Switchback": ("switchback", "tsdive.switchback"),
+    "Evaluation": ("eval", "tsdive.eval"),
+    "Archive, sampling contract and types": (
+        "types",
+        "The store that reads archives, the window a read returns, and the metadata "
+        "and sampling contract types an archive carries.",
+    ),
+    "Errors": ("errors", "The typed errors tsdive raises. Each one derives from `TSDiveError`."),
 }
 
 # Stand-ins in docs/index.md for README sections.
@@ -164,6 +194,7 @@ def rewrite_links(markdown: str, source: str, page: str) -> Rewrite:
     """
     result = Rewrite(text="")
     page_dir = posixpath.dirname(page) or "."
+    known = generated_paths()
 
     def replace(m: re.Match[str]) -> str:
         target = m.group(1)
@@ -171,7 +202,7 @@ def rewrite_links(markdown: str, source: str, page: str) -> Rewrite:
             return m.group(0)
         path, sep, anchor = target.partition("#")
         resolved = posixpath.normpath(posixpath.join(posixpath.dirname(source), path))
-        generated = resolved.startswith("docs/") and resolved[5:] in GENERATED
+        generated = resolved.startswith("docs/") and resolved[5:] in known
         if resolved.startswith("../") or not (generated or (ROOT / resolved).exists()):
             result.missing.append(target)
             return m.group(0)
@@ -302,19 +333,79 @@ def cli_markdown() -> str:
 # ------------------------------------------------------------------ API
 
 
-def _package_dir(module: str) -> Path:
-    return ROOT / "src" / Path(*module.split("."))
+@functools.cache
+def _tree(source: Path) -> ast.Module:
+    return ast.parse(source.read_text(encoding="utf-8"))
+
+
+def _module_source(module: str) -> Path:
+    base = ROOT / "src" / Path(*module.split("."))
+    return base / "__init__.py" if base.is_dir() else base.with_suffix(".py")
 
 
 def exports(module: str) -> list[str]:
-    """``__all__`` of ``module``, read from its ``__init__.py`` without importing it."""
-    init = _package_dir(module) / "__init__.py"
-    for node in ast.parse(init.read_text(encoding="utf-8")).body:
+    """``__all__`` of ``module``, read from its source without importing it."""
+    source = _module_source(module)
+    for node in _tree(source).body:
         if isinstance(node, ast.Assign) and any(
             isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets
         ):
             return list(ast.literal_eval(node.value))
-    raise ValueError(f"{init} defines no __all__")
+    raise ValueError(f"{source} defines no __all__")
+
+
+@dataclass(frozen=True)
+class Definition:
+    """Where a public name is defined, what it is, and its docstring."""
+
+    module: str
+    kind: str  # "function", "class" or "attribute"
+    docstring: str
+    value: str = ""  # source of an attribute's value
+
+
+def definition(module: str, name: str) -> Definition:
+    """The definition ``module.name`` resolves to, following imports statically."""
+    source = _module_source(module)
+    body = _tree(source).body
+    for i, node in enumerate(body):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            if node.name == name:
+                kind = "class" if isinstance(node, ast.ClassDef) else "function"
+                return Definition(module, kind, ast.get_docstring(node) or "")
+            continue
+        targets = (
+            node.targets
+            if isinstance(node, ast.Assign)
+            else [node.target]
+            if isinstance(node, ast.AnnAssign)
+            else []
+        )
+        if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+            after = body[i + 1] if i + 1 < len(body) else None
+            doc = (
+                after.value.value
+                if isinstance(after, ast.Expr)
+                and isinstance(after.value, ast.Constant)
+                and isinstance(after.value.value, str)
+                else ""
+            )
+            value = ast.unparse(node.value) if node.value is not None else ""
+            return Definition(module, "attribute", inspect.cleandoc(doc), value)
+    package = module if source.name == "__init__.py" else module.rpartition(".")[0]
+    for node in body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        for alias in node.names:
+            if (alias.asname or alias.name) == name:
+                base = package
+                for _ in range(max(node.level - 1, 0)):
+                    base = base.rpartition(".")[0]
+                origin = node.module if not node.level else ".".join(
+                    p for p in (base, node.module) if p
+                )
+                return definition(origin, alias.name)
+    raise LookupError(f"{module}.{name} is neither defined nor imported in {source.name}")
 
 
 def object_path(module: str, name: str) -> str:
@@ -322,31 +413,45 @@ def object_path(module: str, name: str) -> str:
 
     Static analysis resolves ``module.name`` to the submodule when the
     package also has a submodule called ``name`` (``tsdive.compare`` is
-    both). Such a name is rendered from the module its ``__init__.py``
-    imports it from.
+    both). Such a name is rendered from the module that defines it.
     """
-    pkg = _package_dir(module)
+    pkg = ROOT / "src" / Path(*module.split("."))
     # Listed names, so the match is case-sensitive on every file system.
     submodules = {c.stem for c in pkg.glob("*.py")} | {
         c.name for c in pkg.iterdir() if (c / "__init__.py").exists()
     }
     if name not in submodules:
         return f"{module}.{name}"
-    for node in ast.parse((pkg / "__init__.py").read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.ImportFrom) and any(a.name == name for a in node.names):
-            return f"{node.module}.{name}"
-    raise ValueError(f"{module}.{name} names a submodule and is not imported in __init__.py")
+    return f"{definition(module, name).module}.{name}"
 
 
-def _directive(path: str, **options: object) -> str:
-    lines = [f"::: {path}"]
-    if options:
-        lines.append("    options:")
-        lines += [f"      {k}: {str(v).lower()}" for k, v in options.items()]
-    return "\n".join(lines) + "\n"
+def summary(docstring: str) -> str:
+    """The first paragraph of ``docstring`` on one line, ready for a table cell."""
+    first = " ".join(docstring.strip().split("\n\n", 1)[0].split())
+    return first.replace("|", "\\|")
 
 
-def _top_level_page() -> str:
+@dataclass(frozen=True)
+class ApiEntry:
+    """One public name: its group, its page, and what the page renders."""
+
+    public: str  # dotted path a caller imports, tsdive.profile
+    group: str
+    page: str  # page path under docs/; one page per object
+    directive: str  # path given to mkdocstrings
+    kind: str
+    summary: str
+
+
+_KIND_ORDER = {"function": 0, "class": 1, "attribute": 2}
+
+
+def api_entries() -> list[ApiEntry]:
+    """Every public name in index order: groups in order, then the listed order.
+
+    A name reached under two public paths (``tsdive.SwitchbackPlan`` and
+    ``tsdive.switchback.SwitchbackPlan``) gets one page, the first path's.
+    """
     names = exports("tsdive")
     grouped = [n for group in TOP_LEVEL_GROUPS.values() for n in group]
     ungrouped = sorted(set(names) - set(grouped))
@@ -356,44 +461,112 @@ def _top_level_page() -> str:
             f"TOP_LEVEL_GROUPS out of step with tsdive.__all__: add {ungrouped}, "
             f"remove {stale}, and list each name once"
         )
-    parts = [
-        "# tsdive\n",
-        "The names in `tsdive.__all__`, grouped by task. "
-        "Each one imports from `tsdive` directly.\n",
-    ]
-    for group, members in TOP_LEVEL_GROUPS.items():
-        parts.append(f"## {group}\n")
-        parts += [_directive(object_path("tsdive", n)) for n in members]
-    return "\n".join(parts)
-
-
-def _kind(name: str) -> str:
-    """The section a subpackage export goes under, read off its PEP 8 name."""
-    if name.isupper():
-        return "Constants"
-    return "Classes" if name[0].isupper() else "Functions"
-
-
-def _subpackage_page(module: str) -> str:
-    names = exports(module)
-    parts = [
-        f"# {module}\n",
-        _directive(module, show_root_heading=False, members=False),
-    ]
-    for kind in ("Classes", "Functions", "Constants"):
-        members = [n for n in names if _kind(n) == kind]
-        if members:
-            parts.append(f"## {kind}\n")
-            parts += [_directive(object_path(module, n)) for n in members]
-    return "\n".join(parts)
-
-
-def api_markdown() -> dict[str, str]:
-    """Page path -> markdown of the mkdocstrings directives for each public module."""
-    return {
-        page: _top_level_page() if module == "tsdive" else _subpackage_page(module)
-        for module, page in API_PAGES.items()
+    ordered: list[tuple[str, str, str]] = []  # (group, module, name)
+    for group in API_GROUPS:
+        ordered += [(group, "tsdive", n) for n in TOP_LEVEL_GROUPS.get(group, [])]
+        for module, owner in SUBPACKAGE_GROUPS.items():
+            if owner == group:
+                found = [(n, definition(module, n)) for n in exports(module)]
+                found.sort(key=lambda item: _KIND_ORDER[item[1].kind])
+                ordered += [(group, module, n) for n, _ in found]
+    resolved = [(group, module, name, definition(module, name)) for group, module, name in ordered]
+    # Page paths that differ only in case (tsdive.profile and tsdive.Profile)
+    # are one file on a case-insensitive file system; the non-function one
+    # takes its kind as a suffix.
+    functions = {
+        f"{module}.{name}".casefold()
+        for _, module, name, found in resolved
+        if found.kind == "function"
     }
+    entries: list[ApiEntry] = []
+    pages: dict[tuple[str, str], str] = {}
+    for group, module, name, found in resolved:
+        public = f"{module}.{name}"
+        stem = public
+        if found.kind != "function" and public.casefold() in functions:
+            stem = f"{public}-{found.kind}"
+        page = pages.setdefault((found.module, name), f"{API_DIR}/{stem}.md")
+        text = summary(found.docstring) if found.docstring else f"`{name} = {found.value}`"
+        entries.append(
+            ApiEntry(public, group, page, object_path(module, name), found.kind, text)
+        )
+    folded = [page.casefold() for page in set(pages.values())]
+    if len(folded) != len(set(folded)):
+        raise ValueError("two API pages differ only in case; extend the suffix rule")
+    return entries
+
+
+def _directive(path: str, **options: object) -> str:
+    """A mkdocstrings block rendering ``path`` with ``options``."""
+    lines = [f"::: {path}", "    options:"] if options else [f"::: {path}"]
+    for key, value in options.items():
+        lines.append(f"      {key}: {str(value).lower() if isinstance(value, bool) else value}")
+    return "\n".join(lines) + "\n"
+
+
+def _slug(group: str) -> str:
+    return GROUP_PAGES[group][0]
+
+
+def _table(entries: list[ApiEntry], here: str) -> str:
+    rows = ["| Name | Summary |", "|---|---|"]
+    for e in entries:
+        link = posixpath.relpath(e.page, posixpath.dirname(here))
+        rows.append(f"| [`{e.public}`]({link}) | {e.summary} |")
+    return "\n".join(rows) + "\n"
+
+
+def _api_index(entries: list[ApiEntry]) -> str:
+    parts = [
+        "# API reference\n",
+        "Every public name of `tsdive`, `tsdive.eval` and `tsdive.switchback`, grouped by "
+        "task, with the first line of its docstring. Each name links to its own page.\n",
+        "The examples on those pages read the demo archives that "
+        "`python scripts/make_demo_archive.py` and "
+        "`python examples/switchback/make_trial.py` write under `data/`.\n",
+    ]
+    for group in API_GROUPS:
+        members = [e for e in entries if e.group == group]
+        heading = f"[{group}]({_slug(group)}.md)" if group in GROUP_PAGES else group
+        parts += [f"## {heading}\n", _table(members, API_INDEX)]
+    return "\n".join(parts)
+
+
+def _group_page(group: str, entries: list[ApiEntry]) -> str:
+    slug, intro = GROUP_PAGES[group]
+    page = f"{API_DIR}/{slug}.md"
+    parts = [f"# {group}\n", "[API reference](index.md)\n"]
+    if intro in SUBPACKAGE_GROUPS:
+        parts.append(_directive(intro, show_root_heading=False, members=False))
+    else:
+        parts.append(intro + "\n")
+    parts.append(_table([e for e in entries if e.group == group], page))
+    return "\n".join(parts)
+
+
+def _object_page(entry: ApiEntry) -> str:
+    back = "[API reference](index.md)"
+    if entry.group in GROUP_PAGES:
+        back += f" / [{entry.group}]({_slug(entry.group)}.md)"
+    block = _directive(
+        entry.directive,
+        heading_level=1,
+        heading=entry.public,
+        toc_label=entry.public,
+        summary=True,
+    )
+    return f"---\ntitle: {entry.public}\n---\n\n{back}\n\n{block}"
+
+
+def api_markdown() -> dict[str, tuple[str, bool]]:
+    """Page path -> (markdown, listed in the nav) for the API index, groups and objects."""
+    entries = api_entries()
+    pages = {API_INDEX: (_api_index(entries), True)}
+    for group in GROUP_PAGES:
+        pages[f"{API_DIR}/{_slug(group)}.md"] = (_group_page(group, entries), True)
+    for entry in entries:
+        pages.setdefault(entry.page, (_object_page(entry), False))
+    return pages
 
 
 # ------------------------------------------------------------------ pages
@@ -404,14 +577,31 @@ def root_page(source: str) -> Rewrite:
     return rewrite_links(_read(source), source, ROOT_PAGES[source])
 
 
-def generated_pages() -> dict[str, tuple[Rewrite, str | None]]:
-    """Page path -> (markdown, repository path of the edit link or None)."""
-    pages: dict[str, tuple[Rewrite, str | None]] = {USAGE_PAGE: (usage_markdown(), "README.md")}
+@functools.cache
+def generated_paths() -> frozenset[str]:
+    """Every page path the build generates, from the sources alone."""
+    groups = {f"{API_DIR}/{_slug(g)}.md" for g in GROUP_PAGES}
+    objects = {e.page for e in api_entries()}
+    return frozenset({USAGE_PAGE, CLI_PAGE, *ROOT_PAGES.values(), API_INDEX, *groups, *objects})
+
+
+@dataclass(frozen=True)
+class Generated:
+    """One generated page: its text, the file its edit link opens, and its nav entry."""
+
+    result: Rewrite
+    edit_source: str | None = None
+    in_nav: bool = True
+
+
+def generated_pages() -> dict[str, Generated]:
+    """Page path -> the generated page."""
+    pages = {USAGE_PAGE: Generated(usage_markdown(), "README.md")}
     for source, page in ROOT_PAGES.items():
-        pages[page] = (root_page(source), source)
-    pages[CLI_PAGE] = (Rewrite(cli_markdown()), "src/tsdive/cli.py")
-    for page, text in api_markdown().items():
-        pages[page] = (Rewrite(text), None)
+        pages[page] = Generated(root_page(source), source)
+    pages[CLI_PAGE] = Generated(Rewrite(cli_markdown()), "src/tsdive/cli.py")
+    for page, (text, in_nav) in api_markdown().items():
+        pages[page] = Generated(Rewrite(text), in_nav=in_nav)
     return pages
 
 
@@ -419,16 +609,19 @@ def generated_pages() -> dict[str, tuple[Rewrite, str | None]]:
 
 
 def on_files(files: Files, config: MkDocsConfig) -> Files:
-    """Add the generated pages to the build."""
-    from mkdocs.structure.files import File
+    """Add the generated pages to the build; the per-object pages stay out of the nav."""
+    from mkdocs.structure.files import File, InclusionLevel
 
-    for page, (result, edit_source) in generated_pages().items():
-        for target in result.missing:
+    _tree.cache_clear()
+    generated_paths.cache_clear()
+    docs = Path(config.docs_dir).resolve().relative_to(ROOT).as_posix()
+    for page, generated in generated_pages().items():
+        for target in generated.result.missing:
             log.warning("%s links to %s, which is not in the repository", page, target)
-        f = File.generated(config, page, content=result.text)
-        if edit_source is not None:
-            docs = Path(config.docs_dir).resolve().relative_to(ROOT).as_posix()
-            f.edit_uri = posixpath.relpath(edit_source, docs)
+        inclusion = InclusionLevel.INCLUDED if generated.in_nav else InclusionLevel.NOT_IN_NAV
+        f = File.generated(config, page, content=generated.result.text, inclusion=inclusion)
+        if generated.edit_source is not None:
+            f.edit_uri = posixpath.relpath(generated.edit_source, docs)
         files.append(f)
     return files
 

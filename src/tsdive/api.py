@@ -227,7 +227,7 @@ def reference_history(
 
 
 def read_meta_json(path: str | Path) -> TagMeta:
-    """Load a :class:`TagMeta` from a JSON file.
+    """Load a [`TagMeta`][tsdive.TagMeta] from a JSON file.
 
     The file uses the same object as the archive's own ``tsdive.meta``
     block, so metadata written for ingest is readable back off the
@@ -680,7 +680,7 @@ def init_meta(
     distinct raw value of the tag's quality column, mapped to a severity
     only where the value spells ``GOOD``, ``UNCERTAIN`` or ``BAD``
     itself; every other code stays ``null`` for the reader to fill, and
-    :func:`read_meta_json` refuses the file until they are.
+    [`read_meta_json`][tsdive.read_meta_json] refuses the file until they are.
 
     Raises:
         SchemaError: unreadable input, or a missing timestamp, tag or
@@ -747,7 +747,7 @@ def init_meta(
 class Profile:
     """One archive window, its statistics, and an optional flatline verdict.
 
-    Holds objects, not text: :meth:`render` is the only place the report
+    Holds objects, not text: [`render`][tsdive.Profile.render] is the only place the report
     lines are produced, and it is the same renderer the CLI prints.
     """
 

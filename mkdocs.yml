@@ -15,6 +15,7 @@ theme:
   features:
     - content.action.edit
     - content.code.copy
+    - navigation.indexes
     - navigation.sections
     - navigation.top
     - search.highlight
@@ -88,10 +89,14 @@ nav:
       - MCP server: MCP.md
   - Reference:
       - CLI: reference/cli.md
-      - Python API:
-          - tsdive: reference/api/tsdive.md
-          - tsdive.eval: reference/api/eval.md
-          - tsdive.switchback: reference/api/switchback.md
+      - API reference:
+          - reference/api/index.md
+          - Reading and ingest: reference/api/reading-and-ingest.md
+          - Analyses: reference/api/analyses.md
+          - Switchback: reference/api/switchback.md
+          - Evaluation: reference/api/eval.md
+          - Archive, sampling contract and types: reference/api/types.md
+          - Errors: reference/api/errors.md
   - Project:
       - Scope: SCOPE.md
       - Roadmap: ROADMAP.md

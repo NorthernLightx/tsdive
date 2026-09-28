@@ -109,9 +109,10 @@ class SwitchbackPlan:
     """A balanced random schedule of settings A and B over one window.
 
     ``start`` and ``end`` are the requested window; the schedule runs from
-    ``start`` to :attr:`schedule_end`, K whole blocks. ``min_p`` is the
-    smallest two-sided p-value the design can reach. Build one with
-    :func:`make_plan` or :func:`tsdive.api.switchback_plan`.
+    ``start`` to [`schedule_end`][tsdive.SwitchbackPlan.schedule_end], K
+    whole blocks. ``min_p`` is the smallest two-sided p-value the design can
+    reach. Build one with [`make_plan`][tsdive.switchback.make_plan] or
+    [`tsdive.switchback_plan`][tsdive.switchback_plan].
     """
 
     start: pd.Timestamp
@@ -159,7 +160,10 @@ class SwitchbackPlan:
         return "\n".join(plan_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The plan document: what :meth:`write_json` writes, ready for ``json.dumps``."""
+        """The plan document: what [`write_json`][tsdive.SwitchbackPlan.write_json] writes.
+
+        The document is ready for ``json.dumps``.
+        """
         return plan_to_dict(self)
 
     def write_json(self, path: str | Path, *, overwrite: bool = False) -> Path:
@@ -177,7 +181,9 @@ class SwitchbackPlan:
 
     @classmethod
     def read_json(cls, path: str | Path) -> SwitchbackPlan:
-        """Read a plan document. The schedule is checked by :func:`verify_plan`, not here.
+        """Read a plan document without checking its schedule.
+
+        [`verify_plan`][tsdive.switchback.verify_plan] checks the schedule.
 
         Raises:
             ValueError: the file is not a plan document of this version.

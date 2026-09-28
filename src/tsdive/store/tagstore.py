@@ -188,10 +188,10 @@ def write_tag(
     changing part of it.
 
     ``frame`` must carry ``timestamp`` (UTC-aware), ``value`` and
-    ``quality``; :func:`validate_schema` refuses anything else, so a
+    ``quality``; ``validate_schema`` refuses anything else, so a
     quality-free archive cannot be created by accident. ``meta`` is
     embedded under the ``tsdive.meta`` key, which is what makes the
-    file readable by :class:`TagStore` at all.
+    file readable by [`TagStore`][tsdive.TagStore] at all.
 
     Examples:
         >>> import pandas as pd
@@ -302,7 +302,7 @@ class TagStore:
         one ``unknown`` gap spanning the window - never a fake 1.0.
 
         A window whose timestamps go backwards is refused with
-        :class:`~tsdive.errors.NonMonotonicIndex` before any physics is
+        [`NonMonotonicIndex`][tsdive.NonMonotonicIndex] before any physics is
         computed. Gaps and coverage over a re-sorted index would describe
         an ordering the historian never produced.
         """

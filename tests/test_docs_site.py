@@ -15,8 +15,10 @@ import inspect
 import posixpath
 import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -28,6 +30,8 @@ MODULES = ("tsdive", "tsdive.eval", "tsdive.switchback")
 DIRECTIVE = re.compile(r"^::: (\S+)$", re.MULTILINE)
 SECTION = re.compile(r"^## (.+?)\n\n```text\n(.*?)\n```$", re.MULTILINE | re.DOTALL)
 TARGET = re.compile(r"\]\(([^)\s]+)\)")
+ROW = re.compile(r"^\| \[`([\w.]+)`\]\(([^)]+)\) \| (.+) \|$", re.MULTILINE)
+ROLE = re.compile(r":(func|class|meth|attr|mod|data|exc|obj):`")
 
 pytestmark = pytest.mark.docs
 
@@ -58,8 +62,12 @@ def _compared_strings(function: str) -> list[str]:
     ]
 
 
+def _api_pages(hooks: ModuleType) -> dict[str, str]:
+    return {page: text for page, (text, _) in hooks.api_markdown().items()}
+
+
 def _directives(hooks: ModuleType) -> list[str]:
-    return [p for text in hooks.api_markdown().values() for p in DIRECTIVE.findall(text)]
+    return [p for text in _api_pages(hooks).values() for p in DIRECTIVE.findall(text)]
 
 
 def _runtime(path: str) -> object:
@@ -84,23 +92,70 @@ def test_cli_page_holds_every_command(hooks: ModuleType) -> None:
         assert sections[command].startswith(f"usage: tsdive {command} ")
 
 
-def test_api_pages_hold_every_export(hooks: ModuleType) -> None:
-    directives = _directives(hooks)
-    assert len(directives) == len(set(directives))
+def test_api_index_links_every_export_to_its_own_page(hooks: ModuleType) -> None:
+    pages = _api_pages(hooks)
+    rows = {name: (link, text) for name, link, text in ROW.findall(pages[hooks.API_INDEX])}
+    exported = 0
     for name in MODULES:
         module = importlib.import_module(name)
         for export in module.__all__:
-            hits = [
-                d
-                for d in directives
-                if d.rpartition(".")[2] == export and _runtime(d) is getattr(module, export)
-            ]
-            assert hits, f"{name}.{export} is on no API page"
+            exported += 1
+            public = f"{name}.{export}"
+            assert public in rows, f"{public} is not in the API index"
+            link, text = rows[public]
+            assert text.strip(), f"{public} has no summary"
+            page = posixpath.normpath(posixpath.join(hooks.API_DIR, link))
+            assert page in pages, f"{public} links to {link}, which is not generated"
+            (directive,) = DIRECTIVE.findall(pages[page])
+            assert _runtime(directive) is getattr(module, export), f"{page} renders {directive}"
+            assert "[API reference](index.md)" in pages[page]
+    assert len(rows) == exported
 
 
-def test_every_rendered_export_has_a_docstring(hooks: ModuleType) -> None:
+def test_group_pages_list_their_group(hooks: ModuleType) -> None:
+    pages = _api_pages(hooks)
+    entries = hooks.api_entries()
+    for group, (slug, _) in hooks.GROUP_PAGES.items():
+        listed = [name for name, _, _ in ROW.findall(pages[f"{hooks.API_DIR}/{slug}.md"])]
+        assert listed == [e.public for e in entries if e.group == group]
+
+
+def test_every_public_function_has_examples() -> None:
+    for name in MODULES:
+        module = importlib.import_module(name)
+        for export in module.__all__:
+            obj = getattr(module, export)
+            if inspect.isfunction(obj):
+                doc = inspect.getdoc(obj) or ""
+                assert "\nExamples:\n" in doc, f"{name}.{export} has no Examples section"
+
+
+@pytest.fixture(scope="module")
+def package() -> Any:
+    """The package as griffe, the static analyser the site renders from, reads it."""
     griffe = pytest.importorskip("griffe")
-    package = griffe.load("tsdive", search_paths=[str(ROOT / "src")], docstring_parser="google")
+    return griffe.load("tsdive", search_paths=[str(ROOT / "src")], docstring_parser="google")
+
+
+def _docstrings(obj: Any, members: bool) -> Iterator[tuple[str, str]]:
+    """(path, docstring) of ``obj`` and, for a class, of its public members."""
+    target = obj.final_target if obj.is_alias else obj
+    if target.docstring:
+        yield target.path, target.docstring.value
+    if members and target.kind.value == "class":
+        for name, member in target.members.items():
+            if not name.startswith("_"):
+                yield from _docstrings(member, members=False)
+
+
+def test_no_rendered_docstring_carries_a_sphinx_role(hooks: ModuleType, package: Any) -> None:
+    for path in _directives(hooks):
+        obj = package[path.removeprefix("tsdive.")]
+        for where, text in _docstrings(obj, members=path not in MODULES):
+            assert not ROLE.search(text), f"{where} renders a Sphinx role: {ROLE.search(text)}"
+
+
+def test_every_rendered_export_has_a_docstring(hooks: ModuleType, package: Any) -> None:
     for path in _directives(hooks):
         if path in MODULES:
             continue
@@ -136,11 +191,11 @@ def test_no_link_on_a_docs_page_leaves_the_site(hooks: ModuleType) -> None:
 
 def test_generated_pages_link_only_to_site_pages_or_urls(hooks: ModuleType) -> None:
     pages = hooks.generated_pages()
-    assert set(pages) == hooks.GENERATED
-    site_pages = {p.name for p in (ROOT / "docs").glob("*.md")} | hooks.GENERATED
-    for page, (result, _) in pages.items():
-        assert not result.missing, f"{page}: {result.missing}"
-        for target in TARGET.findall(result.text):
+    assert set(pages) == hooks.generated_paths()
+    site_pages = {p.name for p in (ROOT / "docs").glob("*.md")} | hooks.generated_paths()
+    for page, generated in pages.items():
+        assert not generated.result.missing, f"{page}: {generated.result.missing}"
+        for target in TARGET.findall(generated.result.text):
             if re.match(r"^[a-z]+:", target) or target.startswith("#"):
                 continue
             path = target.partition("#")[0]

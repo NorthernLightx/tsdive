@@ -400,7 +400,7 @@ def analyze(
 ) -> Analysis:
     """The B - A coefficient of ``y`` on [1, z] or [1, z, X], its p-value and interval.
 
-    Refusals, in the order they are checked: those of :func:`make_frame`,
+    Refusals, in the order they are checked: those of ``make_frame``,
     then a block with no kept sample (``empty_block``), then an observed
     assignment in the span of the covariates (``collinear``). The tie
     tolerance is scaled by 1.4826 MAD of the kept target samples.
