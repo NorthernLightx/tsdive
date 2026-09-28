@@ -17,10 +17,10 @@ from __future__ import annotations
 
 import argparse
 import ast
+import atexit
 import contextlib
 import functools
 import glob
-import importlib.util
 import inspect
 import io
 import json
@@ -30,7 +30,6 @@ import posixpath
 import re
 import shlex
 import shutil
-import sys
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -77,6 +76,7 @@ TOP_LEVEL_GROUPS: dict[str, list[str]] = {
         "init_tag_meta",
         "read_meta_json",
         "write_tag",
+        "write_demo_data",
     ],
     "Analyses": [
         "profile",
@@ -330,6 +330,10 @@ EXAMPLE_SOURCES = ("README.md", "docs/SWITCHBACK.md")
 # Commands the pages above show without a ``$`` prompt: argv, and the
 # sentence that says what the example prepared.
 EXTRA_EXAMPLES = {
+    "demo": (
+        ["demo"],
+        "The command writes into `tsdive-demo/` under the current directory.",
+    ),
     "ingest": (
         ["ingest", "fic101.csv", "--out", "archive/plant1/FIC101.PV.parquet", "--meta",
          "fic101.json"],
@@ -344,8 +348,6 @@ EXTRA_EXAMPLES = {
 }
 # Guides that walk a command on real output, beside the README usage page.
 GUIDES = {"switchback plan": "SWITCHBACK.md", "switchback analyze": "SWITCHBACK.md"}
-# Scripts that write the archives the examples read.
-DATA_SCRIPTS = ("scripts/make_demo_archive.py", "examples/switchback/make_trial.py")
 
 
 def cli_entries() -> dict[str, str]:
@@ -529,25 +531,55 @@ def _wrap_console(argv: list[str]) -> str:
     return "\n".join([*lines, line])
 
 
-def _prepare_examples(work: Path) -> None:
-    """Write into ``work`` every file the example commands read."""
+@functools.cache
+def _demo_data() -> Path:
+    """The ``data/`` directory ``tsdive demo data`` writes, built once per build."""
+    from tsdive.demo import write_demo_data
+
+    data = Path(tempfile.mkdtemp(prefix="tsdive-docs-")) / "data"
+    write_demo_data(data)
+    atexit.register(shutil.rmtree, data.parent, ignore_errors=True)
+    return data
+
+
+@contextlib.contextmanager
+def demo_workdir() -> Iterator[Path]:
+    """A fresh current directory holding ``data/`` and ``examples/plans/demo.toml``.
+
+    It is the directory a reader works in after ``tsdive demo data`` in a
+    clone: every example command of the docs runs in one of these.
+    """
+    before = Path.cwd()
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        work = Path(tmp).resolve()
+        shutil.copytree(_demo_data(), work / "data")
+        plans = work / "examples" / "plans"
+        plans.mkdir(parents=True)
+        shutil.copy(ROOT / "examples" / "plans" / "demo.toml", plans / "demo.toml")
+        os.chdir(work)
+        try:
+            yield work
+        finally:
+            os.chdir(before)
+
+
+def run_in(work: Path, argv: list[str]) -> tuple[int | str | None, str]:
+    """``tsdive <argv>`` in ``work``: globs expanded as a shell would, paths relative."""
+    expanded = [
+        p.replace(os.sep, "/")
+        for a in argv
+        for p in (sorted(glob.glob(a)) if "*" in a else [a])
+    ]
+    code, output = _run_cli(expanded)
+    return code, output.replace(str(work) + os.sep, "").replace(str(work), ".")
+
+
+def _export_fic101(work: Path) -> None:
+    """``fic101.csv`` and ``fic101.json``: the FIC-101 demo archive as an export."""
     import pandas as pd
 
     from tsdive.store.tagstore import meta_from_parquet, meta_to_dict
 
-    for script in DATA_SCRIPTS:
-        path = ROOT / script
-        spec = importlib.util.spec_from_file_location(f"docs_data_{path.stem}", path)
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        # The dataclass decorator looks its module up in sys.modules.
-        sys.modules[spec.name] = module
-        spec.loader.exec_module(module)
-        with contextlib.redirect_stdout(io.StringIO()):
-            module.main()
-    plans = work / "examples" / "plans"
-    plans.mkdir(parents=True)
-    shutil.copy(ROOT / "examples" / "plans" / "demo.toml", plans / "demo.toml")
     demo = work / "data" / "demo" / "fic101_demo.parquet"
     pd.read_parquet(demo).to_csv(work / "fic101.csv", index=False)
     meta = meta_to_dict(meta_from_parquet(demo))
@@ -563,38 +595,29 @@ def cli_examples() -> dict[str, tuple[str, str]]:
     """
     documented = documented_invocations()
     examples: dict[str, tuple[str, str]] = {}
-    before = Path.cwd()
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        work = Path(tmp).resolve()
-        os.chdir(work)
-        try:
-            _prepare_examples(work)
-            for command in cli_commands():
-                if command in documented:
-                    argv, text = documented[command]
-                    note = ""
-                elif command in EXTRA_EXAMPLES:
-                    argv, note = EXTRA_EXAMPLES[command]
-                    text = _wrap_console(argv)
-                else:
-                    raise ValueError(f"no example invocation for tsdive {command}")
-                expanded = [
-                    p.replace(os.sep, "/")
-                    for a in argv
-                    for p in (sorted(glob.glob(a)) if "*" in a else [a])
-                ]
-                code, output = _run_cli(expanded)
-                if code not in (0, None):
-                    raise RuntimeError(f"tsdive {command} example exited {code}:\n{output}")
-                output = output.replace(str(work) + os.sep, "").replace(str(work), ".")
-                lines = output.splitlines()
-                if len(lines) > EXAMPLE_LINES:
-                    cut = len(lines) - EXAMPLE_LINES
-                    lines = [*lines[:EXAMPLE_LINES], f"[{cut} more lines not shown]"]
-                examples[command] = ("\n".join([text, *lines]), note)
-        finally:
-            os.chdir(before)
+    with demo_workdir() as work:
+        _export_fic101(work)
+        for command in cli_commands():
+            if command in documented:
+                argv, text = documented[command]
+                note = ""
+            elif command in EXTRA_EXAMPLES:
+                argv, note = EXTRA_EXAMPLES[command]
+                text = _wrap_console(argv)
+            else:
+                raise ValueError(f"no example invocation for tsdive {command}")
+            code, output = run_in(work, argv)
+            if code not in (0, None):
+                raise RuntimeError(f"tsdive {command} example exited {code}:\n{output}")
+            examples[command] = ("\n".join([text, *_cut(output.splitlines())]), note)
     return examples
+
+
+def _cut(lines: list[str], keep: int = EXAMPLE_LINES) -> list[str]:
+    """The first ``keep`` lines, and a marked cut when there were more."""
+    if len(lines) <= keep:
+        return lines
+    return [*lines[:keep], f"[{len(lines) - keep} more lines not shown]"]
 
 
 def _cli_index(entries: dict[str, str]) -> str:
@@ -607,9 +630,8 @@ def _cli_index(entries: dict[str, str]) -> str:
             "# CLI reference\n",
             "Every command, with the summary `tsdive --help` prints. Each command links to "
             "its usage line, its options and an example run on the demo archives.\n",
-            "The examples run in a directory where `python scripts/make_demo_archive.py` and "
-            "`python examples/switchback/make_trial.py` wrote those archives, with the "
-            "repository's `examples/plans/demo.toml`.\n",
+            "The examples run in a directory where `tsdive demo data` wrote those archives, "
+            "with the repository's `examples/plans/demo.toml`.\n",
             "\n".join(rows) + "\n",
             "## tsdive --help\n",
             f"```text\n{cli_help([])}\n```\n",
@@ -851,8 +873,7 @@ def _api_index(entries: list[ApiEntry]) -> str:
         "Every public name of `tsdive`, `tsdive.eval` and `tsdive.switchback`, grouped by "
         "task, with the first line of its docstring. Each name links to its own page.\n",
         "The examples on those pages read the demo archives that "
-        "`python scripts/make_demo_archive.py` and "
-        "`python examples/switchback/make_trial.py` write under `data/`.\n",
+        "`tsdive demo data` writes under `data/`.\n",
     ]
     for group in API_GROUPS:
         members = [e for e in entries if e.group == group]

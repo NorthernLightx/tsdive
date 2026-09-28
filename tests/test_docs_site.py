@@ -102,7 +102,8 @@ def test_every_command_has_a_page_with_options_and_an_example(
         assert f"```text\nusage: tsdive {command} " in text, f"{page} has no usage line"
         for action in hooks.cli_parser(command)._actions:
             if not isinstance(action, argparse._HelpAction):
-                name = action.option_strings[0] if action.option_strings else action.dest
+                positional = action.metavar or action.dest
+                name = action.option_strings[0] if action.option_strings else positional
                 assert f"| `{name}" in text, f"{page} has no options row for {name}"
                 assert action.help, f"tsdive {command} {name} has no help text"
         example = re.search(r"## Example\n.*?```console\n(.*?)\n```", text, re.DOTALL)

@@ -52,10 +52,13 @@ from tsdive.api import (
     switchback_plan,
 )
 from tsdive.changepoints import DEFAULT_PENALTY_MULTIPLIER
+from tsdive.demo import DEFAULT_DIR as DEMO_DEFAULT_DIR
+from tsdive.demo import write_demo_data
 from tsdive.errors import TSDiveError
 from tsdive.features.window_features import compute_stats
 from tsdive.report import (
     SEP,
+    continued,
     fmt_span,
     label_line,
     plural,
@@ -80,6 +83,8 @@ from tsdive.ui.term import colour_enabled, colourise, red
 MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time series
 
 commands, in the order an archive walks them:
+  demo [DIR]                              write the demo archives into DIR
+                                          (default tsdive-demo/) to try the rest
   ingest <csv|parquet> --out ARCHIVE --meta META.json
                                           build an archive from an export;
                                           --init-meta META.json writes the
@@ -992,6 +997,36 @@ def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespac
             parser.error("the following arguments are required: --meta")
 
 
+def _parser_demo() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="tsdive demo")
+    parser.add_argument(
+        "directory",
+        nargs="?",
+        default=DEMO_DEFAULT_DIR,
+        metavar="DIR",
+        help="directory to write the demo archives into; existing files are refused",
+    )
+    return _add_output_flags(parser, json_flag=False)
+
+
+def cmd_demo(argv: Sequence[str] | None = None) -> int:
+    """Write the demo archives into a directory and print the command to try next."""
+    args = _parser_demo().parse_args(argv)
+    try:
+        paths = write_demo_data(args.directory)
+    except (OSError, ValueError) as e:
+        _print_refusal("error:", str(e), args)
+        return USAGE
+    lines = []
+    for i, path in enumerate(paths):
+        rows = parquet.read_metadata(path).num_rows
+        text = f"{path.as_posix()}   {rows} samples"
+        lines.append(label_line("wrote", text) if i == 0 else continued(text))
+    lines.append(label_line("next", f"tsdive profile {paths[0].as_posix()}"))
+    _print_lines(lines, args)
+    return OK
+
+
 def cmd_ingest(argv: Sequence[str] | None = None) -> int:
     """Build an archive from a CSV or parquet export."""
     parser = _parser_ingest()
@@ -1291,6 +1326,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if argv_l[0] in {"-V", "--version"}:
         print(f"tsdive {__version__}")
         return 0
+    if argv_l[0] == "demo":
+        return cmd_demo(argv_l[1:])
     if argv_l[0] == "profile":
         return cmd_profile(argv_l[1:])
     if argv_l[0] == "ingest":
@@ -1312,8 +1349,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if argv_l[0] == "run":
         return cmd_run(argv_l[1:])
     print(
-        f"unknown command {argv_l[0]!r}; try 'profile', 'segment', 'screen', 'spc', "
-        "'mspc', 'compare', 'switchback', 'run', 'ingest' or 'report-html'",
+        f"unknown command {argv_l[0]!r}; try 'demo', 'profile', 'segment', 'screen', "
+        "'spc', 'mspc', 'compare', 'switchback', 'run', 'ingest' or 'report-html'",
         file=sys.stderr,
     )
     return 2
