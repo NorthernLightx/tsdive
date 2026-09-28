@@ -221,7 +221,7 @@ def test_analysis_refusals_raise_what_the_cli_reports(tmp_path, capsys):
     with pytest.raises(tsdive.InsufficientQuality):
         tsdive.screen(pinned, baseline, window)
     rc = main(["screen", str(pinned), "--baseline", baseline, "--window", window])
-    assert rc == 2
+    assert rc == 3
     assert capsys.readouterr().err.startswith("[InsufficientQuality]")
 
 

@@ -94,7 +94,7 @@ def test_plan_refuses_an_existing_file_and_a_small_design(tmp_path, capsys):
             "--washout", "PT0S", "--seed", "1", "-o", str(tmp_path / "small.json"),
         ],
     )
-    assert rc == 2
+    assert rc == 3
     assert err.startswith("[DesignTooSmall] 4 blocks give 6 balanced assignments")
     assert not (tmp_path / "small.json").exists()
 
@@ -133,7 +133,49 @@ def test_analyze_refusals_print_the_error_class(tmp_path, capsys):
     doc["seed"] = 43
     plan_path.write_text(json.dumps(doc), encoding="utf-8")
     rc, _, err = _run(capsys, [*argv, "TI201.PV"])
-    assert rc == 2 and err.startswith("[ScheduleMismatch] plan digest ")
+    assert rc == 3 and err.startswith("[ScheduleMismatch] plan digest ")
+
+
+def test_a_refused_raw_estimate_exits_3_and_keeps_its_row(tmp_path, capsys):
+    plan_path = tmp_path / "plan.json"
+    assert main(["switchback", "plan", *PLAN_ARGS, "-o", str(plan_path)]) == 0
+    capsys.readouterr()
+    target, _ = _trial(tmp_path, tsdive.SwitchbackPlan.read_json(plan_path))
+    frame = pd.read_parquet(target)
+    hole = (frame["timestamp"] >= START + pd.Timedelta(3 * 3600, unit="s")) & (
+        frame["timestamp"] < START + pd.Timedelta(4 * 3600, unit="s")
+    )
+    holed = _write(tmp_path / "holed.parquet", frame.loc[~hole, "timestamp"],
+                   frame.loc[~hole, "value"], "TI201.PV", "degC")
+    argv = ["switchback", "analyze", str(holed), "--plan", str(plan_path), "--target", "TI201.PV"]
+    rc, text, _ = _run(capsys, argv)
+    assert rc == 3
+    assert text.splitlines()[0] == "unit1:TI201.PV   refused empty_block"
+    rc, payload, _ = _run(capsys, [*argv, "--json"])
+    assert rc == 3
+    assert json.loads(payload)["direct"]["reason"] == "empty_block"
+
+
+def test_a_refused_adjusted_estimate_alone_exits_0(tmp_path, capsys):
+    plan_path = tmp_path / "plan.json"
+    assert main(["switchback", "plan", *PLAN_ARGS, "-o", str(plan_path)]) == 0
+    capsys.readouterr()
+    target, feed = _trial(tmp_path, tsdive.SwitchbackPlan.read_json(plan_path))
+    frame = pd.read_parquet(feed)
+    hole = (frame["timestamp"] >= START + pd.Timedelta(3 * 3600, unit="s")) & (
+        frame["timestamp"] < START + pd.Timedelta(4 * 3600, unit="s")
+    )
+    holed = _write(tmp_path / "holed_feed.parquet", frame.loc[~hole, "timestamp"],
+                   frame.loc[~hole, "value"], "FI200.PV", "m3/h")
+    rc, text, _ = _run(capsys, ["switchback", "analyze", str(target), str(holed), "--plan",
+                                str(plan_path), "--target", "TI201.PV", "--covariate",
+                                "FI200.PV"])
+    analysis = tsdive.switchback_analyze([target, holed], plan_path, target="TI201.PV",
+                                         covariates=["FI200.PV"])
+    assert analysis.adjusted is not None and analysis.adjusted.refused
+    assert not analysis.direct.refused
+    assert rc == 0
+    assert f"refused   {analysis.adjusted.reason}" in text
 
 
 @pytest.mark.parametrize(

@@ -137,7 +137,7 @@ def test_naive_timestamps_without_tz_are_refused(tmp_path, capsys):
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert "naive" in err
     assert "--tz" in err
     assert not (tmp_path / "no.parquet").exists()
@@ -313,7 +313,7 @@ def test_missing_quality_column_is_refused(tmp_path, capsys):
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert "--assume-quality" in err
     assert not (tmp_path / "no.parquet").exists()
 

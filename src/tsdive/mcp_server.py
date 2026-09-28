@@ -48,7 +48,7 @@ from tsdive.cli import (
     json_switchback_analyze,
 )
 from tsdive.errors import TSDiveError
-from tsdive.ui.jsonout import to_jsonable
+from tsdive.ui.jsonout import refusal_json, to_jsonable
 
 MISSING_MCP = (
     "the tsdive MCP server needs the mcp package (>=2.1); install tsdive with "
@@ -144,11 +144,7 @@ def _answer(
     try:
         return {"result_kind": "evidence", **to_jsonable(to_json(args))}
     except TSDiveError as e:
-        return {
-            "result_kind": "refusal",
-            "error_type": type(e).__name__,
-            "cause": str(e),
-        }
+        return refusal_json(e)
 
 
 def profile(

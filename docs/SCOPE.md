@@ -26,6 +26,9 @@ claim below has a provoking test in `tests/`.
 - At ingest, a numeric date that reads both day first and month first,
   with neither `--dayfirst` nor `--timestamp-format` stated, raises
   `SchemaError` (`tests/test_ingest.py`).
+- A command that raises a typed error exits with status 3, and under
+  `--json` also prints the refusal object the MCP server returns. A usage
+  error or invalid input exits with status 2 (`tests/test_cli.py`).
 - An unresolvable unit raises `UnresolvedUnitError` when an operation
   needs the canonical unit.
 - A reference-condition unit with no declared reference state raises

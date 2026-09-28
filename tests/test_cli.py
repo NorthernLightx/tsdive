@@ -641,9 +641,35 @@ def test_screen_refuses_a_censored_baseline(archive_factory, capsys):
     )
     rc = cmd_screen([str(path), "--baseline", BASELINE_SPAN, "--window", MONITOR_SPAN])
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.startswith("[InsufficientQuality]")
     assert "may never serve as a baseline" in err
+
+
+def test_a_refusal_exits_3_and_prints_the_mcp_refusal_under_json(archive_factory, capsys):
+    """SCOPE claim: a refusal exits 3; a usage error exits 2."""
+    from tsdive import mcp_server
+
+    path = _screen_archive(
+        archive_factory, [(10, 100.0)], eng_range=EngRange(zero=0.0, span=100.0)
+    )
+    argv = [str(path), "--baseline", BASELINE_SPAN, "--window", MONITOR_SPAN]
+    assert cmd_screen(argv) == 3
+    assert capsys.readouterr().out == ""
+    assert cmd_screen([*argv, "--json"]) == 3
+    captured = capsys.readouterr()
+    assert captured.err.startswith("[InsufficientQuality]")
+    printed = json.loads(captured.out)
+    assert printed == mcp_server.screen(str(path), BASELINE_SPAN, MONITOR_SPAN)
+    assert printed["result_kind"] == "refusal"
+    assert printed["error_type"] == "InsufficientQuality"
+    assert "may never serve as a baseline" in printed["cause"]
+
+    overlapping = [str(path), "--baseline", BASELINE_SPAN, "--window", BASELINE_SPAN, "--json"]
+    assert cmd_screen(overlapping) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err.startswith("error:")
+    assert main(["screeen"]) == 2
 
 
 @pytest.mark.parametrize("value", ["-1", "0"])
@@ -697,7 +723,7 @@ def test_screen_refuses_a_baseline_with_too_few_good_samples(archive_factory, ca
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.strip() == (
         "[InsufficientQuality] only 11 GOOD history samples; 30 required for a baseline"
     )
@@ -728,7 +754,7 @@ def test_screen_refuses_when_most_rows_have_no_mode_sample(archive_factory, caps
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.strip() == (
         "[InsufficientQuality] 60 of 60 baseline rows carry no mode sample at their "
         "own timestamp; more than half the window would be screened blind"
@@ -758,7 +784,7 @@ def test_screen_refuses_a_mode_archive_with_duplicate_timestamps(
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.startswith("[SchemaError]")
     assert "duplicate timestamps in the mode archive" in err
 
@@ -1133,7 +1159,7 @@ def test_mspc_refuses_a_single_archive(archive_factory, capsys):
     flow, _ = _mspc_archives(archive_factory)
     rc = cmd_mspc([str(flow), "--baseline", MSPC_BASELINE, "--window", MSPC_WINDOW])
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.strip() == (
         "[MspcAlignmentError] need at least two windows to align"
     )

@@ -6,7 +6,9 @@ The working loop a new archive walks:
 
 Every command after ``ingest`` takes the same window syntax
 (``START/END``, ``START/PT5H``, ``PT5H/END``, or a date for one UTC day)
-and refuses the same way: ``[ErrorName] message`` on stderr, exit 2. On
+and refuses the same way: ``[ErrorName] message`` on stderr and exit
+status 3 (``REFUSED``), with the refusal object on stdout under
+``--json``. A usage error or invalid input exits 2 (``USAGE``). On
 ``profile`` an omitted window means the archive's whole extent, which
 the report states like any other window.
 
@@ -71,7 +73,7 @@ from tsdive.store.tagstore import (
 from tsdive.switchback.archive import SwitchbackAnalysis
 from tsdive.switchback.plan import SwitchbackPlan
 from tsdive.switchback.render import plan_lines
-from tsdive.ui.jsonout import to_jsonable
+from tsdive.ui.jsonout import refusal_json, to_jsonable
 from tsdive.ui.term import colour_enabled, colourise, red
 
 MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time series
@@ -115,7 +117,19 @@ options, on every command:
 
 windows, wherever START/END appears above:
   START/END, START/PT5H, PT5H/END, or a date for one whole UTC day
+
+exit status:
+  0                                       the answer was printed
+  2                                       usage error or invalid input
+  3                                       refusal: a typed tsdive error, printed
+                                          as [ErrorName] on stderr and, under
+                                          --json, as one object on stdout
 """
+
+# Exit status of a command. ``run`` keeps its own rule, stated in its help.
+OK = 0
+USAGE = 2
+REFUSED = 3
 
 
 def _positive_int(text: str) -> int:
@@ -226,6 +240,19 @@ def _print_refusal(prefix: str, message: str, args: argparse.Namespace) -> None:
     print(f"{red(prefix, on)} {message}", file=sys.stderr)
 
 
+def _refused(error: TSDiveError, args: argparse.Namespace) -> int:
+    """Report a typed refusal and return its exit status, ``REFUSED``.
+
+    The ``[ErrorName] message`` line goes to stderr. Under ``--json`` the
+    refusal object the MCP server returns is also printed on stdout, so a
+    script that parses stdout reads a refusal as JSON too.
+    """
+    _print_refusal(f"[{type(error).__name__}]", str(error), args)
+    if getattr(args, "json", False):
+        print(json.dumps(refusal_json(error), indent=2))
+    return REFUSED
+
+
 def _print_lines(lines: Sequence[str], args: argparse.Namespace) -> None:
     """Write a command's answer to stdout, coloured only for a terminal."""
     on = colour_enabled(sys.stdout, no_color=_no_color(args))
@@ -242,20 +269,22 @@ def _report_and_exit(
     one body and can never disagree about what a refusal is. Colour is
     applied here and nowhere else, so every renderer stays plain text.
     Messages raised inside name CLI flags (``--rate-s``), not keywords.
+
+    Returns ``OK``, ``REFUSED`` for a ``TSDiveError``, and ``USAGE`` for a
+    malformed argument, a missing file or an existing output.
     """
     try:
         with cli_names():
             if getattr(args, "json", False) and to_json is not None:
                 print(json.dumps(to_jsonable(to_json(args)), indent=2))
-                return 0
+                return OK
             _print_lines(fn(args), args)
-        return 0
+        return OK
     except TSDiveError as e:
-        _print_refusal(f"[{type(e).__name__}]", str(e), args)
-        return 2
+        return _refused(e, args)
     except (ValueError, FileNotFoundError, FileExistsError) as e:
         _print_refusal("error:", str(e), args)
-        return 2
+        return USAGE
 
 
 def _parser_screen() -> argparse.ArgumentParser:
@@ -679,6 +708,29 @@ def json_switchback_analyze(args: argparse.Namespace) -> dict[str, object]:
     return _switchback_analyzed(args).to_dict()
 
 
+def _switchback_analyze_status(args: argparse.Namespace) -> int:
+    """Print the analysis; ``REFUSED`` when its raw estimate is refused.
+
+    The report is printed either way, so the refusal reason stays on the
+    page. A refused adjusted estimate with a raw one standing keeps
+    ``OK``: the row says why the adjustment has no answer.
+    """
+    done: list[SwitchbackAnalysis] = []
+
+    def analysed(a: argparse.Namespace) -> SwitchbackAnalysis:
+        done.append(_switchback_analyzed(a))
+        return done[-1]
+
+    status = _report_and_exit(
+        lambda a: render_lines(analysed(a).render()),
+        args,
+        to_json=lambda a: analysed(a).to_dict(),
+    )
+    if status == OK and done and done[-1].direct.refused:
+        return REFUSED
+    return status
+
+
 def cmd_switchback(argv: Sequence[str] | None = None) -> int:
     """Dispatch ``tsdive switchback plan`` and ``tsdive switchback analyze``."""
     rest = list(sys.argv[2:] if argv is None else argv)
@@ -699,11 +751,7 @@ def cmd_switchback(argv: Sequence[str] | None = None) -> int:
             to_json=json_switchback_plan,
         )
     if sub == "analyze":
-        return _report_and_exit(
-            run_switchback_analyze,
-            _parser_switchback_analyze().parse_args(tail),
-            to_json=json_switchback_analyze,
-        )
+        return _switchback_analyze_status(_parser_switchback_analyze().parse_args(tail))
     print(f"unknown switchback command {sub!r}; try 'plan' or 'analyze'", file=sys.stderr)
     return 2
 
@@ -1004,13 +1052,12 @@ def _ingest(args: argparse.Namespace) -> int:
             lines.append(label_line("tz", f"{args.tz} -> UTC"))
         _print_lines(lines, args)
         _warn_assumed_quality(args.assume_quality)
-        return 0
+        return OK
     except TSDiveError as e:
-        _print_refusal(f"[{type(e).__name__}]", str(e), args)
-        return 2
+        return _refused(e, args)
     except (ValueError, OSError) as e:
         _print_refusal("error:", str(e), args)
-        return 2
+        return USAGE
 
 
 def _parser_report_html() -> argparse.ArgumentParser:
@@ -1093,13 +1140,12 @@ def _report_html(args: argparse.Namespace) -> int:
             ],
             args,
         )
-        return 0
+        return OK
     except TSDiveError as e:
-        _print_refusal(f"[{type(e).__name__}]", str(e), args)
-        return 2
+        return _refused(e, args)
     except (ValueError, FileNotFoundError) as e:
         _print_refusal("error:", str(e), args)
-        return 2
+        return USAGE
 
 
 # The analysis steps a plan may name, in pipeline order: a plan's listing
@@ -1153,7 +1199,12 @@ SCHEDULED_STEPS = frozenset({"switchback"})
 
 
 def _parser_run() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="tsdive run")
+    parser = argparse.ArgumentParser(
+        prog="tsdive run",
+        epilog="exit status: 0 when the ledger holds at least one profile or finding, "
+        "refused steps included as rows of the ledger; 2 when the plan cannot be read "
+        "or no step produced a result",
+    )
     parser.add_argument("plan", help="TOML plan naming archives, windows and steps")
     parser.add_argument(
         "-o",
@@ -1167,7 +1218,12 @@ def _parser_run() -> argparse.ArgumentParser:
 
 
 def cmd_run(argv: Sequence[str] | None = None) -> int:
-    """Walk one plan over several archives into one evidence ledger."""
+    """Walk one plan over several archives into one evidence ledger.
+
+    A refused step is a row of the ledger and does not change the exit
+    status: 0 when the ledger holds at least one profile or finding, 2
+    when the plan cannot be read or no step produced a result.
+    """
     args = _parser_run().parse_args(argv)
     with cli_names():
         return _run(args)
@@ -1180,18 +1236,19 @@ def _run(args: argparse.Namespace) -> int:
     try:
         plan = load_plan(plan_path)
     except TSDiveError as e:
-        _print_refusal(f"[{type(e).__name__}]", str(e), args)
-        return 2
+        return _refused(e, args)
     except (ValueError, OSError) as e:
         # Nothing is written for a plan that never started: an unknown
         # step or an unmatched glob leaves no half-run output directory.
         _print_refusal("error:", str(e), args)
-        return 2
+        return USAGE
     profiles, findings, refusals, figures = execute(plan)
     out_dir = Path(args.out) if args.out else plan_path.parent / "tsdive-run"
     _, _, lines = write_run(plan, out_dir, profiles, findings, refusals, figures)
     _print_lines(lines, args)
-    return 0 if profiles or findings else 2
+    # A refused step is a row of the ledger, so it does not decide the
+    # status; a ledger with no profile and no finding does.
+    return OK if profiles or findings else USAGE
 
 
 def main(argv: Sequence[str] | None = None) -> int:
