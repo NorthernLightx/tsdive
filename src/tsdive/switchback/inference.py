@@ -54,11 +54,17 @@ DENOM_RTOL = 1e-9
 QUADRATIC_ATOL = 1e-12
 
 TOO_FEW = "too_few"
+"""Refusal reason: fewer than 30 kept samples."""
 NO_SPREAD = "no_spread"
+"""Refusal reason: the kept target has MAD 0, or the covariates reproduce it."""
 TOO_MANY_COVARIATES = "too_many_covariates"
+"""Refusal reason: more than one covariate per 10 kept samples."""
 EMPTY_BLOCK = "empty_block"
+"""Refusal reason: a block with no kept sample."""
 COLLINEAR = "collinear"
+"""Refusal reason: the observed assignment lies in the span of the covariates."""
 REASONS = (TOO_FEW, NO_SPREAD, TOO_MANY_COVARIATES, EMPTY_BLOCK, COLLINEAR)
+"""Every refusal reason ``analyze`` can put in ``Analysis.reason``."""
 
 
 def mad(values: np.ndarray) -> float:

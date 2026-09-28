@@ -1,6 +1,6 @@
 # tsdive
 
-[![ci](https://github.com/NorthernLightx/tsdive/actions/workflows/ci.yml/badge.svg)](https://github.com/NorthernLightx/tsdive/actions/workflows/ci.yml)
+[![ci](https://github.com/NorthernLightx/tsdive/actions/workflows/ci.yml/badge.svg)](https://github.com/NorthernLightx/tsdive/actions/workflows/ci.yml) [![docs](https://github.com/NorthernLightx/tsdive/actions/workflows/docs.yml/badge.svg)](https://northernlightx.github.io/tsdive/)
 
 tsdive is a Python library and command-line tool that checks process
 time series (historian and sensor archives) for gaps, bad quality codes,

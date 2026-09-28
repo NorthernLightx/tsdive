@@ -21,8 +21,20 @@ import numpy as np
 from tsdive.errors import DesignTooSmall
 
 ALPHA = 0.05
+"""Level of the two-sided randomization test.
+
+The interval holds the shifts the test accepts at this level. The power
+readout counts the p-values at or below it. A design whose smallest
+attainable p is above it is too small (``DesignTooSmall``).
+"""
 PERMUTATIONS = 1000
+"""Largest reference set enumerated in full.
+
+A design with more balanced assignments reads its p-value over the
+observed assignment plus this many seeded draws.
+"""
 MIN_ASSIGNMENTS = 20
+"""Fewest balanced assignments a design may have (``DesignTooSmall`` below it)."""
 
 DESIGN_TOO_SMALL = "design_too_small"
 

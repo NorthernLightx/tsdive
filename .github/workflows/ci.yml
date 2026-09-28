@@ -29,3 +29,19 @@ jobs:
       - name: Benchmarks byte-identical
         if: matrix.os == 'ubuntu-latest'
         run: uv run python examples/benchmarks/run_benchmarks.py
+
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      NO_MKDOCS_2_WARNING: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install (pinned lockfile, docs group)
+        run: uv sync --frozen --group docs
+      - name: Docs coverage tests
+        run: uv run pytest -m docs
+      - name: Build the site (strict)
+        run: uv run mkdocs build --strict

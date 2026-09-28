@@ -53,7 +53,9 @@ SETTING_A = "A"
 SETTING_B = "B"
 
 POWER_DRAWS = 200
+"""Seeded schedules the power readout draws over the history window."""
 POWER_DELTAS = (0.0, 0.1, 0.25, 0.5, 1.0)
+"""Shifts the power readout adds to the B blocks, in sigma (1.4826 MAD of the history)."""
 POWER_TARGET = 0.8
 HISTORY_SHORT = "history_short"
 

@@ -91,6 +91,14 @@ class DataPhysics:
 
 @dataclass
 class Window:
+    """One tag's samples from ``start`` to ``end`` and the data physics of the read.
+
+    ``TagStore.read_window`` returns it. ``frame`` holds the columns
+    timestamp, value, quality (verbatim from the archive), severity and
+    valid. ``physics`` covers the whole requested span, the stretches
+    before the first sample and after the last included.
+    """
+
     identity: TagIdentity
     meta: TagMeta
     contract: SamplingContract
