@@ -18,7 +18,7 @@
         "n_wells_scored": 21
       },
       "code": {
-        "git_head": "c949186bd276bf3621dae82926800deef1540089",
+        "git_head": "12653ee5622f95c7b14b8781208f0c4b19c22eb4",
         "tsdive_version": "0.3.0"
       },
       "dataset_manifest_sha256": {
@@ -82,7 +82,7 @@
         "n_wells_scored": 16
       },
       "code": {
-        "git_head": "c949186bd276bf3621dae82926800deef1540089",
+        "git_head": "12653ee5622f95c7b14b8781208f0c4b19c22eb4",
         "tsdive_version": "0.3.0"
       },
       "dataset_manifest_sha256": {
@@ -113,12 +113,12 @@
         "n_records": 35,
         "n_with_an_anomaly_row": 34
       },
-      "wall_seconds": 6.8
+      "wall_seconds": 6.7
     },
     "synthetic": {
       "budget_seconds": 1200,
       "code": {
-        "git_head": "c949186bd276bf3621dae82926800deef1540089",
+        "git_head": "12653ee5622f95c7b14b8781208f0c4b19c22eb4",
         "tsdive_version": "0.3.0"
       },
       "grid": {
@@ -169,7 +169,7 @@
       "over_budget": false,
       "replicates": 200,
       "seed_rule": "first 8 bytes, little endian, of sha256 over the cell's sorted name=repr(value) pairs joined by '|'; the seed column of synthetic.csv",
-      "wall_seconds": 117.6
+      "wall_seconds": 115.1
     },
     "tep": {
       "adjusted_refusals": {
@@ -243,7 +243,7 @@
         ]
       },
       "code": {
-        "git_head": "9bcb36d7084b1980d1249c7ea2c91054082abdf6",
+        "git_head": "12653ee5622f95c7b14b8781208f0c4b19c22eb4",
         "tsdive_version": "0.3.0"
       },
       "conditions": 21,
@@ -273,11 +273,11 @@
         1,
         250
       ],
-      "wall_seconds": 164.5
+      "wall_seconds": 166.9
     },
     "turbine": {
       "code": {
-        "git_head": "78bce5d9004d5485f243096199f40761de3b4b40",
+        "git_head": "12653ee5622f95c7b14b8781208f0c4b19c22eb4",
         "tsdive_version": "0.3.0"
       },
       "dataset": {

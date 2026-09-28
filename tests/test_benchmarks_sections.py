@@ -56,6 +56,7 @@ def test_committed_file_has_every_study_section():
     assert "## REAL: 3W v2.0.0, detectors (three study designs)" in appended
     assert "## REAL: TEP (Rieth 2017 simulation, subset)" in appended
     assert "## REAL: SKAB" in appended
+    assert "## REAL: shift intervals (3W, SKAB, TEP, Turbine Upgrade, synthetic)" in appended
     # A detector row without its design and split named is a number nobody
     # can check: the same tool scores differently under each design.
     detector_rows = _detector_rows(appended)

@@ -151,6 +151,22 @@ drops none.
   population.
 - Read: [3w_audit_effect/REPORT.md](../examples/studies/3w_audit_effect/REPORT.md).
 
+### Shift intervals on placebo dates and fault onsets
+
+Before/after level and spread intervals (`naive`, `hac`, `ewc`,
+`block_bootstrap`), raw and adjusted on the other tags of the instance.
+The placebo bed reads `data/3w_windows`: each of the 538 instances with
+no fault window and 4 consecutive windows gives 2 windows of minute
+medians before a placebo date and the next 2 after it. The known-change
+bed reads `data/3w_windows_aligned`: the 3 windows nearest before the
+onset against the 2 after it. Nothing is fitted across instances. A
+synthetic AR(1) bed with a known shift runs beside them.
+
+- Run: `uv run python examples/studies/shift_intervals/run_shift.py`,
+  then `uv run python examples/studies/shift_intervals/make_report.py
+  --update-benchmarks`.
+- Read: [shift_intervals/REPORT.md](../examples/studies/shift_intervals/REPORT.md).
+
 ### Known upstream issues
 
 - The `dataset/folds` path 404s on `main` (fold splits were removed
@@ -192,6 +208,14 @@ Verified on 2026-09-03 against commit
   reading the minute median of each window rather than its 1 s samples.
   Read:
   [baseline_drift/REPORT.md](../examples/studies/baseline_drift/REPORT.md).
+- Shift intervals: `uv run python
+  examples/studies/shift_intervals/run_shift.py --beds placebo
+  known_change` splits the anomaly-free record into 8 non-overlapping
+  10 min before and after pairs, splits each labelled record's pre-onset
+  rows in half, and sets each labelled record's pre-onset rows against
+  its anomaly span, on the 1 s rows as recorded. Both beds, with the 3W
+  ones, run in 9 s. Read:
+  [shift_intervals/REPORT.md](../examples/studies/shift_intervals/REPORT.md).
 
 ### Layout
 
@@ -240,9 +264,59 @@ message, and the run continues with the next file.
   before ingest (`SchemaError` from `require_unique`), because
   `ingest_wide` accepts it and only the read audit reports it.
 
+## Turbine Upgrade
+
+Verified on 2026-09-28 against Zenodo record 5516556.
+
+- Source: Zenodo, DOI
+  [10.5281/zenodo.5516556](https://doi.org/10.5281/zenodo.5516556),
+  "Turbine Upgrade Dataset" (Yu Ding, 2021), companion data to the book
+  *Data Science for Wind Energy*. Two pairs of turbines from one inland
+  wind farm with a met mast: a vortex generator retrofit on one turbine
+  of the first pair (effective 2011-06-20) and a pitch angle adjustment
+  simulated on one turbine of the second pair (effective 2011-04-25).
+- Role: a real bed with a known injected shift. The pitch pair's upgrade
+  is a data modification, so its size is known exactly.
+- Licence: CC BY 4.0. Nothing under `data/` is committed.
+- Citation, as the Zenodo record gives it: Ding, Y. (2021). Turbine
+  Upgrade Dataset [Dataset]. Zenodo.
+  https://doi.org/10.5281/zenodo.5516556. The record lists as its
+  reference Ding, Y. (2019) Data Science for Wind Energy, Chapman &
+  Hall/CRC Press, Boca Raton, FL.
+- Fetch: `uv run python examples/studies/shift_intervals/fetch_turbine.py
+  --dest data/turbine_upgrade`. One zip, `Turbine_Upgrade_Dataset.zip`,
+  4,891,261 bytes, sha256
+  `c302fbdc5e68989dc0792d7125277dd76a3ca20f27a96959d1238a294146511e`,
+  3 s. The script checks the size and sha256 before keeping the zip,
+  extracts the three CSVs into `raw/` and writes `MANIFEST.sha256.json`
+  (sha256 `31b2b0c7e33a`) and `FETCH.json`.
+
+### Schema facts that change how the data is read
+
+- Three CSVs: `Turbine Upgrade Dataset(VG Pair).csv` (45,114 rows,
+  2010-04-29 to 2011-08-15, 5,000 upgraded rows),
+  `Turbine Upgrade Dataset(Pitch Angle Pair).csv` (28,486 rows,
+  2010-07-30 to 2011-06-25, 7,000 upgraded rows from 2011-04-25 21:50)
+  and `Turbine Upgrade Dataset(Pitch Angle Pair, Table7.3).csv` (the same
+  rows with `y_test` at r = 0.02 to 0.09).
+- Header spellings differ between files: `upgrade status` and
+  `upgrade.status`; `y_test (normalized)`, `y_test(normalized)` and
+  `y_test(r=0.05, normalized)`. The two pair files carry an unnamed row
+  number column. Time is `m/d/Y H:M` with no time zone.
+- The step is 10 min, but rows with V under 3.5 m/s are absent and the
+  record has holes: 96.0% (VG) and 96.4% (pitch) of steps are 10 min,
+  and the longest holes are 29.9 and 57.0 days.
+- The pitch pair's `y_test` is multiplied by 1 + r on upgraded rows with
+  V > 9 (V is recorded to 0.01): 2,666 rows. 7 upgraded rows at exactly
+  V = 9.00 are unmodified. The pair file's `y_test` equals the r = 0.05
+  column, and y_r / (1 + r) agrees across r to within 0.0001.
+- Shift intervals: `uv run python
+  examples/studies/shift_intervals/run_shift.py --beds turbine`, 3 s.
+  Read: [shift_intervals/REPORT.md](../examples/studies/shift_intervals/REPORT.md).
+
 ## TEP
 
-Verified on 2026-08-28.
+Verified on 2026-08-28; testing files verified on 2026-09-28.
 
 - Source: Harvard Dataverse, DOI
   [10.7910/DVN/6C3JR1](https://doi.org/10.7910/DVN/6C3JR1) (Rieth,
@@ -287,9 +361,12 @@ Verified on 2026-08-28.
   `TEP_Faulty_Training.RData`, **518,741,211 bytes**, 95 s wall, both
   MD5-verified against the API.
   Manifest sha256 `95f369c2b2b8eb6abc34eac3d003d312fcb5d8b1105d7c42876044c69e27cd0f`.
-- The two testing files (884 MB) were **not** fetched. Profiling is
-  descriptive and scores nothing, so a held-out split buys it nothing;
-  `--all` fetches them when a stage-3-and-above study needs them.
+- Fetched 2026-09-28 with `--all`: all four files, **1,402,950,911
+  bytes**, 215 s wall, every file MD5-verified against the API.
+  Manifest sha256
+  `f57ab3ee3443032592c99004172999b21c85090fa13a70aadf065ab56be7da6e`.
+  The profile study reads the training pair; the shift interval study
+  reads the testing pair.
 - Converted subset: `--runs-per-fault 20` over all 21 conditions (fault
   free plus faults 1-20) = **420 runs, 22,260 archives, 210,000 rows**,
   191 MB on disk, 43 s wall. The full training pair would be 556,500
@@ -332,6 +409,24 @@ Verified on 2026-08-28.
 
 Findings from the executed profile study are in
 [examples/studies/tep_profile/REPORT.md](../examples/studies/tep_profile/REPORT.md).
+
+### Shift intervals on the testing runs
+
+- Cache: `uv run python examples/studies/shift_intervals/build_tep_cache.py`
+  reads both testing files through `pyreadr` and keeps runs 1-350 and
+  samples 1-320 of fault-free and faults 1-20 as one float32 parquet
+  under `data/tep_shift_cache/` (2,352,000 rows, 205 MB, cache sha256
+  `ee6e1d65cb2c`, 56 s). Reading `TEP_Faulty_Testing.RData` takes the
+  process to a peak working set of 15.4 GiB.
+- Onset: fault 6 zeroes `xmeas_1` from sample 161, so samples 1-160 of a
+  testing run precede the fault. `scripts/convert_tep.py` labels sample
+  160 as the first fault sample.
+- The fault-free testing runs start with a lower spread: over runs 1-250
+  the log SD ratio of samples 161-320 over 1-160 has a median of 0.038
+  over the 52 variables and reaches 0.45.
+- Run: `uv run python examples/studies/shift_intervals/run_shift.py
+  --beds tep`, 167 s. Per-row results stay in the cache directory.
+  Read: [shift_intervals/REPORT.md](../examples/studies/shift_intervals/REPORT.md).
 
 ## Verification
 
