@@ -86,8 +86,9 @@ src = ["src", "tests"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q"
+testpaths = ["tests", "src/tsdive"]
+addopts = "-q --doctest-modules"
+doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS"]
 filterwarnings = ["error"]
 markers = ["docs: documentation site coverage, also run by the docs CI job"]
 

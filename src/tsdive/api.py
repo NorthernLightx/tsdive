@@ -232,6 +232,17 @@ def read_meta_json(path: str | Path) -> TagMeta:
     The file uses the same object as the archive's own ``tsdive.meta``
     block, so metadata written for ingest is readable back off the
     archive without a second format to keep in step.
+
+    Examples:
+        >>> import json
+        >>> import tsdive
+        >>> meta = {"identity": {"source_id": "plant1", "point_id": "FIC101.PV"},
+        ...         "name": "FIC-101 flow", "unit_raw": "m3/h", "sample_rate_s": 3.0}
+        >>> with open("FIC101.PV.json", "w", encoding="utf-8") as f:
+        ...     json.dump(meta, f)
+        >>> read = tsdive.read_meta_json("FIC101.PV.json")
+        >>> str(read.identity), read.unit_raw, read.sample_rate_s
+        ('plant1:FIC101.PV', 'm3/h', 3.0)
     """
     text = Path(path).read_text(encoding="utf-8")
     try:
@@ -407,6 +418,18 @@ def ingest(
         SchemaError: unreadable input, missing column, naive timestamps
             without ``tz``, or an unusable ``assume_quality`` value.
         FileExistsError: ``out`` exists and ``overwrite`` is False.
+
+    Examples:
+        A CSV export of the demo flow tag, ingested under a new identity:
+
+        >>> import pandas as pd
+        >>> import tsdive
+        >>> pd.read_parquet("data/demo/fic101_demo.parquet").to_csv("fic101.csv", index=False)
+        >>> meta = tsdive.TagMeta(identity=tsdive.TagIdentity("plant1", "FIC101.PV"),
+        ...                       name="FIC-101 flow", unit_raw="m3/h")
+        >>> out = tsdive.ingest("fic101.csv", out="archive/plant1/FIC101.PV.parquet", meta=meta)
+        >>> out.as_posix(), len(pd.read_parquet(out))
+        ('archive/plant1/FIC101.PV.parquet', 562)
     """
     src = Path(source)
     frame = _read_source(src)
@@ -522,6 +545,24 @@ def ingest_wide(
             ``quality_suffix`` given together with ``assume_quality``.
         ValueError: two tags or two point ids that share one file name.
         FileExistsError: an archive exists and ``overwrite`` is False.
+
+    Examples:
+        A wide export of the two demo tags, without a quality column:
+
+        >>> import pandas as pd
+        >>> import tsdive
+        >>> fic = pd.read_parquet("data/demo/fic101_demo.parquet")
+        >>> tic = pd.read_parquet("data/demo/tic101_demo.parquet")
+        >>> wide = pd.DataFrame({"ts": fic["timestamp"], "FIC101.PV": fic["value"],
+        ...                      "TIC101.PV": tic["value"]})
+        >>> wide.to_csv("export.csv", index=False)
+        >>> _ = tsdive.init_meta("export.csv", out_dir="meta", source_id="plant1",
+        ...                      timestamp_col="ts")
+        >>> archives = tsdive.ingest_wide("export.csv", out_dir="archive/plant1",
+        ...                               meta_dir="meta", timestamp_col="ts",
+        ...                               assume_quality="GOOD")
+        >>> [path.as_posix() for path in archives]
+        ['archive/plant1/FIC101.PV.parquet', 'archive/plant1/TIC101.PV.parquet']
     """
     src = Path(source)
     frame = _read_source(src)
@@ -646,6 +687,22 @@ def init_meta(
             quality column.
         ValueError: two tags that share one file name.
         FileExistsError: a template exists and ``overwrite`` is False.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import tsdive
+        >>> fic = pd.read_parquet("data/demo/fic101_demo.parquet")
+        >>> tic = pd.read_parquet("data/demo/tic101_demo.parquet")
+        >>> wide = pd.DataFrame({"ts": fic["timestamp"], "FIC101.PV": fic["value"],
+        ...                      "TIC101.PV": tic["value"]})
+        >>> wide.to_csv("export.csv", index=False)
+        >>> paths = tsdive.init_meta("export.csv", out_dir="meta", source_id="plant1",
+        ...                          timestamp_col="ts")
+        >>> [path.as_posix() for path in paths]
+        ['meta/FIC101.PV.json', 'meta/TIC101.PV.json']
+        >>> template = tsdive.read_meta_json(paths[0])
+        >>> str(template.identity), template.name, template.unit_raw
+        ('plant1:FIC101.PV', 'FIC101.PV', None)
     """
     src = Path(source)
     frame = _read_source(src)
@@ -699,6 +756,17 @@ class Profile:
     flatline: FlatlineVerdict | None = None
 
     def render(self) -> str:
+        """The report ``tsdive profile`` prints for this window, without colour.
+
+        Examples:
+            >>> import tsdive
+            >>> p = tsdive.profile("data/demo/fic101_demo.parquet",
+            ...                    "2024-03-30T20:00:00Z/2024-03-31T06:00:00Z")
+            >>> for line in p.render().splitlines()[:2]:
+            ...     print(line)
+            demo:FIC101.PV  FIC-101 flow
+            coverage 0.933   GOOD 561/562   censored yes   gaps 1
+        """
         return render_window_report(self.window, self.flatline, self.stats)
 
     @property
@@ -743,6 +811,15 @@ def profile(
     Raises:
         ValueError: malformed or naive window, unknown tz name.
         TSDiveError: any typed refusal from the read path.
+
+    Examples:
+        >>> import tsdive
+        >>> p = tsdive.profile("data/demo/fic101_demo.parquet",
+        ...                    "2024-03-30T20:00:00Z/2024-03-31T06:00:00Z")
+        >>> str(p.identity), round(p.physics.coverage.coverage, 3)
+        ('demo:FIC101.PV', 0.933)
+        >>> p.physics.clipping.censored
+        True
     """
     tz_names = (tz,) if isinstance(tz, str) else tuple(tz or ())
     validate_tz_names(tz_names)
@@ -842,6 +919,17 @@ def switchback_plan(
             range, or only one of ``history`` and ``history_window``.
         DesignTooSmall: the window holds too few blocks for a
             randomization test at the 5% level.
+
+    Examples:
+        >>> import tsdive
+        >>> plan = tsdive.switchback_plan("2024-06-03T00:00:00Z", "2024-06-04T00:00:00Z",
+        ...                               block="PT1H", washout="PT15M", seed=7)
+        >>> plan.k, plan.digest[:12]
+        (24, '66da65ede04f')
+        >>> "".join(b.setting for b in plan.blocks)
+        'AAABBABAABBBBBBAAAAABBAB'
+        >>> plan.write_json("plan.json").name
+        'plan.json'
     """
     if (history is None) != (history_window is None):
         raise ValueError("a power readout needs both history and history_window")
@@ -898,6 +986,20 @@ def switchback_analyze(
         SchemaError: a covariate repeats a timestamp among its valid
             samples.
         TSDiveError: any typed refusal from the read path.
+
+    Examples:
+        >>> import tsdive
+        >>> plan = tsdive.switchback_plan("2024-06-03T00:00:00Z", "2024-06-04T00:00:00Z",
+        ...                               block="PT1H", washout="PT15M", seed=7)
+        >>> archives = ["data/switchback_demo/ti201.parquet",
+        ...             "data/switchback_demo/fi200.parquet",
+        ...             "data/switchback_demo/tt001.parquet"]
+        >>> result = tsdive.switchback_analyze(archives, plan, target="TI201.PV",
+        ...                                    covariates=["FI200.PV", "TT001.PV"])
+        >>> round(result.direct.estimate, 4), round(result.direct.p_value, 3)
+        (0.6024, 0.154)
+        >>> round(result.adjusted.estimate, 4), round(result.adjusted.p_value, 3)
+        (0.2847, 0.001)
     """
     resolved = plan if isinstance(plan, SwitchbackPlan) else SwitchbackPlan.read_json(plan)
     return analyze_archives(archives, resolved, target=target, covariates=tuple(covariates))

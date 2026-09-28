@@ -189,6 +189,14 @@ class SegmentAnalysis:
         return pd.DataFrame(segment_json(self)["segments"])
 
     def render(self) -> str:
+        """The report ``tsdive segment`` prints for this window, without colour.
+
+        Examples:
+            >>> import tsdive
+            >>> s = tsdive.segment("data/demo/fic101_demo.parquet")
+            >>> print(s.render().splitlines()[0])
+            demo:FIC101.PV  6 segments   5 breakpoints   censored yes
+        """
         return "\n".join(segment_lines(self))
 
     def to_dict(self) -> dict[str, object]:
@@ -254,6 +262,14 @@ def segment(
     Raises:
         ValueError: malformed or naive window.
         TSDiveError: any typed refusal from the read path.
+
+    Examples:
+        >>> import tsdive
+        >>> s = tsdive.segment("data/demo/fic101_demo.parquet")
+        >>> len(s.found.breakpoints), len(s.frame)
+        (5, 6)
+        >>> list(s.frame.columns)
+        ['index', 'start', 'end', 'n', 'median', 'mad']
     """
     store = SingleFileStore(Path(archive))
     meta = meta_from_parquet(store.path)
@@ -301,6 +317,16 @@ class ScreenAnalysis:
         return rows[flagged].reset_index(drop=True)
 
     def render(self) -> str:
+        """The report ``tsdive screen`` prints for this window, without colour.
+
+        Examples:
+            >>> import tsdive
+            >>> s = tsdive.screen("data/demo/fic101_demo.parquet",
+            ...                   "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z",
+            ...                   "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z")
+            >>> print(s.render().splitlines()[0])
+            demo:FIC101.PV  flagged 29 of 300 (9.7%)
+        """
         return "\n".join(screen_lines(self))
 
     def to_dict(self) -> dict[str, object]:
@@ -336,6 +362,16 @@ def screen(
         ValueError: malformed window, overlapping windows, unknown method.
         TSDiveError: a censored baseline, or any typed refusal from the
             read path.
+
+    Examples:
+        >>> import tsdive
+        >>> s = tsdive.screen("data/demo/fic101_demo.parquet",
+        ...                   "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z",  # baseline
+        ...                   "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z")  # window
+        >>> s.to_dict()["n_flagged"], s.to_dict()["n_screened"]
+        (29, 300)
+        >>> len(s.frame)
+        29
     """
     if method not in SCREEN_METHODS:
         raise ValueError(f"method must be one of {SCREEN_METHODS}, not {method!r}")
@@ -403,6 +439,16 @@ class SpcAnalysis:
         )
 
     def render(self) -> str:
+        """The report ``tsdive spc`` prints for this window, without colour.
+
+        Examples:
+            >>> import tsdive
+            >>> c = tsdive.spc("data/demo/fic101_demo.parquet",
+            ...                "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z",
+            ...                "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z")
+            >>> print(c.render().splitlines()[0])
+            demo:FIC101.PV  37 rule hits in 300 samples
+        """
         return "\n".join(spc_lines(self))
 
     def to_dict(self) -> dict[str, object]:
@@ -432,6 +478,16 @@ def spc(
         ValueError: malformed window, overlapping windows.
         TSDiveError: a censored baseline, or any typed refusal from the
             read path.
+
+    Examples:
+        >>> import tsdive
+        >>> c = tsdive.spc("data/demo/fic101_demo.parquet",
+        ...                "2024-03-30T20:00:00Z/2024-03-31T01:00:00Z",  # baseline
+        ...                "2024-03-31T01:00:00Z/2024-03-31T06:00:00Z")  # window
+        >>> round(c.limits.lcl, 3), round(c.limits.center, 3), round(c.limits.ucl, 3)
+        (60.673, 62.319, 63.966)
+        >>> c.frame["rule"].value_counts().to_dict()
+        {'BEYOND_3SIGMA': 29, 'RUN_9_SAMESIDE': 6, 'TREND_6': 2}
     """
     base_w, monitor_w = _baseline_and_monitor(
         archive, baseline, window, basis=basis, stepped=stepped
@@ -494,6 +550,17 @@ class MspcAnalysis:
         )
 
     def render(self) -> str:
+        """The report ``tsdive mspc`` prints for this window, without colour.
+
+        Examples:
+            >>> import tsdive
+            >>> m = tsdive.mspc(["data/demo/fic101_demo.parquet",
+            ...                  "data/demo/tic101_demo.parquet"],
+            ...                 "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z",
+            ...                 "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z")
+            >>> print(m.render().splitlines()[0])
+            demo:FIC101.PV, demo:TIC101.PV  T2 breaches 22   SPE breaches 108   of 121 rows
+        """
         return "\n".join(mspc_lines(self))
 
     def to_dict(self) -> dict[str, object]:
@@ -528,6 +595,16 @@ def mspc(
         ValueError: malformed window, overlapping windows.
         TSDiveError: a censored baseline, archives that do not align, or
             any typed refusal from the read path.
+
+    Examples:
+        >>> import tsdive
+        >>> m = tsdive.mspc(["data/demo/fic101_demo.parquet", "data/demo/tic101_demo.parquet"],
+        ...                 "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z",  # baseline
+        ...                 "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z")  # window
+        >>> len(m.found.t2_breaches), len(m.found.spe_breaches), len(m.frame)
+        (22, 108, 121)
+        >>> m.tags
+        ['demo:FIC101.PV', 'demo:TIC101.PV']
     """
     pairs = [
         _baseline_and_monitor(
@@ -574,6 +651,17 @@ class CompareAnalysis(CompareResult):
         return pd.DataFrame(compare_json(self)["tags"])
 
     def render(self) -> str:
+        """The report ``tsdive compare`` prints for the two periods, without colour.
+
+        Examples:
+            >>> import tsdive
+            >>> c = tsdive.compare(["data/demo/fic101_demo.parquet",
+            ...                     "data/demo/tic101_demo.parquet"],
+            ...                    "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z",
+            ...                    "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z")
+            >>> print(c.render().splitlines()[0])
+            demo  2 tags   refused 0   pairs 1 of 1 clearing
+        """
         return "\n".join(compare_lines(self))
 
     def to_dict(self) -> dict[str, object]:
@@ -603,6 +691,16 @@ def compare(
         ValueError: malformed periods, overlapping or swapped periods.
         TSDiveError: any typed refusal that stops the whole comparison;
             a refusal on one archive stays a row in ``tags``.
+
+    Examples:
+        >>> import tsdive
+        >>> c = tsdive.compare(["data/demo/fic101_demo.parquet", "data/demo/tic101_demo.parquet"],
+        ...                    "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z",  # before
+        ...                    "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z")  # after
+        >>> c.frame["tag"].tolist()
+        ['demo:TIC101.PV', 'demo:FIC101.PV']
+        >>> c.frame["spread_ratio"].round(1).tolist()
+        [6.0, 0.5]
     """
     result = compare_periods(
         [os.fspath(p) for p in archives], before, after, rate_s=rate_s
