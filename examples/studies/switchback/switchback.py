@@ -518,6 +518,30 @@ def randomization(design: Design, terms: Terms, sums: np.ndarray, scale: float) 
     return Result(t, lo, hi, p)
 
 
+def exact_rejection(frame: Frame, k: int, scale: float) -> float:
+    """Share of all balanced assignments the test rejects when each one is the observed one.
+
+    Every assignment's p-value is the enumerated one of ``randomization``,
+    #{j: |T_j| >= |T_i|} / C, with its tie tolerance; the assignment and its
+    complement on the kept blocks count as ties. An assignment in the span
+    of [1, X] is refused by the test, so it does not count as a rejection.
+    """
+    rows = all_assignments(k)
+    matrix = rows.astype(float)
+    zq = matrix @ frame.basis_sums
+    denom = matrix @ frame.counts - np.einsum("ij,ij->i", zq, zq)
+    valid = denom > DENOM_RTOL * frame.n
+    raw = matrix @ frame.resid_sums
+    t = np.abs(np.divide(raw, denom, out=np.zeros_like(raw), where=valid))
+    tol = TIE_RTOL * (t + scale)
+    extreme = (t[None, :] >= (t - tol)[:, None]) & valid[None, :]
+    kept = rows[:, frame.nonempty]
+    extreme |= np.all(kept[:, None, :] == kept[None, :, :], axis=-1)
+    extreme |= np.all(kept[:, None, :] == 1 - kept[None, :, :], axis=-1)
+    p = extreme.sum(axis=1) / len(rows)
+    return float(np.mean((p <= ALPHA) & valid))
+
+
 def randomization_p(frame: Frame, design: Design, y: np.ndarray, scale: float) -> float:
     """Randomization p-value of the kept samples ``y`` refitted from scratch (a reference path)."""
     resid = frame.project_out(y)

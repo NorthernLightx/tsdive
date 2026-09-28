@@ -117,6 +117,26 @@ def test_an_enumerated_design_rejects_at_most_alpha_of_its_assignments(washout):
         assert rejected == math.floor(sb.ALPHA * len(rows))
 
 
+def test_exact_rejection_counts_what_the_test_rejects_over_every_assignment():
+    rng = np.random.default_rng(17)
+    _, blocks = _regular(240, 30)
+    y = np.round(rng.standard_normal(240).cumsum(), 1)  # rounded: ties between assignments
+    x = rng.standard_normal((240, 2)) + y[:, None] * 0.2
+    rows = sb.all_assignments(blocks.k)
+    for covariates in (None, x):
+        frame = sb.make_frame(y, covariates, blocks, 0)
+        rejected = 0
+        for index in range(len(rows)):
+            design = sb.Design(
+                blocks.k, rows[index].copy(), rows, rows.astype(float), True, len(rows), 0.0
+            )
+            terms = sb.assignment_terms(frame, design)
+            p = sb.randomization(design, terms, frame.resid_sums[:, None], 1.0).p_value[0]
+            rejected += p <= sb.ALPHA
+        assert sb.exact_rejection(frame, blocks.k, 1.0) == pytest.approx(rejected / len(rows))
+        assert sb.exact_rejection(frame, blocks.k, 1.0) <= math.floor(0.05 * 70) / 70
+
+
 def test_raw_estimate_is_the_difference_in_means():
     rng = np.random.default_rng(6)
     _, blocks = _regular(240, 30)
@@ -583,3 +603,46 @@ def test_tep_cache_builder_keeps_runs_251_to_350_of_the_fault_free_file(tmp_path
     cache = pd.read_parquet(tmp_path / "cache" / btc.CACHE_NAME)
     assert sorted(cache["run"].unique()) == [251, 350]
     assert cache["xmeas_1"].dtype == np.float32
+
+
+def test_a_draw_offset_scores_fresh_assignments(beds, tmp_path):
+    _, root = beds
+    kwargs = {
+        "windows": root / "windows",
+        "tep_cache": root / "tep",
+        "turbine": root / "turbine",
+        "archives": root / "archives",
+        "draws": FIXTURE_DRAWS,
+    }
+    zero = tmp_path / "zero"
+    fresh = tmp_path / "fresh"
+    rsw.run(zero, (rsw.BED_3W,), rows_dir=None, draw_offset=0, **kwargs)
+    info = rsw.run(fresh, (rsw.BED_3W,), rows_dir=None, draw_offset=100_000, **kwargs)
+    committed = _summary(root / "a")
+    pd.testing.assert_frame_equal(
+        committed[committed["bed"] == "3w"].reset_index(drop=True), _summary(zero)
+    )
+    assert not _summary(fresh).equals(_summary(zero))
+    assert info["draw_offset"] == 100_000
+    assert info["beds"]["3w"]["draw_offset"] == 100_000
+    # the exact check reads no draw, so a new offset leaves it unchanged
+    assert filecmp.cmp(zero / rsw.EXACT_CSV, fresh / rsw.EXACT_CSV, shallow=False)
+
+
+def test_pooled_mean_bias_and_exact_outputs(beds):
+    _, root = beds
+    pooled = pd.read_csv(root / "a" / rsw.POOLED_CSV, keep_default_na=False, na_values=[""])
+    assert set(pooled["quantity"]) == {"claim_rate_delta_0", "coverage_registered_washout"}
+    assert len(pooled) == 4 * 2 * 2  # beds x adjustments x quantities
+    claim = pooled[(pooled["bed"] == "tep") & (pooled["quantity"] == "claim_rate_delta_0")]
+    assert (claim["n_units"] == 2 * 5 * 2 * 3 * 2).all()  # runs x targets x draws x (L, w) x L
+    bias = pd.read_csv(root / "a" / rsw.MEAN_BIAS_CSV, keep_default_na=False, na_values=[""])
+    assert (bias["delta"] > 0).all()
+    assert set(bias["washout_rule"]) == {"0", "ceil(3 tau)"}
+    exact = pd.read_csv(root / "a" / rsw.EXACT_CSV, keep_default_na=False)
+    sizes = dict(
+        zip(zip(exact["bed"], exact["block"], strict=True), exact["n_assignments"], strict=False)
+    )
+    assert sizes == {("3w", 30): 70, ("tep", 80): 924, ("skab", 300): 70}
+    assert (exact["max"] <= exact["bound"]).all()
+    assert (exact["n_units"] > 0).all()

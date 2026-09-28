@@ -30,7 +30,9 @@ SKAB, TEP) or on the usable tags of V, VcosD, VsinD, rho, S, I and y_ctrl
 (turbine). Grid: delta 0, 0.1, 0.25 and 0.5; tau 0, L/10 and L/4 steps;
 washout 0 and ceil(3 tau) steps; raw and adjusted. The seed of a draw
 comes from (bed, record, L, draw) alone, so every target of a record
-shares the draw's schedule.
+shares the draw's schedule. ``--draw-offset`` adds a constant to the
+draw number inside the seed, so a rerun with a new offset scores fresh
+assignments on the same records and grid.
 
 Outputs in ``--out``, merged per bed so one bed can be rerun alone:
 
@@ -47,6 +49,17 @@ Outputs in ``--out``, merged per bed so one bed can be rerun alone:
   the smallest attainable p and the refusal per (bed, L, K).
 - ``refusals.csv``: refused (record, target, draw) units per (bed, L,
   washout, adjustment, arm, reason).
+- ``pooled.csv``: per (bed, adjustment), the ``randomization`` claim rate
+  at delta 0 pooled over every (L, washout) and the coverage pooled over
+  every (L, tau, delta > 0) at washout ceil(3 tau), each with a Monte
+  Carlo SE clustered by (record, L, draw).
+- ``mean_bias.csv``: the mean of estimate - delta sigma of the
+  ``randomization`` arm per (bed, L, tau, washout, delta > 0, adjustment),
+  with its clustered Monte Carlo SE.
+- ``exact_size.csv``: for every enumerated design, the share of all
+  balanced assignments the test rejects when each is the observed one,
+  per (record, target), summarised per (bed, L, adjustment) at delta 0,
+  tau 0 and washout 0. It reads no draw.
 - ``run.json``: provenance, parameters, seeds, counts and wall seconds.
 
 Per-row results go to ``--rows`` (untracked), one parquet per bed.
@@ -118,6 +131,9 @@ PER_WELL_CSV = "per_well_3w.csv"
 PAIRS_CSV = "turbine_pairs.csv"
 DESIGNS_CSV = "designs.csv"
 REFUSALS_CSV = "refusals.csv"
+POOLED_CSV = "pooled.csv"
+MEAN_BIAS_CSV = "mean_bias.csv"
+EXACT_CSV = "exact_size.csv"
 REASON_CODE = {reason: code for code, reason in enumerate(sb.REASONS)}
 
 
@@ -306,6 +322,7 @@ class Task:
     length: int
     draws: tuple[int, ...]
     prepost: bool
+    draw_offset: int = 0
 
 
 FIELDS = (
@@ -440,11 +457,15 @@ def score_task(task: Task) -> dict[str, np.ndarray]:
         {}
         if refusal
         else {
-            d: sb.make_design(blocks.k, draw_seed(task.bed, rec.record, length, d))
+            d: sb.make_design(
+                blocks.k, draw_seed(task.bed, rec.record, length, d + task.draw_offset)
+            )
             for d in task.draws
         }
     )
     responses: dict[tuple[int, float], np.ndarray] = {}
+    exact: dict[str, list] = {"exact_target": [], "exact_adjustment": [], "exact_fraction": []}
+    enumerated = not refusal and sb.design_size(blocks.k)[1]
 
     def response(draw: int, tau: float) -> np.ndarray:
         key = (draw, tau)
@@ -476,6 +497,10 @@ def score_task(task: Task) -> dict[str, np.ndarray]:
                 if isinstance(frame, str):
                     _refuse(rows, plan, ti, task.draws, frame)
                     continue
+                if task.prepost and enumerated and washout == 0:
+                    exact["exact_target"].append(ti)
+                    exact["exact_adjustment"].append(sb.ADJUSTMENTS.index(adjustment))
+                    exact["exact_fraction"].append(sb.exact_rejection(frame, blocks.k, sigma))
                 for draw in task.draws:
                     _score_draw(
                         rows, plan, frame, designs[draw], configs, response, draw, ti, sigma
@@ -486,7 +511,11 @@ def score_task(task: Task) -> dict[str, np.ndarray]:
             )
     if task.prepost:
         sh._cosine_basis.cache_clear()  # a 20,000-sample basis holds tens of MB
-    return rows.arrays()
+    out = rows.arrays()
+    out["exact_target"] = np.array(exact["exact_target"], dtype=np.int16)
+    out["exact_adjustment"] = np.array(exact["exact_adjustment"], dtype=np.int8)
+    out["exact_fraction"] = np.array(exact["exact_fraction"], dtype=float)
+    return out
 
 
 def _score_draw(rows, plan, frame, design, configs, response, draw, ti, sigma) -> None:
@@ -577,14 +606,14 @@ def _score_prepost(
             _emit(rows, plan, arms, ti, -1, reasons, est / sigma, lo / sigma, hi / sigma, p, truth)
 
 
-def make_tasks(bed: str, records: list[Record], draws: int) -> list[Task]:
+def make_tasks(bed: str, records: list[Record], draws: int, draw_offset: int = 0) -> list[Task]:
     spec = BED_SPECS[bed]
     tasks = []
     for record_id, rec in enumerate(records):
         for length in spec.blocks:
             for start in range(0, draws, spec.draw_chunk):
                 chunk = tuple(range(start, min(start + spec.draw_chunk, draws)))
-                tasks.append(Task(bed, record_id, rec, length, chunk, start == 0))
+                tasks.append(Task(bed, record_id, rec, length, chunk, start == 0, draw_offset))
     return tasks
 
 
@@ -740,6 +769,117 @@ def aggregate(bed: str, rows: dict[str, np.ndarray], records: list[Record]) -> d
     return {"summary": summary, "pairs": pairs, "per_well": per_well, "refusals": refusals}
 
 
+def _assignment_cluster(bed: str, rows: dict, index: np.ndarray) -> np.ndarray:
+    """(record, L, draw) of each row: the unit a schedule is drawn for."""
+    lengths = np.array([c[0] for c in bed_cells(bed)])[rows["cell"][index]]
+    position = np.searchsorted(np.array(BED_SPECS[bed].blocks), lengths)
+    return (
+        rows["record"][index].astype(np.int64) * 10**7
+        + position * 10**5
+        + rows["draw"][index].astype(np.int64)
+        + 1
+    )
+
+
+def pooled_rows(bed: str, rows: dict) -> list[dict]:
+    """Claim rate at delta 0 over every (L, washout) and coverage over delta > 0 at ceil(3 tau).
+
+    At delta 0 the cells of one washout are one computation whatever tau, so
+    the claim pool reads each (L, washout) once, at its smallest tau.
+    """
+    out = []
+    first_tau = {}
+    for length in BED_SPECS[bed].blocks:
+        for tau, washout in tau_washouts(length):
+            first_tau.setdefault((length, washout), tau)
+    cells = bed_cells(bed)
+    for adjustment in sb.ADJUSTMENTS:
+        claim_cells = [
+            i
+            for i, (length, tau, washout, delta, arm, adj) in enumerate(cells)
+            if arm == sb.RANDOMIZATION
+            and adj == adjustment
+            and delta == 0
+            and tau == first_tau[(length, washout)]
+        ]
+        cover_cells = [
+            i
+            for i, (_, tau, washout, delta, arm, adj) in enumerate(cells)
+            if arm == sb.RANDOMIZATION
+            and adj == adjustment
+            and delta > 0
+            and washout == sb.washout_steps(tau)
+        ]
+        for quantity, chosen, field in (
+            ("claim_rate_delta_0", claim_cells, "claim"),
+            ("coverage_registered_washout", cover_cells, "covered"),
+        ):
+            index = np.flatnonzero(np.isin(rows["cell"], chosen) & (rows["reason"] == 0))
+            x = rows[field][index].astype(float)
+            out.append(
+                {
+                    "bed": bed,
+                    "adjustment": adjustment,
+                    "quantity": quantity,
+                    "n_cells": len(set(rows["cell"][index].tolist())),
+                    "n_units": int(index.size),
+                    "value": float(x.mean()) if index.size else math.nan,
+                    "mcse": cluster_mcse(x, _assignment_cluster(bed, rows, index)),
+                }
+            )
+    return out
+
+
+def mean_bias_rows(bed: str, rows: dict) -> list[dict]:
+    """Mean of estimate - delta (sigma) of the ``randomization`` arm per cell with delta > 0."""
+    out = []
+    for i, (length, tau, washout, delta, arm, adjustment) in enumerate(bed_cells(bed)):
+        if arm != sb.RANDOMIZATION or delta == 0:
+            continue
+        index = np.flatnonzero((rows["cell"] == i) & (rows["reason"] == 0))
+        bias = rows["estimate"][index].astype(float) - delta
+        cluster = rows["record"][index].astype(np.int64) * 100_000 + rows["draw"][index] + 1
+        out.append(
+            {
+                "bed": bed,
+                "block": length,
+                "tau": tau,
+                "washout": washout,
+                "washout_rule": "ceil(3 tau)" if washout == sb.washout_steps(tau) else "0",
+                "delta": delta,
+                "adjustment": adjustment,
+                "n_units": int(index.size),
+                "mean_bias": float(bias.mean()) if index.size else math.nan,
+                "mcse": cluster_mcse(bias, cluster),
+            }
+        )
+    return out
+
+
+def exact_rows(bed: str, exact: list[dict], records: list[Record]) -> list[dict]:
+    """Exact rejection shares per (bed, L, adjustment) over (record, target)."""
+    out = []
+    frame = pd.DataFrame(exact, columns=["record", "block", "target", "adjustment", "fraction"])
+    for (length, adjustment), group in frame.groupby(["block", "adjustment"], sort=True):
+        k = sb.schedule_blocks(records[int(group["record"].iloc[0])].span, int(length))
+        n = math.comb(k, k // 2)
+        out.append(
+            {
+                "bed": bed,
+                "block": int(length),
+                "k": k,
+                "n_assignments": n,
+                "adjustment": adjustment,
+                "n_units": len(group),
+                "bound": math.floor(sb.ALPHA * n) / n,
+                "max": float(group["fraction"].max()),
+                "mean": float(group["fraction"].mean()),
+                "min": float(group["fraction"].min()),
+            }
+        )
+    return out
+
+
 def design_rows(bed: str, records: list[Record]) -> list[dict]:
     seen: dict[tuple[int, int], int] = {}
     for rec in records:
@@ -793,8 +933,10 @@ def _write_rows(path: Path, bed: str, frame: pd.DataFrame, records, cells) -> No
     (path / f"{bed}_codes.json").write_text(json.dumps(codes) + "\n", encoding="utf-8")
 
 
-def score_bed(bed: str, records: list[Record], draws: int, workers: int) -> dict[str, np.ndarray]:
-    tasks = make_tasks(bed, records, draws)
+def score_bed(
+    bed: str, records: list[Record], draws: int, workers: int, draw_offset: int = 0
+) -> dict[str, np.ndarray]:
+    tasks = make_tasks(bed, records, draws, draw_offset)
     if workers > 1:
         with ProcessPoolExecutor(max_workers=workers) as pool:
             results = list(pool.map(score_task, tasks, chunksize=1))
@@ -809,6 +951,19 @@ def score_bed(bed: str, records: list[Record], draws: int, workers: int) -> dict
             for r, t in zip(results, tasks, strict=True)
         ]
     )
+    joined["exact"] = [
+        {
+            "record": t.record_id,
+            "block": t.length,
+            "target": int(target),
+            "adjustment": sb.ADJUSTMENTS[int(adjustment)],
+            "fraction": float(fraction),
+        }
+        for r, t in zip(results, tasks, strict=True)
+        for target, adjustment, fraction in zip(
+            r["exact_target"], r["exact_adjustment"], r["exact_fraction"], strict=True
+        )
+    ]
     return joined
 
 
@@ -840,6 +995,7 @@ def run(
     source_skab: Path | None = None,
     workers: int = 1,
     draws: dict[str, int] | None = None,
+    draw_offset: int = 0,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     paths = {
@@ -853,17 +1009,21 @@ def run(
     run_path = out / "run.json"
     info = json.loads(run_path.read_text("utf-8")) if run_path.exists() else {}
     info.setdefault("beds", {})
-    frames = {k: [] for k in ("summary", "pairs", "per_well", "refusals", "designs")}
+    keys = ("summary", "pairs", "per_well", "refusals", "designs", "pooled", "mean_bias", "exact")
+    frames = {k: [] for k in keys}
     for bed in beds:
         started = time.perf_counter()
         records, counts = _load(bed, paths)
         n_draws = (draws or {}).get(bed, BED_SPECS[bed].draws)
-        rows = score_bed(bed, records, n_draws, workers)
+        rows = score_bed(bed, records, n_draws, workers, draw_offset)
         scored = time.perf_counter() - started
         rows["width"] = rows["hi"] - rows["lo"]
         agg = aggregate(bed, rows, records)
         for key in ("summary", "pairs", "per_well", "refusals"):
             frames[key] += agg[key]
+        frames["pooled"] += pooled_rows(bed, rows)
+        frames["mean_bias"] += mean_bias_rows(bed, rows)
+        frames["exact"] += exact_rows(bed, rows["exact"], records)
         frames["designs"] += design_rows(bed, records)
         if rows_dir is not None:
             keep = {k: rows[k] for k in (*FIELDS, "record")}
@@ -882,7 +1042,8 @@ def run(
             "n_targets": n_targets,
             "n_usable_targets": int(n_usable),
             "n_rows": int(rows["cell"].size),
-            "seed": "shift.cell_seed of (bed, record, block, draw)",
+            "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
+            "draw_offset": draw_offset,
             "wall_seconds": round(time.perf_counter() - started, 1),
             "scoring_seconds": round(scored, 1),
         }
@@ -923,6 +1084,26 @@ def run(
         "blocks": {b: list(BED_SPECS[b].blocks) for b in BEDS},
         "draws": {b: BED_SPECS[b].draws for b in BEDS},
     }
+    _merge_csv(
+        out / POOLED_CSV,
+        round_frame(pd.DataFrame(frames["pooled"]), ["value", "mcse"]),
+        beds,
+        ["_adj", "quantity"],
+    )
+    _merge_csv(
+        out / MEAN_BIAS_CSV,
+        round_frame(pd.DataFrame(frames["mean_bias"]), ["tau", "delta", "mean_bias", "mcse"]),
+        beds,
+        ["block", "tau", "washout", "delta", "_adj"],
+    )
+    if frames["exact"]:
+        _merge_csv(
+            out / EXACT_CSV,
+            round_frame(pd.DataFrame(frames["exact"]), ["bound", "max", "mean", "min"]),
+            beds,
+            ["block", "_adj"],
+        )
+    info["draw_offset"] = draw_offset
     info["workers"] = workers
     info["budget_seconds"] = BUDGET_SECONDS
     info["wall_seconds_all_beds"] = round(
@@ -951,6 +1132,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--rows", default=str(ROOT / DEFAULT_ROWS))
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     parser.add_argument(
+        "--draw-offset",
+        type=int,
+        default=0,
+        help="add this to the draw number inside the seed to score fresh assignments",
+    )
+    parser.add_argument(
         "--draws",
         nargs="*",
         default=[],
@@ -976,6 +1163,7 @@ def main(argv: list[str] | None = None) -> int:
         source_skab=Path(args.source_skab),
         workers=args.workers,
         draws=draws,
+        draw_offset=args.draw_offset,
     )
     for bed in args.beds:
         section = info["beds"][bed]
