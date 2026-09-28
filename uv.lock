@@ -2403,6 +2403,7 @@ dev = [
     { name = "pytest-regressions" },
     { name = "ruff" },
     { name = "scikit-learn" },
+    { name = "scipy" },
 ]
 
 [package.metadata]
@@ -2430,6 +2431,7 @@ dev = [
     { name = "pytest-regressions", specifier = ">=2.5,<3" },
     { name = "ruff", specifier = ">=0.6" },
     { name = "scikit-learn", specifier = ">=1.5,<2" },
+    { name = "scipy", specifier = ">=1.11,<2" },
 ]
 
 [[package]]

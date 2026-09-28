@@ -42,11 +42,11 @@ Outputs in ``--out``:
 - ``placebo.csv`` and ``known_change.csv``: one row per (split, tag,
   quantity, method, adjustment) with the estimate and interval (level in
   before-period SDs of the target, spread as a log SD ratio), the p-value,
-  whether the interval excludes 0, the hard refusal and its reason, and the
-  R1 to R3 flags, the lag-1 autocorrelation and HAC bandwidth of the
-  before-period series the arm reads, and for the adjusted arm the variance
-  reduction over the before period and var(residual) / var(target) over the
-  after period.
+  whether the interval excludes 0, the hard refusal and its reason, the R1
+  to R4 flags, the lag-1 autocorrelation of both periods and the HAC
+  bandwidth of the before period of the series the arm reads, and for the
+  adjusted arm the variance reduction over the before period and
+  var(residual) / var(target) over the after period.
 - ``summary.csv``: one row per (design, quantity, method, adjustment,
   refusal set) over both CSVs: clear rate pooled and averaged per well or
   folder, the record-level rate at alpha 0.05 / k over the k answered tags,
@@ -124,7 +124,7 @@ AFFECTED_DELTAS = (0.25, 0.5, 1.0)
 COVARIATE_STEP_FRACTION = 0.5
 
 CELL_KEYS = ("grid", "phi", "rho", "drift", "delta", "n", "sd_ratio", "covariate_step")
-FLAG_RULES = (sh.BEFORE_TREND, sh.COVARIATE_OUTSIDE, sh.COVARIATE_SHIFTED)
+FLAG_RULES = (sh.BEFORE_TREND, sh.COVARIATE_OUTSIDE, sh.COVARIATE_SHIFTED, sh.TOO_PERSISTENT)
 
 
 # ---------------------------------------------------------------- helpers
@@ -268,7 +268,7 @@ def aggregate_cell(cell: dict, seed: int, frame: pd.DataFrame, replicates: int) 
         flag_rates = {
             f"rate_{rule}": (
                 _rate(group[rule].eq(True))
-                if rule == sh.BEFORE_TREND or adjustment == sh.ADJUSTED
+                if rule in (sh.BEFORE_TREND, sh.TOO_PERSISTENT) or adjustment == sh.ADJUSTED
                 else None
             )
             for rule in FLAG_RULES
@@ -717,10 +717,12 @@ ROW_COLUMNS = [
     "reason",
     "trend_t",
     "lag1",
+    "lag1_after",
     "hac_bandwidth",
     "before_trend",
     "covariate_outside",
     "covariate_shifted",
+    "too_persistent",
     "variance_reduction",
     "variance_ratio_after",
 ]
@@ -732,11 +734,12 @@ ROW_FLOATS = [
     "p_value",
     "trend_t",
     "lag1",
+    "lag1_after",
     "hac_bandwidth",
     "variance_reduction",
     "variance_ratio_after",
 ]
-ROW_FLAGS = ["clears", "before_trend", "covariate_outside", "covariate_shifted"]
+ROW_FLAGS = ["clears", "before_trend", "covariate_outside", "covariate_shifted", "too_persistent"]
 ROW_ORDER = ["design", "record", "segment", "tag", "quantity", "method", "adjustment"]
 
 
@@ -772,9 +775,14 @@ def refused_mask(frame: pd.DataFrame, refusal_set: str) -> pd.Series:
 
 def raw_counterpart(refusal_set: str) -> str:
     """The raw-arm set an adjusted set is compared with: the same set without R3."""
-    return {"base": "base", "base+R1": "base+R1", "base+R3": "base", "base+R1+R3": "base+R1"}[
-        refusal_set
-    ]
+    return {
+        "base": "base",
+        "base+R1": "base+R1",
+        "base+R3": "base",
+        "base+R1+R3": "base+R1",
+        "base+R4": "base+R4",
+        "base+R1+R4": "base+R1+R4",
+    }[refusal_set]
 
 
 def _share(mask: pd.Series) -> float | None:
@@ -826,6 +834,7 @@ def summarise(frame: pd.DataFrame) -> list[dict]:
                     "answered_share": _share(~refused),
                     "hard_refusals": ";".join(f"{k}:{v}" for k, v in hard.items()),
                     "rate_before_trend": _share(_flag(group, sh.BEFORE_TREND)),
+                    "rate_too_persistent": _share(_flag(group, sh.TOO_PERSISTENT)),
                     "rate_covariate_outside": (
                         _share(_flag(group, sh.COVARIATE_OUTSIDE))
                         if adjustment == sh.ADJUSTED
@@ -870,6 +879,7 @@ def summarise(frame: pd.DataFrame) -> list[dict]:
 SUMMARY_FLOATS = [
     "answered_share",
     "rate_before_trend",
+    "rate_too_persistent",
     "rate_covariate_outside",
     "rate_covariate_shifted",
     "clear_rate_pooled",

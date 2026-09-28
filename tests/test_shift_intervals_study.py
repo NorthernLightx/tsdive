@@ -187,6 +187,83 @@ def test_r3_flags_a_shifted_covariate_inside_its_range():
     assert not any(row["covariate_shifted"] for row in adjusted)
 
 
+def test_r4_flags_a_persistent_series_and_not_white_noise():
+    persistent = {"y": _ar1(0.98, 240, 14)}
+    rows = sh.score_target(
+        {"y": persistent["y"][:120]}, {"y": persistent["y"][120:]}, "y", []
+    )
+    raw = _rows(rows, sh.RAW)
+    assert all(row["too_persistent"] and not row["refused"] for row in raw)
+    assert all(sh.refused_under(row, "base+R4") for row in raw)
+    assert not any(sh.refused_under(row, "base") for row in raw)
+    rng = np.random.default_rng(14)
+    quiet = sh.score_target(
+        {"y": rng.standard_normal(120)}, {"y": rng.standard_normal(120)}, "y", []
+    )
+    assert not any(row["too_persistent"] for row in _rows(quiet, sh.RAW))
+    assert sh.effective_n(100, 0.5) == pytest.approx(100 / 3)
+    assert sh.effective_n(100, -0.4) == 100
+    assert sh.effective_n(100, math.nan) == 100
+
+
+def test_too_many_covariates_refuses_the_adjusted_arm_only():
+    rng = np.random.default_rng(15)
+    names = [f"x{i}" for i in range(11)]
+    before = {name: rng.standard_normal(100) for name in [*names, "y"]}
+    after = {name: rng.standard_normal(100) for name in [*names, "y"]}
+    rows = sh.score_target(before, after, "y", names)
+    assert all(row["reason"] == sh.TOO_MANY_COVARIATES for row in _rows(rows, sh.ADJUSTED))
+    assert not any(row["refused"] for row in _rows(rows, sh.RAW))
+    rows = sh.score_target(before, after, "y", names[:10])
+    assert not any(
+        row["reason"] == sh.TOO_MANY_COVARIATES for row in _rows(rows, sh.ADJUSTED)
+    )
+
+
+# ---------------------------------------------------------------- ewc
+
+
+def test_ewc_terms_follow_the_published_rule():
+    assert sh.ewc_terms(120) == 9
+    assert sh.ewc_terms(480) == 24
+    assert sh.ewc_terms(2) == 1
+
+
+def test_ewc_long_run_variance_matches_the_cosine_sum():
+    rng = np.random.default_rng(16)
+    u = rng.standard_normal(50)
+    n, nu = 50, sh.ewc_terms(50)
+    z = u - u.mean()
+    t = np.arange(1, n + 1)
+    brute = [
+        math.sqrt(2 / n) * sum(math.cos(math.pi * j * (t[i] - 0.5) / n) * z[i] for i in range(n))
+        for j in range(1, nu + 1)
+    ]
+    omega, terms = sh.ewc_long_run_variance(u)
+    assert terms == nu
+    assert omega == pytest.approx(sum(v * v for v in brute) / nu, rel=1e-10)
+
+
+def test_ewc_uses_t_critical_values_and_widens_on_persistent_series():
+    rng = np.random.default_rng(17)
+    before, after = rng.standard_normal(4000), rng.standard_normal(4000)
+    naive = sh.level_interval(before, after, sh.NAIVE)
+    ewc = sh.level_interval(before, after, sh.EWC)
+    assert 0.85 < (ewc.hi - ewc.lo) / (naive.hi - naive.lo) < 1.2
+    before, after = _ar1(0.9, 480, 18), _ar1(0.9, 480, 19)
+    naive = sh.level_interval(before, after, sh.NAIVE)
+    ewc = sh.level_interval(before, after, sh.EWC)
+    assert (ewc.hi - ewc.lo) > 2 * (naive.hi - naive.lo)
+    # One period with no variation leaves nu of the other as the degrees of freedom.
+    flat = np.full(120, 3.0)
+    noisy = rng.standard_normal(120)
+    interval = sh.level_interval(flat, noisy, sh.EWC)
+    omega, nu = sh.ewc_long_run_variance(noisy)
+    se = math.sqrt(omega / 120)
+    crit = (interval.hi - interval.lo) / (2 * se)
+    assert crit == pytest.approx(float(sh.stats.t.ppf(0.975, nu)), rel=1e-9)
+
+
 # ---------------------------------------------------------------- generator
 
 

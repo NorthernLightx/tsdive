@@ -1,10 +1,13 @@
 """Before/after shift intervals on ordered series: estimators, refusal rules, generator.
 
-The level estimate is mean(after) - mean(before). Three interval methods:
+The level estimate is mean(after) - mean(before). Four interval methods:
 
 - ``naive``: Welch-style standard error that treats the samples as independent.
 - ``hac``: per-period long-run variance, Newey-West Bartlett kernel with the
   Andrews (1991) AR(1) plug-in bandwidth capped at n - 1.
+- ``ewc``: per-period long-run variance from nu = max(1, floor(0.4 n^(2/3)))
+  equal-weighted cosine terms, t critical value on the Welch-Satterthwaite
+  degrees of freedom (Lazarus, Lewis, Stock and Watson 2018, JBES).
 - ``block_bootstrap``: moving block bootstrap inside each period, percentile
   interval on the difference of resampled means.
 
@@ -27,9 +30,14 @@ Rules, each recorded on its row:
   before-period 1st to 99th percentile. Adjusted arm only.
 - R3 ``covariate_shifted``: a covariate's own ``hac`` level interval excludes 0.
   Adjusted arm only.
+- R4 ``too_persistent`` (chosen after the 3W placebo result): in either period
+  n (1 - r) / (1 + r) < 10, with r = max(lag-1 autocorrelation, 0) of the
+  series the interval reads.
+- ``too_many_covariates``: the adjusted arm declares more than one covariate
+  per 10 before-period samples.
 
-R0 and R2 refuse the row. R1 and R3 are flags; ``REFUSAL_SETS`` turns them
-into refusals when a summary is computed.
+R0, R2 and ``too_many_covariates`` refuse the row. R1, R3 and R4 are flags;
+``REFUSAL_SETS`` turns them into refusals when a summary is computed.
 
 The generator draws y_t = delta 1[after] + rho x_t + sqrt(1 - rho^2) e_t + drift_t,
 with x and e independent unit-variance AR(1) series sharing phi. The recorded
@@ -44,6 +52,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 import numpy as np
+from scipy import stats
 
 Z95 = 1.959964
 ALPHA = 0.05
@@ -58,13 +67,17 @@ OUTSIDE_LO, OUTSIDE_HI = 1.0, 99.0
 # An OLS residual of an exact linear copy is float noise, not zero; below this
 # fraction of the target's before MAD the residual MAD counts as 0.
 RESIDUAL_MAD_RTOL = 1e-9
+EWC_COEF = 0.4
+MIN_EFFECTIVE = 10.0
+SAMPLES_PER_COVARIATE = 10
 
 LEVEL = "level"
 SPREAD = "spread"
 NAIVE = "naive"
 HAC = "hac"
+EWC = "ewc"
 BOOTSTRAP = "block_bootstrap"
-LEVEL_METHODS = (NAIVE, HAC, BOOTSTRAP)
+LEVEL_METHODS = (NAIVE, HAC, EWC, BOOTSTRAP)
 SPREAD_METHODS = (NAIVE, BOOTSTRAP)
 QUANTITY_METHODS = ((LEVEL, LEVEL_METHODS), (SPREAD, SPREAD_METHODS))
 RAW = "raw"
@@ -78,15 +91,21 @@ NO_COVARIATE = "no_covariate"
 COVARIATE_OUTSIDE = "covariate_outside"
 BEFORE_TREND = "before_trend"
 COVARIATE_SHIFTED = "covariate_shifted"
+TOO_PERSISTENT = "too_persistent"
+TOO_MANY_COVARIATES = "too_many_covariates"
 
-# Hard refusals (R0, R2) apply in every set; the flags listed here are added.
+# Hard refusals (R0, R2, too_many_covariates) apply in every set; the flags
+# listed here are added. R3 reads covariates, so it applies to the adjusted arm.
 REFUSAL_SETS = {
     "base": (),
     "base+R1": (BEFORE_TREND,),
     "base+R3": (COVARIATE_SHIFTED,),
     "base+R1+R3": (BEFORE_TREND, COVARIATE_SHIFTED),
+    "base+R4": (TOO_PERSISTENT,),
+    "base+R1+R4": (BEFORE_TREND, TOO_PERSISTENT),
 }
-RAW_REFUSAL_SETS = ("base", "base+R1")
+RAW_REFUSAL_SETS = ("base", "base+R1", "base+R4", "base+R1+R4")
+POST_HOC_SETS = ("base+R4", "base+R1+R4")
 
 
 # ---------------------------------------------------------------- basics
@@ -163,6 +182,35 @@ def trend_t(u: np.ndarray) -> float:
     return slope / math.sqrt(var)
 
 
+def ewc_terms(n: int) -> int:
+    """Number of cosine terms nu = max(1, floor(0.4 n^(2/3)))."""
+    return max(1, math.floor(EWC_COEF * n ** (2.0 / 3.0)))
+
+
+@lru_cache(maxsize=64)
+def _cosine_basis(n: int, nu: int) -> np.ndarray:
+    """(nu, n) type II cosine basis sqrt(2/n) cos(pi j (t - 1/2) / n), t = 1..n."""
+    t = np.arange(1, n + 1, dtype=float) - 0.5
+    j = np.arange(1, nu + 1, dtype=float)[:, None]
+    basis = math.sqrt(2.0 / n) * np.cos(math.pi * j * t[None, :] / n)
+    basis.setflags(write=False)
+    return basis
+
+
+def ewc_long_run_variance(u: np.ndarray) -> tuple[float, int]:
+    """Equal-weighted cosine long-run variance (1/nu) sum L_j^2 and its nu."""
+    n = len(u)
+    nu = ewc_terms(n)
+    projections = _cosine_basis(n, nu) @ (u - u.mean())
+    return float(np.dot(projections, projections)) / nu, nu
+
+
+def effective_n(n: int, r: float) -> float:
+    """n (1 - r) / (1 + r) with r = max(r, 0); a NaN r (no spread) counts as 0."""
+    r = 0.0 if math.isnan(r) else max(r, 0.0)
+    return n * (1.0 - r) / (1.0 + r)
+
+
 def block_size(n: int) -> int:
     return min(max(BOOT_MIN_BLOCK, int(n ** (1 / 3))), n)
 
@@ -229,6 +277,17 @@ def level_interval(before: np.ndarray, after: np.ndarray, method: str) -> Interv
     if method == HAC:
         se = math.sqrt(long_run_variance(before) / nb + long_run_variance(after) / na)
         return _normal_interval(estimate, se)
+    if method == EWC:
+        omega_b, nu_b = ewc_long_run_variance(before)
+        omega_a, nu_a = ewc_long_run_variance(after)
+        v_b, v_a = omega_b / nb, omega_a / na
+        if v_b + v_a <= 0:
+            return _normal_interval(estimate, 0.0)
+        se = math.sqrt(v_b + v_a)
+        df = (v_b + v_a) ** 2 / (v_b**2 / nu_b + v_a**2 / nu_a)
+        crit = float(stats.t.ppf(1 - ALPHA / 2, df))
+        p = float(2.0 * stats.t.sf(abs(estimate) / se, df))
+        return Interval(estimate, estimate - crit * se, estimate + crit * se, p)
     if method == BOOTSTRAP:
         ib, ia = resample_indices(nb, na)
         draws = after[ia].mean(axis=1) - before[ib].mean(axis=1)
@@ -324,10 +383,12 @@ def _row(
         "reason": "",
         "trend_t": math.nan,
         "lag1": math.nan,
+        "lag1_after": math.nan,
         "hac_bandwidth": math.nan,
         "before_trend": None,
         "covariate_outside": None,
         "covariate_shifted": None,
+        "too_persistent": None,
         "variance_reduction": math.nan,
         "variance_ratio_after": math.nan,
     }
@@ -365,7 +426,14 @@ def _arm_rows(
     """Every (quantity, method) row of one arm that passed its hard refusals."""
     nb, na = len(before), len(after)
     t = trend_t(before)
-    diagnostics = {"lag1": lag1(before), "hac_bandwidth": andrews_bandwidth(before)}
+    r_before, r_after = lag1(before), lag1(after)
+    persistent = min(effective_n(nb, r_before), effective_n(na, r_after)) < MIN_EFFECTIVE
+    diagnostics = {
+        "lag1": r_before,
+        "lag1_after": r_after,
+        "hac_bandwidth": andrews_bandwidth(before),
+        "too_persistent": bool(persistent),
+    }
     rows = []
     for quantity, methods in QUANTITY_METHODS:
         if quantity not in quantities:
@@ -441,6 +509,8 @@ def score_target(
         return rows + _refused_rows(quantities, ADJUSTED, TOO_FEW, nb, na, k)
     if mad(yb2) == 0:
         return rows + _refused_rows(quantities, ADJUSTED, NO_SPREAD, nb, na, k)
+    if k > nb / SAMPLES_PER_COVARIATE:
+        return rows + _refused_rows(quantities, ADJUSTED, TOO_MANY_COVARIATES, nb, na, k)
     outside = covariate_outside(xb, xa)
     shifted = covariate_shifted(xb, xa)
     flags = {"covariate_outside": outside, "covariate_shifted": shifted}

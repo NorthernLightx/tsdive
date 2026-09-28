@@ -18,7 +18,7 @@
         "n_wells_scored": 21
       },
       "code": {
-        "git_head": "f5ce045f4ed4d86c2be7c9092fdc9ca196e01fbf",
+        "git_head": "c949186bd276bf3621dae82926800deef1540089",
         "tsdive_version": "0.3.0"
       },
       "dataset_manifest_sha256": {
@@ -37,7 +37,7 @@
           "n_splits": 34
         }
       },
-      "n_rows": 5600,
+      "n_rows": 6720,
       "skab": {
         "archives": "data/skab_archives",
         "n_labelled": 34,
@@ -70,7 +70,7 @@
           "rows": 1063
         }
       ],
-      "wall_seconds": 2.2
+      "wall_seconds": 2.3
     },
     "placebo": {
       "3w_cache": {
@@ -82,7 +82,7 @@
         "n_wells_scored": 16
       },
       "code": {
-        "git_head": "f5ce045f4ed4d86c2be7c9092fdc9ca196e01fbf",
+        "git_head": "c949186bd276bf3621dae82926800deef1540089",
         "tsdive_version": "0.3.0"
       },
       "dataset_manifest_sha256": {
@@ -106,19 +106,19 @@
           "n_splits": 34
         }
       },
-      "n_rows": 35640,
+      "n_rows": 42768,
       "skab": {
         "archives": "data/skab_archives",
         "n_labelled": 34,
         "n_records": 35,
         "n_with_an_anomaly_row": 34
       },
-      "wall_seconds": 5.9
+      "wall_seconds": 6.8
     },
     "synthetic": {
       "budget_seconds": 1200,
       "code": {
-        "git_head": "f5ce045f4ed4d86c2be7c9092fdc9ca196e01fbf",
+        "git_head": "c949186bd276bf3621dae82926800deef1540089",
         "tsdive_version": "0.3.0"
       },
       "grid": {
@@ -165,11 +165,11 @@
         "level": 192,
         "spread": 24
       },
-      "n_rows": 4176,
+      "n_rows": 9120,
       "over_budget": false,
       "replicates": 200,
       "seed_rule": "first 8 bytes, little endian, of sha256 over the cell's sorted name=repr(value) pairs joined by '|'; the seed column of synthetic.csv",
-      "wall_seconds": 91.4
+      "wall_seconds": 117.6
     }
   },
   "parameters": {
@@ -192,8 +192,15 @@
         "before_trend",
         "covariate_shifted"
       ],
+      "base+R1+R4": [
+        "before_trend",
+        "too_persistent"
+      ],
       "base+R3": [
         "covariate_shifted"
+      ],
+      "base+R4": [
+        "too_persistent"
       ]
     },
     "trend_t": 1.96,
