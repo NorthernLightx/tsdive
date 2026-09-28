@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
 from tsdive.detectors.flatline import FlatlineVerdict, assess_flatline
 from tsdive.errors import SchemaError
@@ -46,6 +47,7 @@ from tsdive.store.tagstore import (
     archive_extent,
     meta_from_dict,
     meta_from_parquet,
+    read_archive_table,
     safe_filename,
     write_tag,
 )
@@ -152,7 +154,7 @@ def reference_history(
     Thresholds come from the same archive, strictly before the assessed
     window.
     """
-    table = cast(pd.DataFrame, pd.read_parquet(path))
+    table = cast(pd.DataFrame, read_archive_table(path).to_pandas())
     # The tag's own quality_codes decide what GOOD means here, exactly as
     # they do on the assessed window. Without them a source that codes
     # quality in its own vocabulary has zero GOOD reference samples, and
@@ -283,7 +285,10 @@ def _read_source(path: Path) -> pd.DataFrame:
     if path.suffix.lower() == ".csv":
         return cast(pd.DataFrame, pd.read_csv(path))
     if path.suffix.lower() in {".parquet", ".pq"}:
-        return cast(pd.DataFrame, pd.read_parquet(path))
+        try:
+            return cast(pd.DataFrame, pd.read_parquet(path))
+        except pa.ArrowInvalid as e:
+            raise SchemaError(f"{path.name}: not a readable parquet file ({e})") from e
     raise SchemaError(
         f"{path.name}: unsupported input {path.suffix!r}; ingest reads .csv and .parquet"
     )

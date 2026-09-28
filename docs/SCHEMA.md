@@ -309,7 +309,8 @@ the source's own codes are never overwritten.
 | missing `timestamp`, `value` or `quality` | `SchemaError` |
 | naive timestamps | `SchemaError` |
 | non-numeric `value` on a tag that is not `role: MODE`, and not a state its `quality_codes` names | `SchemaError`, naming the tag and value |
-| no `tsdive.meta` on the file | `SchemaError` |
+| no `tsdive.meta` on the file | `SchemaError`, naming the `tsdive ingest` step that writes one |
+| a file that is not parquet, such as the CSV export itself | `SchemaError`, naming the `tsdive ingest` step |
 | `tsdive.meta` missing a required key | `SchemaError`, naming the key |
 | a key `tsdive.meta` does not define, at any level | `SchemaError`, naming the closest known key |
 | one end of the engineering range without the other, or a span of 0 or less | `SchemaError` |

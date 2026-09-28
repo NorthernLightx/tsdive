@@ -16,6 +16,7 @@ import difflib
 import json
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -110,12 +111,56 @@ class Window:
     physics: DataPhysics
 
 
+def _build_hint(path: Path) -> str:
+    return (
+        f"build one with tsdive ingest {path.name} --out ARCHIVE --meta META.json, "
+        "or tsdive.ingest in Python"
+    )
+
+
+def _archive_io[T](path: Path, read: Callable[[], T]) -> T:
+    """``read()``, with a file that is not parquet raised as ``SchemaError``.
+
+    pyarrow reports a CSV or any other file as missing parquet magic
+    bytes, which names neither the file nor the step that makes one.
+    """
+    try:
+        return read()
+    except pa.ArrowInvalid as e:
+        raise SchemaError(
+            f"{path.name} is not a tsdive archive (a parquet file written by "
+            f"tsdive ingest); {_build_hint(path)}"
+        ) from e
+
+
+def read_archive_schema(path: str | Path) -> pa.Schema:
+    """The parquet schema of an archive, or ``SchemaError`` when the file is not parquet."""
+    file = Path(path)
+    return _archive_io(file, lambda: parquet.read_schema(file))
+
+
+def read_archive_table(path: str | Path, columns: list[str] | None = None) -> pa.Table:
+    """An archive's rows as a pyarrow table, or ``SchemaError`` when the file is not parquet."""
+    file = Path(path)
+    return _archive_io(file, lambda: parquet.read_table(file, columns=columns))
+
+
 def meta_from_parquet(path: Path) -> TagMeta:
-    """Load TagMeta embedded in a parquet file's key-value metadata."""
-    schema = parquet.read_schema(path)
+    """Load TagMeta embedded in a parquet file's key-value metadata.
+
+    Raises:
+        SchemaError: the file is not parquet, carries no ``tsdive.meta``,
+            or carries a malformed one.
+        FileNotFoundError: no file at ``path``.
+    """
+    path = Path(path)
+    schema = read_archive_schema(path)
     raw = schema.metadata.get(META_KEY.encode("ascii")) if schema.metadata else None
     if raw is None:
-        raise SchemaError(f"{path.name}: no {META_KEY} metadata; refusing to invent tag metadata")
+        raise SchemaError(
+            f"{path.name}: no {META_KEY} metadata, so it is not a tsdive archive; "
+            f"{_build_hint(path)}"
+        )
     return meta_from_dict(json.loads(raw), label=path.name)
 
 
@@ -372,10 +417,10 @@ def archive_extent(path: str | Path) -> tuple[pd.Timestamp, pd.Timestamp]:
     as an instant.
     """
     file = Path(path)
-    schema = parquet.read_schema(file)
+    schema = read_archive_schema(file)
     if "timestamp" not in schema.names:
         raise SchemaError(f"{file.name}: missing required column 'timestamp'")
-    ts = cast(pd.Series, parquet.read_table(file, columns=["timestamp"])["timestamp"].to_pandas())
+    ts = cast(pd.Series, read_archive_table(file, columns=["timestamp"])["timestamp"].to_pandas())
     if len(ts) == 0:
         raise SchemaError(
             f"{file.name}: archive has no samples, so it has no extent; "
@@ -451,7 +496,7 @@ class TagStore:
         path = self.archive_path(identity)
         if not path.exists():
             raise FileNotFoundError(f"no archive at {path}")
-        table = parquet.read_table(path)
+        table = read_archive_table(path)
         df = table.to_pandas()
         validate_schema(df)
         require_utc(df["timestamp"])

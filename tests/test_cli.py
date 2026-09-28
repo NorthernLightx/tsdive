@@ -198,6 +198,31 @@ def test_a_pegged_tag_without_a_range_reads_censored_unknown(tmp_path, capsys):
     assert (doc["censored"], doc["range_known"]) == (True, True)
 
 
+def test_a_csv_passed_as_an_archive_names_the_ingest_step(tmp_path, capsys):
+    export = tmp_path / "export.csv"
+    export.write_text("timestamp,value,quality\n2024-03-01T00:00:00Z,1.0,GOOD\n",
+                      encoding="utf-8")
+    assert cmd_profile([str(export)]) != 0
+    err = capsys.readouterr().err
+    assert err.startswith("[SchemaError] export.csv is not a tsdive archive (a parquet file "
+                          "written by tsdive ingest); build one with tsdive ingest export.csv "
+                          "--out ARCHIVE --meta META.json")
+    assert "magic bytes" not in err
+    with pytest.raises(tsdive.SchemaError, match=r"export\.csv is not a tsdive archive"):
+        tsdive.profile(export, "2024-03-01")
+    with pytest.raises(tsdive.SchemaError, match=r"export\.csv is not a tsdive archive"):
+        tsdive.segment(export)
+
+
+def test_a_parquet_without_tag_metadata_names_the_ingest_step(tmp_path, capsys):
+    plain = tmp_path / "plain.parquet"
+    pd.DataFrame({"timestamp": [pd.Timestamp("2024-03-01", tz="UTC")], "value": [1.0],
+                  "quality": ["GOOD"]}).to_parquet(plain)
+    assert cmd_profile([str(plain)]) != 0
+    assert ("plain.parquet: no tsdive.meta metadata, so it is not a tsdive archive; build one "
+            "with tsdive ingest plain.parquet") in capsys.readouterr().err
+
+
 def test_an_empty_window_keeps_the_declared_range(tmp_path, capsys):
     ranged = _pegged(tmp_path, EngRange(zero=0.0, span=200.0))
     assert cmd_profile([str(ranged), "--window", "2024-03-02"]) == 0
