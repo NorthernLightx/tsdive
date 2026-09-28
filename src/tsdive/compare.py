@@ -35,6 +35,7 @@ from typing import cast
 import numpy as np
 import pandas as pd
 
+from tsdive._naming import argname
 from tsdive.api import parse_window
 from tsdive.baselines.provisional import MAD_TO_SIGMA, mad_baseline, screen
 from tsdive.changepoints.pelt import segment_window
@@ -221,12 +222,11 @@ def parse_periods(
     """
     b_start, b_end = parse_window(before)
     a_start, a_end = parse_window(after)
+    b, a = argname("before", "--before"), argname("after", "--after")
     if b_start < a_end and a_start < b_end:
-        raise ValueError("--before and --after overlap")
+        raise ValueError(f"{b} and {a} overlap")
     if a_start < b_end:
-        raise ValueError(
-            "--after ends before --before starts; state the earlier period as --before"
-        )
+        raise ValueError(f"{a} ends before {b} starts; state the earlier period as {b}")
     return (b_start, b_end), (a_start, a_end)
 
 
@@ -612,7 +612,7 @@ def pair_changes(
         )
     except ValueError as e:
         return PairTable(reason=str(e))
-    source = "declared" if rate_s is None else "--rate-s"
+    source = "declared" if rate_s is None else argname("rate_s", "--rate-s")
     try:
         train, test = _grids(usable, rate_s=rate, min_coverage=PAIR_MIN_COVERAGE)
     except TSDiveError as e:

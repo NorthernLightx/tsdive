@@ -28,6 +28,7 @@ import pandas as pd
 from pyarrow import parquet
 
 from tsdive import __version__, analyses
+from tsdive._naming import cli_names
 from tsdive.analyses import (
     CompareAnalysis,
     MspcAnalysis,
@@ -243,12 +244,14 @@ def _report_and_exit(
     (``tsdive run``) and a caller that wants a process exit code share
     one body and can never disagree about what a refusal is. Colour is
     applied here and nowhere else, so every renderer stays plain text.
+    Messages raised inside name CLI flags (``--rate-s``), not keywords.
     """
     try:
-        if getattr(args, "json", False) and to_json is not None:
-            print(json.dumps(to_jsonable(to_json(args)), indent=2))
-            return 0
-        _print_lines(fn(args), args)
+        with cli_names():
+            if getattr(args, "json", False) and to_json is not None:
+                print(json.dumps(to_jsonable(to_json(args)), indent=2))
+                return 0
+            _print_lines(fn(args), args)
         return 0
     except TSDiveError as e:
         _print_refusal(f"[{type(e).__name__}]", str(e), args)
@@ -1057,7 +1060,11 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
     parser = _parser_ingest()
     args = parser.parse_args(argv)
     _check_ingest_flags(parser, args)
+    with cli_names():
+        return _ingest(args)
 
+
+def _ingest(args: argparse.Namespace) -> int:
     try:
         if args.init_meta is not None:
             templates = init_meta(
@@ -1147,11 +1154,15 @@ def _parser_report_html() -> argparse.ArgumentParser:
 
 def cmd_report_html(argv: Sequence[str] | None = None) -> int:
     """Render one static HTML page that profiles each archive over one window."""
+    args = _parser_report_html().parse_args(argv)
+    with cli_names():
+        return _report_html(args)
+
+
+def _report_html(args: argparse.Namespace) -> int:
     from tsdive.narrate import EvidenceLedger
     from tsdive.ui.static_report import render_static_report, write_static_report
     from tsdive.ui.svg import window_figure
-
-    args = _parser_report_html().parse_args(argv)
 
     try:
         start, end = (
@@ -1281,9 +1292,14 @@ def _parser_run() -> argparse.ArgumentParser:
 
 def cmd_run(argv: Sequence[str] | None = None) -> int:
     """Walk one plan over several archives into one evidence ledger."""
+    args = _parser_run().parse_args(argv)
+    with cli_names():
+        return _run(args)
+
+
+def _run(args: argparse.Namespace) -> int:
     from tsdive.plan import execute, load_plan, write_run
 
-    args = _parser_run().parse_args(argv)
     plan_path = Path(args.plan)
     try:
         plan = load_plan(plan_path)

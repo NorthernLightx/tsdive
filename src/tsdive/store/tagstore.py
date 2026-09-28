@@ -27,6 +27,7 @@ import pandas as pd
 import pyarrow as pa
 from pyarrow import parquet
 
+from tsdive._naming import cli_active
 from tsdive.errors import IncomparableSamplingError, NonMonotonicIndex, SchemaError
 from tsdive.store import gaps as gaps_mod
 from tsdive.store import units as units_mod
@@ -112,10 +113,9 @@ class Window:
 
 
 def _build_hint(path: Path) -> str:
-    return (
-        f"build one with tsdive ingest {path.name} --out ARCHIVE --meta META.json, "
-        "or tsdive.ingest in Python"
-    )
+    if cli_active():
+        return f"build one with tsdive ingest {path.name} --out ARCHIVE --meta META.json"
+    return f"build one with tsdive.ingest({path.name!r}, out=..., meta=...)"
 
 
 def _archive_io[T](path: Path, read: Callable[[], T]) -> T:
@@ -402,8 +402,9 @@ def write_tag(
     out = Path(path)
     if out.exists() and not overwrite:
         raise FileExistsError(
-            f"{out} already exists; tsdive does not mutate archives. "
-            "Pass overwrite=True to replace it, or write to a new path."
+            f"{out} already exists; tsdive does not mutate archives. Pass "
+            f"{'--overwrite' if cli_active() else 'overwrite=True'} to replace it, or "
+            "write to a new path."
         )
     return _write_parquet(out, frame, meta)
 

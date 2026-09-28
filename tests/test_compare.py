@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from conftest import EngRange, Role, make_meta
+from tsdive._naming import cli_names
 from tsdive.compare import (
     BOOTSTRAP_REPLICATES,
     _delta_interval,
@@ -66,12 +67,14 @@ def _row(result, point_id: str):
 
 
 def test_parse_periods_refuses_an_overlap():
-    with pytest.raises(ValueError, match="--before and --after overlap"):
+    with pytest.raises(ValueError, match=r"^before and after overlap$"):
+        parse_periods(BEFORE, "2024-03-01T01:00:00Z/2024-03-01T04:00:00Z")
+    with cli_names(), pytest.raises(ValueError, match=r"^--before and --after overlap$"):
         parse_periods(BEFORE, "2024-03-01T01:00:00Z/2024-03-01T04:00:00Z")
 
 
 def test_parse_periods_refuses_the_periods_the_wrong_way_round():
-    with pytest.raises(ValueError, match="state the earlier period as --before"):
+    with pytest.raises(ValueError, match=r"state the earlier period as before$"):
         parse_periods(AFTER, BEFORE)
 
 
@@ -386,7 +389,7 @@ def test_the_pair_table_refuses_archives_declaring_different_rates(archive_facto
     table = compare(paths, BEFORE, AFTER).pairs
     assert table.reason == (
         "archives declare different sample rates (plant1:FIC101.PV=60.0, "
-        "plant1:TIC101.PV=30.0); pass --rate-s to state the grid"
+        "plant1:TIC101.PV=30.0); pass rate_s= to state the grid"
     )
     assert table.pairs == ()
 
@@ -403,7 +406,7 @@ def test_a_stated_rate_replaces_the_declared_one(archive_factory):
     ]
     table = compare(paths, BEFORE, AFTER, rate_s=60).pairs
     assert table.reason is None
-    assert table.rate_source == "--rate-s"
+    assert table.rate_source == "rate_s"
     assert table.pairs[0].clears is True
 
 
@@ -534,3 +537,48 @@ def test_tag_changes_rank_refusals_and_quality_failures_first(archive_factory, t
     assert [r.label for r in rows[:2]] == ["PIC101.PV", "ZIC101.PV"]
     assert [r.quality_ok for r in rows] == [False, False, True, True]
     assert rows[2].label == "FIC101.PV"  # the largest shift among the ok tags
+
+
+def _rateless(archive_factory):
+    left, right = _walkers(37, decouple=True)
+    return [
+        str(archive_factory(_frame(left), make_meta(point_id="FIC101.PV", sample_rate_s=None))),
+        str(archive_factory(_frame(right), make_meta(point_id="TIC101.PV", sample_rate_s=None))),
+    ]
+
+
+def test_a_refused_pair_table_shows_under_the_headline_and_in_to_dict(archive_factory):
+    import tsdive
+
+    result = tsdive.compare(_rateless(archive_factory), BEFORE, AFTER)
+    lines = result.render().splitlines()
+    assert lines[0] == "plant1  2 tags   refused 0   pairs refused   joint refused"
+    assert lines[1].startswith("pairs     refused: no sample_rate_s declared by ")
+    assert "joint     refused: same reason as pairs" in lines
+    reason = result.pairs.reason
+    assert "pass rate_s= to state the grid, or declare sample_rate_s" in reason
+    assert "--rate-s" not in result.render()
+    assert result.to_dict()["refused_tables"] == {"pairs": reason, "joint": reason}
+
+
+def test_a_compare_with_every_table_keeps_refused_tables_empty(archive_factory):
+    import tsdive
+
+    left, right = _walkers(38, decouple=True)
+    paths = [str(_tag(archive_factory, "FIC101.PV", left)),
+             str(_tag(archive_factory, "TIC101.PV", right))]
+    assert tsdive.compare(paths, BEFORE, AFTER).to_dict()["refused_tables"] == {}
+
+
+def test_the_cli_names_its_flag_where_python_names_the_keyword(archive_factory, capsys):
+    import json
+
+    from tsdive.cli import cmd_compare
+
+    paths = _rateless(archive_factory)
+    assert cmd_compare([*paths, "--before", BEFORE, "--after", AFTER, "--json"]) == 0
+    tables = json.loads(capsys.readouterr().out)["refused_tables"]
+    assert "pass --rate-s to state the grid" in tables["pairs"]
+    assert cmd_compare([*paths, "--before", BEFORE, "--after", AFTER, "--rate-s", "60",
+                        "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["grid"]["rate_source"] == "--rate-s"

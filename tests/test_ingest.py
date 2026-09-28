@@ -208,14 +208,16 @@ def test_a_date_that_reads_both_ways_is_refused(tmp_path, capsys):
         _ingest_stamps(tmp_path, EU_STAMPS, tz="Europe/Paris")
     message = str(info.value)
     assert "'01/02/2026 08:00:00'" in message
-    assert "--dayfirst" in message and "--timestamp-format" in message
+    assert "pass dayfirst=True to read day first, or timestamp_format with" in message
 
     out = tmp_path / "cli.parquet"
     rc = cmd_ingest([str(_csv(tmp_path, stamps=EU_STAMPS, name="cli.csv")), "--out", str(out),
                      "--meta", str(_meta_file(tmp_path)), "--timestamp-col", "ts",
                      "--value-col", "v", "--quality-col", "q", "--tz", "Europe/Paris"])
     assert rc != 0
-    assert "reads as day 01 of month 02 or as month 01, day 02" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "reads as day 01 of month 02 or as month 01, day 02" in err
+    assert "pass --dayfirst to read day first, or --timestamp-format with" in err
     assert not out.exists()
 
 
@@ -278,7 +280,7 @@ def test_dayfirst_leaves_iso_dates_alone(tmp_path):
 
 def test_a_row_off_the_stated_format_names_value_and_format(tmp_path):
     with pytest.raises(SchemaError, match=r"'2024-03-01T00:00:00Z' does not match "
-                       r"--timestamp-format '%d/%m/%Y %H:%M:%S'"):
+                       r"timestamp_format '%d/%m/%Y %H:%M:%S'"):
         _ingest_stamps(tmp_path, AWARE, timestamp_format="%d/%m/%Y %H:%M:%S")
 
 
@@ -690,7 +692,7 @@ def test_wide_missing_quality_column_is_refused(tmp_path):
 
 
 def test_wide_suffix_and_assume_quality_together_are_refused(tmp_path):
-    with pytest.raises(SchemaError, match="--assume-quality was given with --quality-suffix"):
+    with pytest.raises(SchemaError, match="assume_quality was given with quality_suffix"):
         tsdive.ingest_wide(
             _wide_csv(tmp_path),
             out_dir=tmp_path / "archive",
@@ -845,3 +847,22 @@ def test_template_with_an_unmapped_code_is_refused_at_read(tmp_path):
             tz="Europe/London",
         )
     assert not (tmp_path / "archive").exists()
+
+
+def test_python_messages_name_keywords_where_the_cli_names_flags(tmp_path, capsys):
+    src = _wide_csv(tmp_path)
+    meta_dir = _wide_meta_dir(tmp_path)
+    with pytest.raises(SchemaError, match=r"no quality_suffix and no assume_quality; name the "
+                       r"suffix .* assume_quality=GOOD\|UNCERTAIN\|BAD, which"):
+        tsdive.ingest_wide(src, out_dir=tmp_path / "a", meta_dir=meta_dir, timestamp_col="ts",
+                           tz="Europe/London")
+    rc = cmd_ingest([str(src), "--wide", "--out", str(tmp_path / "a"), "--meta-dir",
+                     str(meta_dir), "--timestamp-col", "ts", "--tz", "Europe/London"])
+    assert rc != 0
+    assert "no --quality-suffix and no --assume-quality" in capsys.readouterr().err
+
+    naive = _csv(tmp_path, stamps=NAIVE, name="naive.csv")
+    with pytest.raises(SchemaError, match="pass tz=<IANA zone> to state"):
+        tsdive.ingest(naive, out=tmp_path / "n.parquet",
+                      meta=tsdive.read_meta_json(_meta_file(tmp_path)), timestamp_col="ts",
+                      value_col="v", quality_col="q")

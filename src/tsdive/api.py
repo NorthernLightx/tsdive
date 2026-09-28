@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 
+from tsdive._naming import argname, cli_active, option
 from tsdive.detectors.flatline import FlatlineVerdict, assess_flatline
 from tsdive.errors import SchemaError
 from tsdive.features.window_features import WindowStats, compute_stats
@@ -65,6 +66,10 @@ _DURATION = re.compile(
     r"(?:(?P<minutes>\d+(?:\.\d+)?)M)?"
     r"(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?\Z"
 )
+
+
+def _overwrite_option() -> str:
+    return "--overwrite" if cli_active() else "overwrite=True"
 
 
 def _window_bound(name: str, text: str) -> pd.Timestamp:
@@ -320,7 +325,8 @@ def _date_order(raw: pd.Series, column: str, *, dayfirst: bool) -> bool:
         if dayfirst and second > 12:
             raise SchemaError(
                 f"{column}: {v!r} has no month {second} when read day first; "
-                "drop --dayfirst, or pass --timestamp-format with the order the "
+                f"drop {argname('dayfirst', '--dayfirst')}, or pass "
+                f"{argname('timestamp_format', '--timestamp-format')} with the order the "
                 "export uses"
             )
         if first <= 12 and second <= 12:
@@ -336,15 +342,16 @@ def _date_order(raw: pd.Series, column: str, *, dayfirst: bool) -> bool:
         first, second, year = m.group(1), m.group(3), m.group(4)
         raise SchemaError(
             f"{column}: {ambiguous!r} reads as day {first} of month {second} or as "
-            f"month {first}, day {second} of {year}; pass --dayfirst to read day "
-            "first, or --timestamp-format with a strptime format such as "
-            "'%d/%m/%Y %H:%M:%S'"
+            f"month {first}, day {second} of {year}; pass "
+            f"{option('dayfirst', '--dayfirst', None if cli_active() else 'True')} to read "
+            f"day first, or {argname('timestamp_format', '--timestamp-format')} with a "
+            "strptime format such as '%d/%m/%Y %H:%M:%S'"
         )
     if day_only is not None and month_only is not None:
         raise SchemaError(
             f"{column}: {day_only!r} reads only day first and {month_only!r} only "
             "month first; export the column in one date order, or pass "
-            "--timestamp-format to state it"
+            f"{argname('timestamp_format', '--timestamp-format')} to state it"
         )
     return day_only is not None
 
@@ -380,10 +387,13 @@ def _parse_timestamps(
 
     With ``timestamp_format`` every element must match that strptime
     format. Without it, numeric day/month dates are read in the one order
-    :func:`_date_order` finds, or raise ``SchemaError``.
+    ``_date_order`` finds, or raise ``SchemaError``.
     """
     if timestamp_format is not None and dayfirst:
-        raise ValueError("pass --timestamp-format or --dayfirst, not both")
+        raise ValueError(
+            f"pass {argname('timestamp_format', '--timestamp-format')} or "
+            f"{argname('dayfirst', '--dayfirst')}, not both"
+        )
     stamps: list[pd.Timestamp] = []
     if timestamp_format is not None:
         for v in raw:
@@ -393,7 +403,8 @@ def _parse_timestamps(
                 ts = pd.NaT
             if ts is pd.NaT or pd.isna(ts):
                 raise SchemaError(
-                    f"{column}: {v!r} does not match --timestamp-format {timestamp_format!r}"
+                    f"{column}: {v!r} does not match "
+                    f"{argname('timestamp_format', '--timestamp-format')} {timestamp_format!r}"
                 )
             stamps.append(ts)
         return stamps
@@ -421,7 +432,7 @@ def _to_utc(
     Naive timestamps carry no offset, so tsdive cannot know what
     instant they name. With ``tz`` the caller states the source's zone and
     the column is localised then converted; without it, a naive column
-    raises ``SchemaError`` naming the column and the ``--tz`` flag.
+    raises ``SchemaError`` naming the column and ``tz`` (``--tz`` in the CLI).
 
     Rows with different UTC offsets all name real instants and are
     converted individually. A column that mixes naive and offset-bearing
@@ -445,8 +456,8 @@ def _to_utc(
         )
     if tz is None:
         raise SchemaError(
-            f"{column} is naive (no UTC offset); pass --tz <IANA zone> to state what "
-            "zone the source is in - tsdive will not assume UTC"
+            f"{column} is naive (no UTC offset); pass {option('tz', '--tz', '<IANA zone>')} "
+            "to state what zone the source is in - tsdive will not assume UTC"
         )
     validate_tz_names((tz,))
     local = pd.Series(pd.DatetimeIndex(stamps), index=raw.index)
@@ -477,21 +488,24 @@ def _resolve_quality(
     if quality_col is not None and quality_col in frame.columns:
         if assume_quality is not None:
             raise SchemaError(
-                f"{label}: --assume-quality was given but {quality_col!r} exists; "
-                "refusing to overwrite the source's own quality codes"
+                f"{label}: {argname('assume_quality', '--assume-quality')} was given but "
+                f"{quality_col!r} exists; refusing to overwrite the source's own quality "
+                "codes"
             )
         return frame[quality_col], False
     if assume_quality is None:
         raise SchemaError(
             f"{label}: no quality column {quality_col!r}. A value without a "
             "quality code is not a measurement; name the right column with "
-            "--quality-col, or state --assume-quality GOOD|UNCERTAIN|BAD, which "
-            "is recorded on the archive and reported in every profile"
+            f"{argname('quality_col', '--quality-col')}, or state "
+            f"{option('assume_quality', '--assume-quality', 'GOOD|UNCERTAIN|BAD')}, "
+            "which is recorded on the archive and reported in every profile"
         )
     declared = assume_quality.strip().upper()
     if declared not in {s.value for s in Severity}:
         raise SchemaError(
-            f"--assume-quality {assume_quality!r} is not a severity; "
+            f"{argname('assume_quality', '--assume-quality')} {assume_quality!r} is not "
+            "a severity; "
             f"expected one of {', '.join(s.value for s in Severity)}"
         )
     return pd.Series([declared] * len(frame), index=frame.index), True
@@ -635,7 +649,8 @@ def _wide_columns(
         for tag in chosen:
             if tag not in columns:
                 raise SchemaError(
-                    f"{label}: no column {tag!r} named in --tags; columns are {listed}"
+                    f"{label}: no column {tag!r} named in {argname('tags', '--tags')}; "
+                    f"columns are {listed}"
                 )
     else:
         quality_cols = {f"{c}{quality_suffix}" for c in columns} if quality_suffix else set()
@@ -746,16 +761,18 @@ def ingest_wide(
     _check_distinct_filenames(chosen, what="tags")
     if quality_suffix is not None and assume_quality is not None:
         raise SchemaError(
-            f"{label}: --assume-quality was given with --quality-suffix "
-            f"{quality_suffix!r}; the export carries its own quality codes, so "
-            "drop one of the two"
+            f"{label}: {argname('assume_quality', '--assume-quality')} was given with "
+            f"{argname('quality_suffix', '--quality-suffix')} {quality_suffix!r}; the "
+            "export carries its own quality codes, so drop one of the two"
         )
     if quality_suffix is None and assume_quality is None:
+        suffix = argname("quality_suffix", "--quality-suffix")
+        assume = argname("assume_quality", "--assume-quality")
         raise SchemaError(
-            f"{label}: no --quality-suffix and no --assume-quality; name the suffix "
-            "of the per-tag quality columns with --quality-suffix, or state "
-            "--assume-quality GOOD|UNCERTAIN|BAD, which is recorded on every "
-            "archive and reported in every profile"
+            f"{label}: no {suffix} and no {assume}; name the suffix of the per-tag "
+            f"quality columns with {suffix}, or state "
+            f"{option('assume_quality', '--assume-quality', 'GOOD|UNCERTAIN|BAD')}, "
+            "which is recorded on every archive and reported in every profile"
         )
     quality_cols = _wide_quality_columns(
         frame, chosen, label=label, quality_suffix=quality_suffix
@@ -767,7 +784,7 @@ def ingest_wide(
         if not meta_path.exists():
             raise SchemaError(
                 f"tag {tag!r}: no metadata file {meta_path.as_posix()}; write it by "
-                "hand or with --init-meta"
+                f"hand or with {argname('init_meta', '--init-meta')}"
             )
         metas[tag] = read_meta_json(meta_path)
     _check_distinct_filenames(
@@ -782,7 +799,7 @@ def ingest_wide(
         for target in targets.values():
             if target.exists():
                 raise FileExistsError(
-                    f"{target} already exists; pass overwrite=True to replace it"
+                    f"{target} already exists; pass {_overwrite_option()} to replace it"
                 )
     timestamps = _to_utc(
         frame[timestamp_col],
@@ -898,7 +915,7 @@ def init_meta(
         for target in targets.values():
             if target.exists():
                 raise FileExistsError(
-                    f"{target} already exists; pass overwrite=True to replace it"
+                    f"{target} already exists; pass {_overwrite_option()} to replace it"
                 )
     root.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []

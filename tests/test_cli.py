@@ -1091,6 +1091,21 @@ def test_mspc_refuses_archives_declaring_different_rates(archive_factory, capsys
     )
 
 
+def test_python_mspc_names_the_rate_keyword(archive_factory):
+    flow, temp = _mspc_archives(archive_factory, second_rate=None)
+    with pytest.raises(ValueError, match=r"pass rate_s= to state the grid, or declare "
+                       r"sample_rate_s in each tag's metadata$"):
+        tsdive.mspc([flow, temp], MSPC_BASELINE, MSPC_WINDOW)
+
+
+def test_python_names_its_ingest_call_for_a_file_that_is_no_archive(tmp_path):
+    export = tmp_path / "export.csv"
+    export.write_text("timestamp,value,quality\n", encoding="utf-8")
+    with pytest.raises(tsdive.SchemaError, match=r"build one with "
+                       r"tsdive\.ingest\('export\.csv', out=\.\.\., meta=\.\.\.\)$"):
+        tsdive.profile(export)
+
+
 def test_mspc_refuses_an_archive_that_declares_no_rate(archive_factory, capsys):
     flow, temp = _mspc_archives(archive_factory, second_rate=None)
     rc = cmd_mspc(
@@ -1100,7 +1115,7 @@ def test_mspc_refuses_an_archive_that_declares_no_rate(archive_factory, capsys):
     assert rc == 2
     assert err.strip() == (
         "error: no sample_rate_s declared by plant1:TIC101.PV; pass --rate-s to "
-        "state the grid"
+        "state the grid, or declare sample_rate_s in each tag's metadata"
     )
 
 
@@ -1364,7 +1379,10 @@ def test_compare_prints_a_refused_grid_as_one_reason_line(archive_factory, capsy
     rc, captured = _compare_out(capsys, [shared, other, slower])
     out = captured.out.splitlines()
     assert rc == 0
-    assert out[0] == "plant1  3 tags   refused 0   pairs refused"
+    assert out[0] == "plant1  3 tags   refused 0   pairs refused   joint refused"
+    assert out[1].startswith("pairs     refused: archives declare different sample rates")
+    assert "pass --rate-s to state the grid" in " ".join(out[1:4])
+    assert "joint     refused: same reason as pairs" in out
     assert "Pairs that decoupled" in out
     assert out[out.index("Pairs that decoupled") + 1].startswith(
         "  archives declare different sample rates"

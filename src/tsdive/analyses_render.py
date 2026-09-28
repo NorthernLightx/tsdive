@@ -8,6 +8,7 @@ else, so every renderer here stays plain text.
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -24,8 +25,10 @@ from tsdive.compare import (
     TagChange,
 )
 from tsdive.report import (
+    LABEL_WIDTH,
     MAX_WIDTH,
     SEP,
+    WRAP_WIDTH,
     continued,
     fits,
     fmt_duration,
@@ -684,10 +687,38 @@ def _compare_headline(result: CompareResult) -> str:
         else f"pairs {len(table.clearing)} of {table.n_pairs} clearing"
     )
     counts = f"refused {result.n_refused}{SEP}{pairs}"
+    if result.joint.reason is not None:
+        counts += f"{SEP}joint refused"
     tags = plural(len(result.tags), "tag")
     if result.source_id is None:
         return f"{tags}  {counts}"
     return f"{result.source_id}  {tags}{SEP}{counts}"
+
+
+def _refused_tables(result: CompareResult) -> dict[str, str]:
+    """Table name -> reason, for the pairs and joint tables that hold no rows."""
+    reasons = {"pairs": result.pairs.reason, "joint": result.joint.reason}
+    return {table: reason for table, reason in reasons.items() if reason is not None}
+
+
+def _refused_lines(result: CompareResult) -> list[str]:
+    """One ``<table> refused: <reason>`` line per refused table, under the headline."""
+    lines: list[str] = []
+    seen: dict[str, str] = {}
+    for table, reason in _refused_tables(result).items():
+        text = f"refused: same reason as {seen[reason]}" if reason in seen else (
+            f"refused: {reason}"
+        )
+        seen.setdefault(reason, table)
+        first, *rest = textwrap.wrap(
+            text,
+            width=WRAP_WIDTH - LABEL_WIDTH - 2,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        lines.append(label_line(table, first))
+        lines.extend(continued(line) for line in rest)
+    return lines
 
 
 def _period_line(label: str, span: tuple[pd.Timestamp, pd.Timestamp]) -> str:
@@ -703,6 +734,7 @@ def compare_lines(a: CompareAnalysis) -> list[str]:
     table = a.pairs
     lines = [
         _compare_headline(a),
+        *_refused_lines(a),
         "",
         _period_line("before", a.before),
         _period_line("after", a.after),
@@ -803,4 +835,5 @@ def compare_json(a: CompareAnalysis) -> dict[str, object]:
             }
         ),
         "joint_reason": joint.reason,
+        "refused_tables": _refused_tables(a),
     }
