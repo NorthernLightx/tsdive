@@ -107,20 +107,20 @@ def test_timestamps_are_synthetic_and_say_so(converted: tuple[Path, dict]) -> No
 
 def test_label_fault_is_zero_until_the_onset_sample(converted: tuple[Path, dict]) -> None:
     out_dir, record = converted
-    assert record["onset_sample"] == 20
+    assert record["onset_sample"] == 21
     frame = pd.read_parquet(out_dir / "LABEL_fault.parquet")
     values = list(frame["value"])
-    assert values[:19] == ["0"] * 19  # samples 1-19
-    assert values[19] == "4"  # sample 20 is the first faulty row
-    assert set(values[19:]) == {"4"}
-    assert record["n_faulty_rows"] == N_SAMPLES - 19
+    assert values[:20] == ["0"] * 20  # samples 1-20
+    assert values[20] == "4"  # sample 21 is the first faulty row
+    assert set(values[20:]) == {"4"}
+    assert record["n_faulty_rows"] == N_SAMPLES - 20
 
     meta = meta_from_parquet(out_dir / "LABEL_fault.parquet")
     assert meta.role is Role.MODE
     assert meta.unit_raw is None
 
 
-def test_the_testing_split_steps_the_fault_in_at_sample_160(tmp_path: Path) -> None:
+def test_the_testing_split_labels_the_fault_from_sample_161(tmp_path: Path) -> None:
     record = convert_tep.convert_run(
         source_frame(fault=2, run=1, n=200),
         tmp_path / "archives",
@@ -130,11 +130,11 @@ def test_the_testing_split_steps_the_fault_in_at_sample_160(tmp_path: Path) -> N
         source="TEP_Faulty_Testing.RData",
         source_md5=None,
     )
-    assert record["onset_sample"] == 160
+    assert record["onset_sample"] == 161
     out_dir = convert_tep.run_dir(tmp_path / "archives", "test", 2, 1)
     values = list(pd.read_parquet(out_dir / "LABEL_fault.parquet")["value"])
-    assert values[158] == "0"
-    assert values[159] == "2"
+    assert values[159] == "0"  # sample 160
+    assert values[160] == "2"  # sample 161
 
 
 def test_a_fault_free_run_is_labelled_zero_throughout(tmp_path: Path) -> None:
