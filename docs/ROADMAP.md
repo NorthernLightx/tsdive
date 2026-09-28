@@ -52,6 +52,19 @@ Parked, each with the measured reason:
   and it cannot be defined on the six-window onset-aligned design.
   `screen` and `spc` keep the fixed history. Report:
   `examples/studies/baseline_drift/REPORT.md`.
+- Intervals on the `compare` level shift and spread ratio. On synthetic
+  AR(1) series with 480 samples per period the 95% `hac` and `ewc`
+  intervals cover 0.872 and 0.878 at phi 0.9, and no method holds its
+  coverage in every cell up to phi 0.9. A placebo date on the 538 3W
+  instances with no fault window gets an interval that excludes 0 on
+  65.6% (`hac`) and 63.8% (`ewc`) of (instance, tag) pairs against a 10%
+  bar, and on 24.4% and 41.5% of the Turbine Upgrade placebo weeks.
+  Regressing on the other tags leaves the 3W interval at 0.927 of the
+  raw width. On the TEP fault-free runs `ewc` covers the level at 0.924
+  to 0.942 over three variable groups, and at 0.939 to 0.955 once a
+  persistence refusal chosen after the 3W result drops the rows with
+  fewer than 10 effective samples. `compare` keeps the shift without an
+  interval. Report: `examples/studies/shift_intervals/REPORT.md`.
 - Zero-shot forecasters as shipped detectors. The Chronos-Bolt study
   gives the only false-alarm rate under the floor (18.2%) and a post1
   detection rate of 27.3%. It stays a benchmark subject. No forecaster

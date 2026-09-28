@@ -51,6 +51,8 @@ dev = [
     "pytest-regressions>=2.5,<3",
     "ruff>=0.6",
     "scikit-learn>=1.5,<2",
+    # examples/studies/shift_intervals reads t critical values from scipy.stats.
+    "scipy>=1.11,<2",
 ]
 
 [project.scripts]
