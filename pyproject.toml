@@ -54,6 +54,14 @@ dev = [
     # examples/studies/shift_intervals reads t critical values from scipy.stats.
     "scipy>=1.11,<2",
 ]
+# mkdocs.yml and scripts/mkdocs_hooks.py build the documentation site.
+# Material 9.7 declares mkdocs<2; MkDocs 2.0 drops the plugin API.
+docs = [
+    "mkdocs>=1.6.1,<2",
+    "mkdocs-material>=9.7.7,<10",
+    "mkdocstrings[python]>=1.0.6,<2",
+    "mkdocstrings-python>=2.0.9,<3",
+]
 
 [project.scripts]
 tsdive = "tsdive.cli:main"
@@ -81,6 +89,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 testpaths = ["tests"]
 addopts = "-q"
 filterwarnings = ["error"]
+markers = ["docs: documentation site coverage, also run by the docs CI job"]
 
 [tool.uv]
 package = true
