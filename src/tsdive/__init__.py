@@ -16,8 +16,18 @@ from tsdive.analyses import (
     segment,
     spc,
 )
-from tsdive.api import Profile, ingest, ingest_wide, init_meta, profile, read_meta_json
+from tsdive.api import (
+    Profile,
+    ingest,
+    ingest_wide,
+    init_meta,
+    profile,
+    read_meta_json,
+    switchback_analyze,
+    switchback_plan,
+)
 from tsdive.errors import (
+    DesignTooSmall,
     IncomparableSamplingError,
     IncomparableUnitsError,
     InsufficientQuality,
@@ -25,6 +35,7 @@ from tsdive.errors import (
     NarratorUnavailable,
     NonMonotonicIndex,
     RegimeTooSparse,
+    ScheduleMismatch,
     SchemaError,
     TSDiveError,
     UnresolvedUnitError,
@@ -43,11 +54,14 @@ from tsdive.store.tagstore import (
     Window,
     write_tag,
 )
+from tsdive.switchback.archive import SwitchbackAnalysis, SwitchbackEstimate
+from tsdive.switchback.plan import SwitchbackPlan
 
 __all__ = [
     "AggregateType",
     "CalculationBasis",
     "CompareAnalysis",
+    "DesignTooSmall",
     "EngRange",
     "IncomparableSamplingError",
     "IncomparableUnitsError",
@@ -61,12 +75,16 @@ __all__ = [
     "RetrievalMode",
     "Role",
     "SamplingContract",
+    "ScheduleMismatch",
     "SchemaError",
     "ScreenAnalysis",
     "SegmentAnalysis",
     "SingleFileStore",
     "Source",
     "SpcAnalysis",
+    "SwitchbackAnalysis",
+    "SwitchbackEstimate",
+    "SwitchbackPlan",
     "TSDiveError",
     "TagIdentity",
     "TagMeta",
@@ -84,5 +102,7 @@ __all__ = [
     "screen",
     "segment",
     "spc",
+    "switchback_analyze",
+    "switchback_plan",
     "write_tag",
 ]

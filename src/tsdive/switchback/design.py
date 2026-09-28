@@ -47,6 +47,11 @@ def design_size(k: int) -> tuple[int, bool, float]:
     return n, False, 1.0 / (PERMUTATIONS + 1)
 
 
+def order_of_magnitude(n: int) -> int:
+    """The largest E with 10**E <= n, from the bit length, for counts too long to print."""
+    return math.floor((n.bit_length() - 1) * math.log10(2.0))
+
+
 def design_refusal(k: int) -> str:
     """``design_too_small`` when the design has too few assignments or too coarse a p."""
     n, _, min_p = design_size(k)

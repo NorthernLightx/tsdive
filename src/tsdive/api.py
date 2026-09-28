@@ -48,6 +48,8 @@ from tsdive.store.tagstore import (
     safe_filename,
     write_tag,
 )
+from tsdive.switchback.archive import SwitchbackAnalysis, analyze_archives, with_power
+from tsdive.switchback.plan import SwitchbackPlan, make_plan
 
 _WINDOW_FORMS = (
     "window must be <START>/<END>, <START>/<DURATION>, <DURATION>/<END> "
@@ -769,3 +771,133 @@ def profile(
             reference_distinct_counts=counts,
         )
     return Profile(window=read, stats=compute_stats(read), flatline=verdict)
+
+
+# --- switchback --------------------------------------------------------------
+
+
+def _instant(value: str | pd.Timestamp | dt.datetime, name: str) -> pd.Timestamp:
+    """One UTC instant from ISO 8601 text or an aware timestamp."""
+    if isinstance(value, str):
+        return _window_bound(name, value)
+    stamp = cast(pd.Timestamp, pd.Timestamp(value))
+    if stamp.tz is None:
+        raise ValueError(f"{name} {stamp} is naive; state it in UTC")
+    return stamp
+
+
+def _whole_seconds(value: str | int | float | dt.timedelta | pd.Timedelta, name: str) -> int:
+    """A duration in whole seconds from an ISO 8601 duration, a number of seconds or a timedelta."""
+    if isinstance(value, str):
+        try:
+            delta = _window_duration(value)
+        except ValueError:
+            raise ValueError(
+                f"{name} {value} is not days, hours, minutes and seconds; write it like PT1H"
+            ) from None
+    elif isinstance(value, dt.timedelta | pd.Timedelta):
+        delta = pd.Timedelta(value)
+    elif isinstance(value, int | float) and not isinstance(value, bool):
+        delta = pd.Timedelta(float(value), unit="s")
+    else:
+        raise ValueError(f"{name} must be an ISO 8601 duration like PT1H or a number of seconds")
+    seconds = delta.total_seconds()
+    if seconds != int(seconds):
+        raise ValueError(f"{name} of {seconds} s is not a whole number of seconds")
+    return int(seconds)
+
+
+def switchback_plan(
+    start: str | pd.Timestamp | dt.datetime,
+    end: str | pd.Timestamp | dt.datetime,
+    block: str | int | float | dt.timedelta,
+    washout: str | int | float | dt.timedelta,
+    seed: int,
+    *,
+    history: str | Path | None = None,
+    history_window: str | tuple[pd.Timestamp, pd.Timestamp] | None = None,
+) -> SwitchbackPlan:
+    """Plan a balanced random schedule of settings A and B over one window.
+
+    The window from ``start`` is cut into K blocks of ``block`` (the last
+    block is dropped when K is odd), and ``seed`` assigns exactly K/2 of
+    them to B. The first ``washout`` of every block is left out of the
+    analysis. The same arguments give the same plan and digest.
+
+    Args:
+        start: ISO 8601 UTC instant or an aware timestamp.
+        end: ISO 8601 UTC instant or an aware timestamp.
+        block: block length, an ISO 8601 duration such as ``PT1H`` or
+            seconds; whole seconds only.
+        washout: time dropped at the start of every block, as ``block``;
+            0 or more and shorter than a block.
+        seed: seed of the assignment, 0 or more.
+        history: one archive of the target where nothing was switched;
+            with ``history_window`` it adds a power readout.
+        history_window: ``START/END`` in ISO 8601 UTC, or a pair of aware
+            timestamps, at least as long as the schedule.
+
+    Raises:
+        ValueError: a malformed or naive bound, a block or washout out of
+            range, or only one of ``history`` and ``history_window``.
+        DesignTooSmall: the window holds too few blocks for a
+            randomization test at the 5% level.
+    """
+    if (history is None) != (history_window is None):
+        raise ValueError("a power readout needs both history and history_window")
+    plan = make_plan(
+        _instant(start, "START"),
+        _instant(end, "END"),
+        _whole_seconds(block, "block"),
+        _whole_seconds(washout, "washout"),
+        int(seed),
+    )
+    if history is None or history_window is None:
+        return plan
+    if isinstance(history_window, str):
+        h_span = parse_window(history_window)
+    else:
+        h_start = _instant(history_window[0], "history START")
+        h_end = _instant(history_window[1], "history END")
+        if h_end <= h_start:
+            raise ValueError("history window END is not after START")
+        h_span = (h_start, h_end)
+    return with_power(plan, history, h_span)
+
+
+def switchback_analyze(
+    archives: Sequence[str | Path],
+    plan: SwitchbackPlan | str | Path,
+    *,
+    target: str,
+    covariates: Sequence[str] = (),
+) -> SwitchbackAnalysis:
+    """The difference between settings A and B on ``target`` under a verified plan.
+
+    The plan is checked first: its digest against its blocks, the block
+    times, the balance of the settings, and the settings against the ones
+    its seed draws. The archives are read over the schedule under the
+    sampling contract ``compare`` uses, and GOOD numeric samples at least
+    the washout into their block are kept.
+
+    Args:
+        archives: single-tag parquet archives holding the target and every
+            covariate; others are listed as unused.
+        plan: a plan, or the path of a plan file.
+        target: the tag, as ``source:point`` or a point id that one
+            archive carries.
+        covariates: tags declared before the analysis for the adjusted
+            estimate.
+
+    Raises:
+        ScheduleMismatch: the plan was edited or is not balanced.
+        DesignTooSmall: the plan holds too few blocks.
+        ValueError: a tag that matches no archive or is named twice.
+        IncomparableSamplingError: two reads under different sampling
+            contracts.
+        SchemaError: a covariate repeats a timestamp among its valid
+            samples.
+        TSDiveError: any typed refusal from the read path.
+    """
+    resolved = plan if isinstance(plan, SwitchbackPlan) else SwitchbackPlan.read_json(plan)
+    return analyze_archives(archives, resolved, target=target, covariates=tuple(covariates))

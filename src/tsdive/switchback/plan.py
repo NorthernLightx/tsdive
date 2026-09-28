@@ -142,6 +142,12 @@ class SwitchbackPlan:
         """Assignments the p-value is computed over, the observed one included."""
         return self.n_assignments if self.enumerated else PERMUTATIONS + 1
 
+    def render(self) -> str:
+        """The text ``tsdive switchback plan`` prints, without its ``wrote`` line."""
+        from tsdive.switchback.render import plan_lines
+
+        return "\n".join(plan_lines(self))
+
     def to_dict(self) -> dict[str, object]:
         """The plan document: what :meth:`write_json` writes, ready for ``json.dumps``."""
         return plan_to_dict(self)
@@ -337,6 +343,11 @@ def verify_plan(plan: SwitchbackPlan) -> Design:
 # ---------------------------------------------------------------- JSON
 
 
+def json_count(n: int) -> int | None:
+    """``n`` when a JSON reader holds it exactly (at most 2**53), else ``None``."""
+    return n if n.bit_length() <= 53 else None
+
+
 def _power_to_dict(power: PowerReadout) -> dict[str, object]:
     sigma = power.sigma
     return {
@@ -375,7 +386,7 @@ def plan_to_dict(plan: SwitchbackPlan) -> dict[str, object]:
         "seed": plan.seed,
         "blocks": plan.k,
         "schedule_end": iso(plan.schedule_end),
-        "assignments": plan.n_assignments,
+        "assignments": json_count(plan.n_assignments),
         "reference": "enumerated" if plan.enumerated else "sampled",
         "reference_size": plan.reference_size,
         "smallest_p": plan.min_p,
