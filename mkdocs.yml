@@ -97,6 +97,8 @@ nav:
           - Evaluation: reference/api/eval.md
           - Archive, sampling contract and types: reference/api/types.md
           - Errors: reference/api/errors.md
+      - Errors and refusals: reference/errors.md
+      - Glossary: reference/glossary.md
   - Project:
       - Scope: SCOPE.md
       - Roadmap: ROADMAP.md

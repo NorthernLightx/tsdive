@@ -1,13 +1,14 @@
 """MkDocs hooks that build the documentation site from the repository sources.
 
-``mkdocs.yml`` loads this file. On every build it generates the usage page
-from README.md, the CLI reference from the command parsers, the API
+``mkdocs.yml`` loads this file. On every build it runs the example
+commands of the guide pages on the demo data and inserts their output,
+and it generates the usage page from README.md, the CLI reference from
+the command parsers (with an example run of every command), the API
 reference (an index, one page per group and one page per public object)
 from ``__all__``, and the changelog and benchmarks pages from the root
-markdown files. The CLI pages carry example runs on the demo archives,
-executed in-process at build time. None of them is committed. A relative link whose
-target lies outside ``docs/`` is rewritten to the file on GitHub, so the
-pages under ``docs/`` keep working both on GitHub and on the site.
+markdown files. None of the generated text is committed. A relative link
+whose target lies outside ``docs/`` is rewritten to the file on GitHub,
+so the pages under ``docs/`` keep working both on GitHub and on the site.
 
 The module imports neither mkdocs nor griffe at the top, so the page
 generators run without the ``docs`` dependency group.
@@ -919,6 +920,118 @@ def api_markdown() -> dict[str, tuple[str, bool]]:
     return pages
 
 
+# ------------------------------------------------------------------ guide pages
+
+# A fenced block in a docs page whose info string is ``tsdive`` holds
+# commands the build runs on the demo data, in page order, in one working
+# directory per page: the rendered page shows each command and its real
+# output. ``exit=N`` states the exit status every command in the block
+# must return (0 when absent) and ``lines=N`` cuts the output. A block
+# with ``file=NAME`` writes its text to NAME in that directory before the
+# next command runs; a block with ``show=NAME`` shows the file as it is
+# then.
+_BLOCK = re.compile(
+    r"^```(?P<lang>[\w-]*)(?P<opts>(?: [a-z]+=\S+)*)[ \t]*\n(?P<body>.*?)^```[ \t]*$",
+    re.MULTILINE | re.DOTALL,
+)
+# Lines of output a guide block shows before the cut, when it states none.
+GUIDE_LINES = 60
+# Stands in, in a docs page, for the version being documented.
+VERSION_TOKEN = "X.Y.Z"
+
+
+@dataclass(frozen=True)
+class GuideBlock:
+    """One fenced block of a docs page the build acts on."""
+
+    lang: str
+    options: dict[str, str]
+    body: str
+
+    @property
+    def runs(self) -> bool:
+        return self.lang == "tsdive"
+
+    @property
+    def acts(self) -> bool:
+        return self.runs or "file" in self.options or "show" in self.options
+
+
+def guide_blocks(markdown: str) -> list[tuple[re.Match[str], GuideBlock]]:
+    """Every fenced block of ``markdown`` the build runs, writes or shows, in order."""
+    found = []
+    for m in _BLOCK.finditer(markdown):
+        options = dict(opt.split("=", 1) for opt in m.group("opts").split())
+        block = GuideBlock(m.group("lang"), options, m.group("body"))
+        if block.acts:
+            found.append((m, block))
+    return found
+
+
+def guide_commands(body: str) -> list[str]:
+    """The commands of a ``tsdive`` block, each with its continuation lines."""
+    commands: list[str] = []
+    current: list[str] = []
+    for line in body.splitlines():
+        if not line.strip() and not current:
+            continue
+        current.append(line)
+        if not line.endswith("\\"):
+            commands.append("\n".join(current))
+            current = []
+    if current:
+        raise ValueError(f"a command ends in a continuation: {current[-1]!r}")
+    bad = [c for c in commands if not c.startswith("tsdive ")]
+    if bad:
+        raise ValueError(f"a tsdive block runs tsdive commands only, not {bad[0]!r}")
+    return commands
+
+
+def _render_block(block: GuideBlock, work: Path, page: str) -> str:
+    """The markdown a block becomes once its commands ran in ``work``."""
+    if block.runs:
+        expected = int(block.options.get("exit", "0"))
+        keep = int(block.options.get("lines", str(GUIDE_LINES)))
+        shown: list[str] = []
+        for command in guide_commands(block.body):
+            code, output = run_in(work, shlex.split(command.replace("\\\n", " "))[1:])
+            if (code or 0) != expected:
+                raise RuntimeError(
+                    f"{page}: `{command}` exited {code}, the page expects {expected}:\n{output}"
+                )
+            shown += [f"$ {command}", *_cut(output.splitlines(), keep)]
+        return "```console\n" + "\n".join(shown) + "\n```"
+    if "file" in block.options:
+        name = block.options["file"]
+        target = work / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(block.body, encoding="utf-8")
+        return f'```{block.lang} title="{name}"\n{block.body}```'
+    name = block.options["show"]
+    text = (work / name).read_text(encoding="utf-8").rstrip("\n")
+    keep = int(block.options.get("lines", str(GUIDE_LINES)))
+    return f'```{block.lang} title="{name}"\n' + "\n".join(_cut(text.splitlines(), keep)) + "\n```"
+
+
+def run_guide_blocks(markdown: str, page: str) -> str:
+    """``markdown`` with its ``tsdive``, ``file=`` and ``show=`` blocks carried out.
+
+    The commands run in page order in one fresh demo working directory, so
+    a later command reads what an earlier one wrote. A command whose exit
+    status differs from the block's stops the build.
+    """
+    blocks = guide_blocks(markdown)
+    if not blocks:
+        return markdown
+    parts: list[str] = []
+    last = 0
+    with demo_workdir() as work:
+        for m, block in blocks:
+            parts += [markdown[last : m.start()], _render_block(block, work, page)]
+            last = m.end()
+    return "".join([*parts, markdown[last:]])
+
+
 # ------------------------------------------------------------------ pages
 
 
@@ -979,10 +1092,13 @@ def on_files(files: Files, config: MkDocsConfig) -> Files:
 
 
 def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, **_: Any) -> str:
-    """Fill the README markers of the index and resolve links that leave docs/."""
+    """Run a page's example blocks, fill the index's README markers, resolve links."""
+    from tsdive import __version__
+
     src = page.file.src_uri
     if page.file.generated_by is not None:
         return markdown
+    markdown = run_guide_blocks(markdown.replace(VERSION_TOKEN, __version__), src)
     if src == "index.md":
         result = index_markdown(markdown)
     else:

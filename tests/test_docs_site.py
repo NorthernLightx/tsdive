@@ -196,16 +196,35 @@ def test_every_rendered_export_has_a_docstring(hooks: ModuleType, package: Any) 
             assert target.docstring and target.docstring.value.strip(), f"{path} has no docstring"
 
 
+def _static_pages() -> dict[str, str]:
+    """Page path under docs/ -> text, for every markdown file in docs/."""
+    docs = ROOT / "docs"
+    return {
+        p.relative_to(docs).as_posix(): p.read_text(encoding="utf-8")
+        for p in sorted(docs.rglob("*.md"))
+    }
+
+
+def _assert_links_stay_on_site(page: str, text: str, site_pages: set[str]) -> None:
+    for target in TARGET.findall(text):
+        if re.match(r"^[a-z]+:", target) or target.startswith("#"):
+            continue
+        path = target.partition("#")[0]
+        resolved = posixpath.normpath(posixpath.join(posixpath.dirname(page), path))
+        assert resolved in site_pages, f"{page} links to {target}"
+
+
 def test_no_link_on_a_docs_page_leaves_the_site(hooks: ModuleType) -> None:
+    pages = _static_pages()
+    site_pages = set(pages) | hooks.generated_paths()
     rewritten = 0
-    for page in sorted((ROOT / "docs").glob("*.md")):
-        text = page.read_text(encoding="utf-8")
-        if page.name == "index.md":
+    for page, text in pages.items():
+        if page == "index.md":
             result = hooks.index_markdown(text)
         else:
-            result = hooks.rewrite_links(text, f"docs/{page.name}", page.name)
-        assert not result.missing, f"{page.name}: {result.missing}"
-        assert "](../" not in result.text, page.name
+            result = hooks.rewrite_links(text, f"docs/{page}", page)
+        assert not result.missing, f"{page}: {result.missing}"
+        _assert_links_stay_on_site(page, result.text, site_pages)
         rewritten += len(result.to_github)
     assert rewritten > 0
 
@@ -221,15 +240,10 @@ def test_a_readme_section_the_usage_page_carries_resolves_to_it(hooks: ModuleTyp
 def test_generated_pages_link_only_to_site_pages_or_urls(hooks: ModuleType) -> None:
     pages = hooks.generated_pages()
     assert set(pages) == hooks.generated_paths()
-    site_pages = {p.name for p in (ROOT / "docs").glob("*.md")} | hooks.generated_paths()
+    site_pages = set(_static_pages()) | hooks.generated_paths()
     for page, generated in pages.items():
         assert not generated.result.missing, f"{page}: {generated.result.missing}"
-        for target in TARGET.findall(generated.result.text):
-            if re.match(r"^[a-z]+:", target) or target.startswith("#"):
-                continue
-            path = target.partition("#")[0]
-            resolved = posixpath.normpath(posixpath.join(posixpath.dirname(page), path))
-            assert resolved in site_pages, f"{page} links to {target}"
+        _assert_links_stay_on_site(page, generated.result.text, site_pages)
 
 
 def test_index_carries_the_readme_introduction(hooks: ModuleType) -> None:
@@ -239,3 +253,54 @@ def test_index_carries_the_readme_introduction(hooks: ModuleType) -> None:
     assert first in readme
     assert first in text
     assert "<!-- readme:" not in text
+
+
+# The user guide: each page must exist and say something.
+REQUIRED_PAGES = [
+    "reference/errors.md",
+    "reference/glossary.md",
+]
+GLOSSARY_LINK = re.compile(r"\]\(([^)#\s]*glossary\.md)#([\w-]+)\)")
+
+
+def test_every_required_guide_page_exists_and_has_content() -> None:
+    pages = _static_pages()
+    for page in REQUIRED_PAGES:
+        assert page in pages, f"docs/{page} is missing"
+        body = [line for line in pages[page].splitlines() if line and not line.startswith("#")]
+        assert len(body) >= 5, f"docs/{page} is empty"
+
+
+def test_errors_page_covers_every_typed_error() -> None:
+    import tsdive.errors
+
+    text = _static_pages()["reference/errors.md"]
+    classes = [
+        name
+        for name, obj in vars(tsdive.errors).items()
+        if inspect.isclass(obj) and issubclass(obj, tsdive.errors.TSDiveError)
+    ]
+    assert "SchemaError" in classes
+    for name in classes:
+        assert f"\n### {name}\n" in text, f"docs/reference/errors.md has no section for {name}"
+
+
+def test_glossary_defines_every_term_a_page_links_to_it() -> None:
+    pages = _static_pages()
+    defined = set(re.findall(r"^## .+ \{#([\w-]+)\}$", pages["reference/glossary.md"], re.M))
+    assert {"tag", "censored", "sampling-contract"} <= defined
+    for page, text in pages.items():
+        for target, anchor in GLOSSARY_LINK.findall(text):
+            resolved = posixpath.normpath(posixpath.join(posixpath.dirname(page), target))
+            if resolved == "reference/glossary.md":
+                assert anchor in defined, f"{page} links to an undefined glossary term {anchor!r}"
+
+
+def test_every_guide_block_parses(hooks: ModuleType) -> None:
+    for page, text in _static_pages().items():
+        for _, block in hooks.guide_blocks(text):
+            if block.runs:
+                assert hooks.guide_commands(block.body), f"{page} has an empty tsdive block"
+                assert set(block.options) <= {"exit", "lines"}, f"{page}: {block.options}"
+            else:
+                assert set(block.options) <= {"file", "show", "lines"}, f"{page}: {block.options}"
