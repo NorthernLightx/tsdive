@@ -1,0 +1,227 @@
+{
+  "beds": {
+    "3w": {
+      "block_labels": [
+        "15 min",
+        "30 min",
+        "1 h"
+      ],
+      "blocks": [
+        15,
+        30,
+        60
+      ],
+      "code": {
+        "git_head": "46c064d5df3e6370abf68d87475b03b795adbb85",
+        "tsdive_version": "0.3.0"
+      },
+      "dataset": {
+        "cache": "data/3w_windows",
+        "manifest_sha256": "bfff4f2e897b",
+        "n_instances_no_fault_window": 640,
+        "n_instances_scored": 538,
+        "n_instances_too_short": 102,
+        "n_wells_scored": 16,
+        "source_manifest_sha256": "14bc1397d3ee"
+      },
+      "draw_offset": 0,
+      "draws": 4,
+      "draws_registered": 4,
+      "n_groups": 16,
+      "n_records": 538,
+      "n_rows": 8521920,
+      "n_targets": 3228,
+      "n_usable_targets": 1833,
+      "scoring_seconds": 55.2,
+      "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
+      "wall_seconds": 61.6
+    },
+    "skab": {
+      "block_labels": [
+        "5 min",
+        "10 min"
+      ],
+      "blocks": [
+        300,
+        600
+      ],
+      "code": {
+        "git_head": "46c064d5df3e6370abf68d87475b03b795adbb85",
+        "tsdive_version": "0.3.0"
+      },
+      "dataset": {
+        "archives": "data/skab_archives",
+        "duplicate_timestamps": 0,
+        "n_anomaly_free": 1,
+        "n_labelled": 34,
+        "n_records": 35,
+        "n_with_an_anomaly_row": 34,
+        "source_manifest_sha256": "c0d612939333"
+      },
+      "draw_offset": 0,
+      "draws": 500,
+      "draws_registered": 500,
+      "n_groups": 1,
+      "n_records": 1,
+      "n_rows": 1601280,
+      "n_targets": 8,
+      "n_usable_targets": 7,
+      "scoring_seconds": 71.7,
+      "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
+      "wall_seconds": 73.1
+    },
+    "tep": {
+      "block_labels": [
+        "2 h",
+        "4 h"
+      ],
+      "blocks": [
+        40,
+        80
+      ],
+      "code": {
+        "git_head": "46c064d5df3e6370abf68d87475b03b795adbb85",
+        "tsdive_version": "0.3.0"
+      },
+      "dataset": {
+        "cache": "data/tep_switchback_cache",
+        "cache_sha256": "49ffa27703fe",
+        "n_runs": 100,
+        "runs": [
+          251,
+          350
+        ],
+        "source_manifest_sha256": "f57ab3ee3443"
+      },
+      "draw_offset": 0,
+      "draws": 10,
+      "draws_registered": 10,
+      "n_groups": 100,
+      "n_records": 100,
+      "n_rows": 21632000,
+      "n_targets": 5200,
+      "n_usable_targets": 5200,
+      "scoring_seconds": 415.1,
+      "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
+      "wall_seconds": 430.1
+    },
+    "turbine": {
+      "block_labels": [
+        "1 d",
+        "3 d"
+      ],
+      "blocks": [
+        144,
+        432
+      ],
+      "code": {
+        "git_head": "46c064d5df3e6370abf68d87475b03b795adbb85",
+        "tsdive_version": "0.3.0"
+      },
+      "dataset": {
+        "directory": "data/turbine_upgrade",
+        "manifest_sha256": "31b2b0c7e33a",
+        "pairs": {
+          "pitch_pair": {
+            "first": "2010-07-30T22:40:00",
+            "last": "2011-06-25T18:30:00",
+            "min_v": 3.5,
+            "n_rows": 28486,
+            "n_upgraded_rows": 7000,
+            "steps_minutes": {
+              "10": 27467,
+              "20_to_60": 748,
+              "70_to_1440": 265,
+              "longest": 82020.0,
+              "over_1440": 5
+            },
+            "upgrade_starts": "2011-04-25T21:50:00"
+          },
+          "vg_pair": {
+            "first": "2010-04-29T06:20:00",
+            "last": "2011-08-15T07:50:00",
+            "min_v": 3.5,
+            "n_rows": 45114,
+            "n_upgraded_rows": 5000,
+            "steps_minutes": {
+              "10": 43311,
+              "20_to_60": 1263,
+              "70_to_1440": 527,
+              "longest": 43040.0,
+              "over_1440": 12
+            },
+            "upgrade_starts": "2011-06-20T00:00:00"
+          }
+        },
+        "pitch_table": {
+          "base_max_spread_across_r": 0.0001,
+          "main_file_y_test_equals_r_0.05": true,
+          "modified_rows_match_upgraded_and_v_over_9": true,
+          "n_rows_modified": 2666,
+          "n_upgraded_rows_at_v_9_unmodified": 7
+        }
+      },
+      "draw_offset": 0,
+      "draws": 250,
+      "draws_registered": 250,
+      "n_groups": 2,
+      "n_records": 2,
+      "n_rows": 200320,
+      "n_targets": 2,
+      "n_usable_targets": 2,
+      "scoring_seconds": 55.7,
+      "seed": "shift.cell_seed of (bed, record, block, draw + draw_offset)",
+      "wall_seconds": 56.2
+    }
+  },
+  "budget_seconds": 1800,
+  "code": {
+    "git_head": "46c064d5df3e6370abf68d87475b03b795adbb85",
+    "tsdive_version": "0.3.0"
+  },
+  "draw_offset": 0,
+  "draws_reduced": null,
+  "parameters": {
+    "alpha": 0.05,
+    "blocks": {
+      "3w": [
+        15,
+        30,
+        60
+      ],
+      "skab": [
+        300,
+        600
+      ],
+      "tep": [
+        40,
+        80
+      ],
+      "turbine": [
+        144,
+        432
+      ]
+    },
+    "deltas": [
+      0.0,
+      0.1,
+      0.25,
+      0.5
+    ],
+    "draws": {
+      "3w": 4,
+      "skab": 500,
+      "tep": 10,
+      "turbine": 250
+    },
+    "min_assignments": 20,
+    "min_samples": 30,
+    "permutations": 1000,
+    "samples_per_covariate": 10,
+    "sigma": "1.4826 * MAD of the target over the whole record",
+    "tau": "0, L/10, L/4 steps",
+    "washout": "0 and ceil(3 tau) steps"
+  },
+  "wall_seconds_all_beds": 621.0,
+  "workers": 8
+}

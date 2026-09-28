@@ -70,6 +70,25 @@ Parked, each with the measured reason:
   detection rate of 27.3%. It stays a benchmark subject. No forecaster
   ships as a tool.
 
+Next, pending a SCOPE amendment:
+
+- A switchback plan-and-analyze command: settings A and B on randomly
+  assigned time blocks of one unit, analysed by randomization inference
+  over the assignments. It needs a SCOPE amendment for statements under
+  a randomized schedule. On fresh assignments of records where nothing
+  was changed the pooled claim rate at a zero injected shift is 3.9% to
+  5.3% per bed on 3W, TEP, the Turbine Upgrade pairs and SKAB, where the
+  first-half against second-half split of the same 3W records claims
+  65.2%, and the corrected criteria registered before those draws pass.
+  Design guidance: 0.8 detection at a 0.25 sigma shift was reached by
+  schedules of 212 and 414 one-day blocks on the turbine pairs (0.922);
+  16 blocks of 15 min on a 240-minute 3W record reach 0.113, and 24
+  blocks of 2 h on a 48-hour TEP run reach 0.475 raw and 0.819 adjusted
+  on the other 51 variables. The first registration parked the command
+  on misses the size of a draw fluctuation, and the report keeps that
+  verdict beside this one. Report:
+  `examples/studies/switchback/REPORT.md`.
+
 Next beds: SKAB is the bed where records return to normal after a fault,
 and its numbers are in `examples/studies/skab/REPORT.md`. What the
 frozen-sensor and rounding checks change in the 3W detector numbers is
