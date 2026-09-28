@@ -36,9 +36,9 @@ under `scripts/` download on request and print their size first.
 
 Commands in the order you run them on an archive. A window is `START/END`,
 `START/PT5H`, `PT5H/END`, or a date for one UTC day. Every analysis
-command takes `--json` after the command name and prints one JSON object
-instead of text. `--no-color` and the `NO_COLOR` environment variable turn
-colour off. The transcripts below are trimmed to the lines the text reads.
+command takes `--json` and prints one JSON object instead of text.
+`--no-color` and the `NO_COLOR` environment variable turn colour off. The
+transcripts below are trimmed to the lines the text reads.
 
 ### profile
 
@@ -347,7 +347,8 @@ Protocol in [docs/EVAL.md](docs/EVAL.md), reproduction in [docs/DATA.md](docs/DA
 
 ## Limits
 
-No fault diagnosis and no causal inference. No writes to any process or
+No fault diagnosis. No causal inference outside a
+[`switchback` trial](docs/SWITCHBACK.md). No writes to any process or
 historian. No alarm limits, notifications or real-time path. Deferred work
 is in [docs/SCOPE.md](docs/SCOPE.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
 

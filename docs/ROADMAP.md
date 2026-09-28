@@ -15,11 +15,12 @@ test. This page names what shipped at each stage and what it still owes.
 | 8 | LLM narration over the evidence ledger | shipped (offline-gated) |
 
 Stages 1 to 6 are reachable from the CLI (`profile`, `segment`, `screen`,
-`spc`, `mspc`, `compare`). Stage 7 is library-only, because it needs feature rows over
-many windows and the `ml` extra. Every stage ships benchmark rows in
-`BENCHMARKS.md`, computed from the deterministic synthetic backbone and
-compared byte for byte in CI. The REAL sections follow the synthetic
-table, one per study in `examples/studies/`.
+`spc`, `mspc`, `compare`, `switchback`). Stage 7 is library-only, because
+it needs feature rows over many windows and the `ml` extra. Every stage
+ships benchmark rows in `BENCHMARKS.md`, computed from SYNTHETIC data,
+either the validation backbone or seeded noise where the dataset column
+says so, and compared byte for byte in CI. The REAL sections follow the
+synthetic table, one per study in `examples/studies/`.
 
 Real-data numbers are published under group holdout by asset; each names
 its fold split. The reading rules are in each study's REPORT.md in
@@ -69,25 +70,6 @@ Parked, each with the measured reason:
   gives the only false-alarm rate under the floor (18.2%) and a post1
   detection rate of 27.3%. It stays a benchmark subject. No forecaster
   ships as a tool.
-
-Next, pending a SCOPE amendment:
-
-- A switchback plan-and-analyze command: settings A and B on randomly
-  assigned time blocks of one unit, analysed by randomization inference
-  over the assignments. It needs a SCOPE amendment for statements under
-  a randomized schedule. On fresh assignments of records where nothing
-  was changed the pooled claim rate at a zero injected shift is 3.9% to
-  5.3% per bed on 3W, TEP, the Turbine Upgrade pairs and SKAB, where the
-  first-half against second-half split of the same 3W records claims
-  65.2%, and the corrected criteria registered before those draws pass.
-  Design guidance: 0.8 detection at a 0.25 sigma shift was reached by
-  schedules of 212 and 414 one-day blocks on the turbine pairs (0.922);
-  16 blocks of 15 min on a 240-minute 3W record reach 0.113, and 24
-  blocks of 2 h on a 48-hour TEP run reach 0.475 raw and 0.819 adjusted
-  on the other 51 variables. The first registration parked the command
-  on misses the size of a draw fluctuation, and the report keeps that
-  verdict beside this one. Report:
-  `examples/studies/switchback/REPORT.md`.
 
 Next beds: SKAB is the bed where records return to normal after a fault,
 and its numbers are in `examples/studies/skab/REPORT.md`. What the
@@ -174,6 +156,25 @@ changed and a pair decoupled. Neither word names a cause.
 
 Shipped: a plan that sets `before` and `after` runs `compare` over all its
 archives at once, as the last step.
+
+Shipped: `switchback plan` and `switchback analyze`
+(`src/tsdive/switchback/`). `plan` draws a balanced random schedule of
+settings A and B over a window, writes it with a SHA-256 digest, and
+reads its power off a history window. `analyze` verifies the digest, the
+block times, the balance and the seed, raising `ScheduleMismatch` on any
+difference, and reports the B minus A difference in means with its
+randomization p-value and inverted 95% interval, plus an estimate
+adjusted on declared covariates. A design with too few blocks raises
+`DesignTooSmall`. Benchmark: the claim rate at a zero shift and the
+detection of a 0.5 sigma shift on seeded AR(1) records. On fresh
+assignments of 3W, TEP, Turbine Upgrade and SKAB records where nothing
+was changed, the claim rate at a zero shift is 3.9% to 5.3% per bed,
+where the first-half against second-half split of the same 3W records
+claims 65.2%. Design guidance: 0.8 detection at a 0.25 sigma shift was
+reached by schedules of 212 and 414 one-day blocks on the turbine pairs
+(0.922), and 16 blocks of 15 min on a 240-minute 3W record reach 0.113.
+Report: `examples/studies/switchback/REPORT.md`. Use:
+`docs/SWITCHBACK.md`.
 
 Shipped: `segment --mode-out FILE` writes the segments as a MODE archive,
 one label (`S1`, `S2`, ...) per sample the window read, and `screen --mode
