@@ -69,6 +69,10 @@ ASSUMPTIONS = (
 
 _NS = 1_000_000_000
 
+# A covariate whose own B - A difference has a randomization p-value
+# below this moves with the setting.
+COVARIATE_ALPHA = 0.05
+
 
 def _contract() -> SamplingContract:
     return SamplingContract(
@@ -129,10 +133,12 @@ def power_readout(
     h_start, h_end = window
     span_ns = plan.k * plan.block_s * _NS
     used_end = cast(pd.Timestamp, h_start + pd.Timedelta(span_ns, unit="ns"))
+    # A refused readout states the history window that was passed; a
+    # readout that runs states the first K blocks of it that it read.
     base = {
         "tag": Path(history).stem,
         "start": h_start,
-        "end": used_end,
+        "end": h_end,
         "unit": None,
         "draws": POWER_DRAWS,
         "deltas": POWER_DELTAS,
@@ -156,13 +162,16 @@ def power_readout(
     except TSDiveError as e:
         return PowerReadout(**base, reason=type(e).__name__, detail=str(e))
     base["unit"] = unit_name(read)
+    base["end"] = used_end
     times, y = _samples(read)
     blocks = schedule_offsets(times, h_start, plan.block_s, plan.k)
     out = power_rates(y, blocks, plan.washout_s * _NS, plan.seed)
     if isinstance(out, str):
         kept = kept_mask(y, None, blocks, plan.washout_s * _NS)
         counts = np.bincount(blocks.block[kept], minlength=plan.k)
-        return PowerReadout(**base, reason=out, detail=_power_detail(out, counts))
+        return PowerReadout(
+            **{**base, "end": h_end}, reason=out, detail=_power_detail(out, counts)
+        )
     sigma, n_kept, rates = out
     return PowerReadout(
         **base,
@@ -232,12 +241,36 @@ class SwitchbackEstimate:
 
 
 @dataclass(frozen=True)
+class CovariateCheck:
+    """One covariate's own difference between settings A and B under the plan.
+
+    ``difference`` is the covariate analysed as the target would be, with
+    the same design and washout. A covariate the setting moves, such as a
+    controller output, carries part of the effect, and the adjusted
+    estimate can absorb it. ``moves`` is True when the randomization test
+    rejects a zero difference at p < 0.05; a refused test leaves it False.
+    """
+
+    tag: str
+    unit: str | None
+    difference: SwitchbackEstimate
+
+    @property
+    def moves(self) -> bool:
+        p = self.difference.p_value
+        return p is not None and p < COVARIATE_ALPHA
+
+
+@dataclass(frozen=True)
 class SwitchbackAnalysis:
     """The difference between settings A and B on one target, under a verified plan.
 
     ``target`` and ``covariates`` are the reads over the schedule.
     ``unused`` names the archives passed in that are neither. ``adjusted``
-    is ``None`` when no covariate was declared.
+    is ``None`` when no covariate was declared. ``covariate_checks`` holds
+    one ``CovariateCheck`` per
+    covariate, in the order they were named; the analysis does not refuse
+    on one that moves, it reports it.
     """
 
     plan: SwitchbackPlan
@@ -247,6 +280,12 @@ class SwitchbackAnalysis:
     direct: SwitchbackEstimate
     adjusted: SwitchbackEstimate | None
     assumptions: str = ASSUMPTIONS
+    covariate_checks: tuple[CovariateCheck, ...] = ()
+
+    @property
+    def moving_covariates(self) -> tuple[CovariateCheck, ...]:
+        """The covariates whose own B - A difference has p below 0.05."""
+        return tuple(check for check in self.covariate_checks if check.moves)
 
     @property
     def tag(self) -> str:
@@ -262,9 +301,13 @@ class SwitchbackAnalysis:
         return _good_share(self.target)
 
     @property
-    def censored(self) -> bool:
-        """True when a target sample sits at its engineering range limit."""
-        return self.target.physics.clipping.censored
+    def censored(self) -> bool | None:
+        """Whether a target sample sits at its engineering range limit.
+
+        ``None`` when the target declares no engineering range and no
+        digital range state flags a sample.
+        """
+        return self.target.physics.clipping.censored_verdict
 
     @property
     def frame(self) -> pd.DataFrame:
@@ -445,6 +488,17 @@ def analyze_archives(
         y_adj, x = _joined(times, y, c_reads)
         names = tuple(str(r.identity) for r in c_reads)
         adjusted = _estimate(y_adj, x, names, times, plan, design, tag)
+    checks = []
+    for read in c_reads:
+        c_times, c_values = _samples(read)
+        c_tag = str(read.identity)
+        checks.append(
+            CovariateCheck(
+                tag=c_tag,
+                unit=unit_name(read),
+                difference=_estimate(c_values, None, (), c_times, plan, design, c_tag),
+            )
+        )
     used = {target_path, *covariate_paths}
     return SwitchbackAnalysis(
         plan=plan,
@@ -453,6 +507,7 @@ def analyze_archives(
         unused=tuple(labels[p] for p in paths if p not in used),
         direct=direct,
         adjusted=adjusted,
+        covariate_checks=tuple(checks),
     )
 
 

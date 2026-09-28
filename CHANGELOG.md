@@ -3,6 +3,64 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
+## 0.5.0 - 2026-09-28
+
+### Added
+
+- `tsdive ingest --dayfirst` and `--timestamp-format`, and the `dayfirst`
+  and `timestamp_format` keywords of `ingest` and `ingest_wide`, state
+  the date order of an export.
+- `tsdive ingest <export> --init-meta META.json` and
+  `tsdive.init_tag_meta` write a metadata template for a single-tag
+  export.
+- `retrieval_mode` in tag metadata, `RECORDED` or `INTERPOLATED`, is
+  stated in the sampling contract of every read of the archive.
+- `Profile.to_dict()` returns the document `tsdive profile --json`
+  prints.
+- `switchback analyze` tests each covariate's own difference between the
+  settings and flags one the setting moves; `--json` lists the tests
+  under `covariate_checks`.
+- `compare` prints each refused pair or joint table under the headline,
+  and `--json` maps them to their reasons under `refused_tables`.
+
+### Changed
+
+- A refusal (a typed `TSDiveError`) exits with status 3 instead of 2.
+  Usage errors and invalid input still exit 2, and `tsdive run` keeps
+  0 and 2.
+- Under `--json`, a refusal also prints the object the MCP server
+  returns on stdout: `result_kind`, `error_type` and `cause`.
+- `switchback analyze` exits with status 3 when its difference in means
+  is refused.
+- A metadata key tsdive does not define, one end of the engineering
+  range without the other, or a span of 0 or less raises `SchemaError`
+  instead of being dropped.
+- A date that reads both day first and month first raises `SchemaError`
+  at ingest unless the order is stated.
+- Errors raised from Python name keywords such as `rate_s=` where the
+  CLI names flags such as `--rate-s`.
+- The profile, segment, screen, spc and switchback `--json` documents
+  carry `range_known` beside `censored`.
+
+### Fixed
+
+- Reports print `censored unknown`, and `--json` prints `censored: null`,
+  when no engineering range is declared and nothing is flagged, instead
+  of `censored no`.
+- A profile of an empty window prints `clipped null (no samples)` when
+  the range is declared, instead of `eng range unknown`.
+- A value-column string the tag's `quality_codes` names, such as PI's
+  `I/O Timeout`, is nulled at its declared severity instead of raising
+  `SchemaError`.
+- A file that is not a tsdive archive raises `SchemaError` naming
+  `tsdive ingest` instead of a pyarrow error.
+- `ScheduleMismatch` on an edited plan says to restore the plan file
+  with the recorded digest instead of planning the trial again.
+- A refused power readout prints the history window that was passed and
+  the span the schedule needs, instead of a span past the window.
+- The `switchback plan --window` and `--history-window` help states that
+  bounds with a UTC offset are converted.
+
 ## 0.4.0 - 2026-09-28
 
 ### Added

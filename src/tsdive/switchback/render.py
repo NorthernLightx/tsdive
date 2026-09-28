@@ -23,6 +23,7 @@ from tsdive.report import (
     more_line,
     rule,
     wrapped,
+    yes_no_unknown,
 )
 from tsdive.switchback.design import PERMUTATIONS, order_of_magnitude
 from tsdive.switchback.plan import POWER_TARGET, SETTING_A, SETTING_B, json_count
@@ -77,16 +78,17 @@ def _counts(plan: SwitchbackPlan) -> str:
 # ---------------------------------------------------------------- plan
 
 
-def _power_lines(power: PowerReadout) -> list[str]:
+def _power_lines(power: PowerReadout, plan: SwitchbackPlan) -> list[str]:
     header = rule(
         "Power",
         f"({power.draws} schedules laid over the history, shift added in B blocks)",
     )
-    head = [
-        label_line("history", f"{power.tag}{SEP}{fmt_span(power.start, power.end)}"),
-    ]
+    history = f"{power.tag}{SEP}{fmt_span(power.start, power.end)}"
     if power.reason is not None:
+        needs = fmt_duration((plan.schedule_end - plan.start).total_seconds())
+        head = [label_line("history", f"{history}{SEP}(the schedule needs {needs})")]
         return header + indent(head) + wrapped(f"refused   {power.reason}: {power.detail}")
+    head = [label_line("history", history)]
     sigma = power.sigma if power.sigma is not None else math.nan
     head.append(label_line("sigma", f"{_with_unit(fmt_num(sigma), power.unit)} (1.4826 MAD)"))
     width = max(len(f"{d:g}") for d in power.deltas) + 3
@@ -136,7 +138,7 @@ def plan_lines(plan: SwitchbackPlan, wrote: str | None = None) -> list[str]:
     )
     lines.extend(more_line(plan.k - BLOCKS_SHOWN))
     if plan.power is not None:
-        lines.extend(_power_lines(plan.power))
+        lines.extend(_power_lines(plan.power, plan))
     return lines
 
 
@@ -224,7 +226,7 @@ def analysis_lines(a: SwitchbackAnalysis) -> list[str]:
         label_line(
             "quality",
             f"GOOD {'n/a' if good is None else f'{good:.3f}'}{SEP}"
-            f"censored {'yes' if a.censored else 'no'}",
+            f"censored {yes_no_unknown(a.censored)}",
         ),
     ]
     if a.unused:
@@ -236,6 +238,14 @@ def analysis_lines(a: SwitchbackAnalysis) -> list[str]:
         n_cov = len(a.adjusted.covariates)
         note = f"(OLS on {n_cov} covariate{'' if n_cov == 1 else 's'})"
         lines.extend(_estimate_lines("Adjusted", note, a.adjusted, a))
+        for check in a.moving_covariates:
+            lines.extend(
+                wrapped(
+                    f"covariate {check.tag} moves with the setting "
+                    f"(p {_p(check.difference.p_value or 0.0)}): the adjusted estimate "
+                    "can absorb the difference; report the unadjusted one"
+                )
+            )
     lines.extend(rule("Assumptions"))
     lines.extend(wrapped(a.assumptions))
     return lines
@@ -273,6 +283,7 @@ def analysis_json(a: SwitchbackAnalysis) -> dict[str, object]:
             "quality": {
                 "good_fraction": a.good_share,
                 "censored": a.censored,
+                "range_known": a.target.physics.clipping.range_known,
                 "clipped_fraction": a.target.physics.clipping.fraction,
             },
             "plan": {
@@ -295,6 +306,17 @@ def analysis_json(a: SwitchbackAnalysis) -> dict[str, object]:
             "settings": [b.setting for b in plan.blocks],
             "direct": _estimate_json(a.direct, a.unit),
             "adjusted": None if a.adjusted is None else _estimate_json(a.adjusted, a.unit),
+            "covariate_checks": [
+                {
+                    "tag": check.tag,
+                    "estimate": check.difference.estimate,
+                    "unit": check.unit,
+                    "p_value": check.difference.p_value,
+                    "moves_with_setting": check.moves,
+                    "reason": check.difference.reason,
+                }
+                for check in a.covariate_checks
+            ],
             "unused": list(a.unused),
             "assumptions": a.assumptions,
         }

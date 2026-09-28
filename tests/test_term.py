@@ -87,7 +87,7 @@ def test_a_refusal_prefix_is_red_on_a_terminal(capsys, monkeypatch):
     def refuse(args):
         raise InsufficientQuality("no GOOD samples")
 
-    assert _report_and_exit(refuse, _args()) == 2
+    assert _report_and_exit(refuse, _args()) == 3
     captured = capsys.readouterr()
     assert captured.err == f"{ESC}[31m[InsufficientQuality]{ESC}[0m no GOOD samples\n"
     assert captured.out == ""

@@ -65,3 +65,23 @@ def to_jsonable(obj: Any) -> Any:
     if isinstance(obj, Sequence):
         return [to_jsonable(v) for v in obj]
     return str(obj)
+
+
+def refusal_json(error: BaseException) -> dict[str, str]:
+    """The object a typed refusal becomes on a JSON surface.
+
+    ``tsdive <command> --json`` prints it on stdout, and the MCP server
+    returns it as a tool result: ``result_kind`` is ``"refusal"``,
+    ``error_type`` the class name and ``cause`` the message.
+
+    Examples:
+        >>> from tsdive.errors import InsufficientQuality
+        >>> from tsdive.ui.jsonout import refusal_json
+        >>> refusal_json(InsufficientQuality("censored"))
+        {'result_kind': 'refusal', 'error_type': 'InsufficientQuality', 'cause': 'censored'}
+    """
+    return {
+        "result_kind": "refusal",
+        "error_type": type(error).__name__,
+        "cause": str(error),
+    }

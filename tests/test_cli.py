@@ -163,9 +163,82 @@ def test_profile_json_carries_the_numbers_the_report_states(tmp_path, capsys):
     assert payload["coverage"]["gaps"][0]["class"] == "unknown"
     assert payload["quality"]["counts"] == {"GOOD": 119, "UNCERTAIN": 0, "BAD": 1}
     assert payload["range"]["censored"] is True
+    assert payload["range"]["range_known"] is True
     assert payload["values"]["n_good"] == 119
     assert payload["values"]["median"] == 52.0
     assert payload["flatline"] is None
+
+
+def test_profile_to_dict_equals_the_cli_json(tmp_path, capsys):
+    path, _ = _demo_archive(tmp_path)
+    argv = [str(path), "--window", WINDOW, "--flatline", "--tz", "Europe/London", "--json"]
+    assert cmd_profile(argv) == 0
+    printed = json.loads(capsys.readouterr().out)
+    result = tsdive.profile(path, WINDOW, flatline=True, tz="Europe/London")
+    assert result.to_dict() == printed
+    assert printed["flatline"] is not None
+
+
+def _pegged(tmp_path, eng_range):
+    """A flow tag sitting at 200 for a quarter of an hour, with or without its range."""
+    base = pd.Timestamp("2024-03-01 00:00:00+00:00")
+    stamps = [base + pd.Timedelta(60 * i, unit="s") for i in range(60)]
+    values = [120.0 + (i % 5) for i in range(45)] + [200.0] * 15
+    df = pd.DataFrame({"timestamp": stamps, "value": values, "quality": ["GOOD"] * 60})
+    meta = make_meta(eng_range=eng_range, sample_rate_s=60.0)
+    name = "ranged" if eng_range else "bare"
+    return write_archive(tmp_path / name / "FIC101.PV.parquet", df, meta)
+
+
+def test_a_pegged_tag_without_a_range_reads_censored_unknown(tmp_path, capsys):
+    bare = _pegged(tmp_path, None)
+    assert cmd_profile([str(bare)]) == 0
+    out = capsys.readouterr().out
+    assert "GOOD 60/60   censored unknown   gaps 0" in out
+    assert "  clipped null (eng range unknown)   censored unknown" in out
+    assert cmd_profile([str(bare), "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)["range"]
+    assert (doc["censored"], doc["range_known"], doc["clipped_fraction"]) == (None, False, None)
+
+    ranged = _pegged(tmp_path, EngRange(zero=0.0, span=200.0))
+    assert cmd_profile([str(ranged)]) == 0
+    assert "GOOD 60/60   censored yes   gaps 0" in capsys.readouterr().out
+    assert cmd_profile([str(ranged), "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)["range"]
+    assert (doc["censored"], doc["range_known"]) == (True, True)
+
+
+def test_a_csv_passed_as_an_archive_names_the_ingest_step(tmp_path, capsys):
+    export = tmp_path / "export.csv"
+    export.write_text("timestamp,value,quality\n2024-03-01T00:00:00Z,1.0,GOOD\n",
+                      encoding="utf-8")
+    assert cmd_profile([str(export)]) != 0
+    err = capsys.readouterr().err
+    assert err.startswith("[SchemaError] export.csv is not a tsdive archive (a parquet file "
+                          "written by tsdive ingest); build one with tsdive ingest export.csv "
+                          "--out ARCHIVE --meta META.json")
+    assert "magic bytes" not in err
+    with pytest.raises(tsdive.SchemaError, match=r"export\.csv is not a tsdive archive"):
+        tsdive.profile(export, "2024-03-01")
+    with pytest.raises(tsdive.SchemaError, match=r"export\.csv is not a tsdive archive"):
+        tsdive.segment(export)
+
+
+def test_a_parquet_without_tag_metadata_names_the_ingest_step(tmp_path, capsys):
+    plain = tmp_path / "plain.parquet"
+    pd.DataFrame({"timestamp": [pd.Timestamp("2024-03-01", tz="UTC")], "value": [1.0],
+                  "quality": ["GOOD"]}).to_parquet(plain)
+    assert cmd_profile([str(plain)]) != 0
+    assert ("plain.parquet: no tsdive.meta metadata, so it is not a tsdive archive; build one "
+            "with tsdive ingest plain.parquet") in capsys.readouterr().err
+
+
+def test_an_empty_window_keeps_the_declared_range(tmp_path, capsys):
+    ranged = _pegged(tmp_path, EngRange(zero=0.0, span=200.0))
+    assert cmd_profile([str(ranged), "--window", "2024-03-02"]) == 0
+    out = capsys.readouterr().out
+    assert "  clipped null (no samples)   censored no" in out
+    assert "eng range unknown" not in out
 
 
 def test_profile_json_reports_the_flatline_verdict(tmp_path, capsys):
@@ -431,7 +504,7 @@ def test_segment_finds_the_step_without_a_mode_tag(archive_factory, capsys):
     rc = cmd_segment([str(path)])
     assert rc == 0
     assert capsys.readouterr().out.splitlines() == [
-        "plant1:FIC101.PV  2 segments   1 breakpoint   censored no",
+        "plant1:FIC101.PV  2 segments   1 breakpoint   censored unknown",
         "",
         "window    2024-03-01 00:00:00Z -> 01:59:00Z   usable 120",
         "method    PELT L2 on MAD-scaled values   penalty 14.36 (3*log n)   "
@@ -448,7 +521,7 @@ def test_segment_states_a_penalty_the_caller_chose(archive_factory, capsys):
     rc = cmd_segment([str(path), "--penalty", "1000"])
     out = capsys.readouterr().out.splitlines()
     assert rc == 0
-    assert out[0] == "plant1:FIC101.PV  1 segment   0 breakpoints   censored no"
+    assert out[0] == "plant1:FIC101.PV  1 segment   0 breakpoints   censored unknown"
     assert out[3] == (
         "method    PELT L2 on MAD-scaled values   penalty 1000   min-size 10"
     )
@@ -495,7 +568,7 @@ def test_screen_flags_a_spike_against_a_mad_baseline(archive_factory, capsys):
     assert capsys.readouterr().out.splitlines() == [
         "plant1:FIC101.PV  flagged 3 of 61 (4.9%)",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 02:00:00Z",
         "method    MAD   center 52.00   scale 1.483   k 3.0   "
         "limits [47.55, 56.45]",
@@ -525,7 +598,7 @@ def test_screen_keys_baselines_by_regime_with_a_mode_archive(archive_factory, ca
     assert capsys.readouterr().out.splitlines() == [
         "plant1:FIC101.PV  flagged 2 of 60 (3.3%)",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 01:59:00Z",
         f"mode      {modes}",
         "alignment  baseline 60/60   window 60/60",
@@ -557,7 +630,7 @@ def test_screen_counts_every_sample_once(archive_factory, capsys, baseline):
     rc = cmd_screen([str(path), "--baseline", baseline, "--window", MONITOR_SPAN])
     out = capsys.readouterr().out.splitlines()
     assert rc == 0
-    assert out[2].endswith("GOOD 60   censored no")
+    assert out[2].endswith("GOOD 60   censored unknown")
     # 60 + 61 = every sample, once
     assert out[0] == "plant1:FIC101.PV  flagged 0 of 61 (0.0%)"
 
@@ -568,9 +641,35 @@ def test_screen_refuses_a_censored_baseline(archive_factory, capsys):
     )
     rc = cmd_screen([str(path), "--baseline", BASELINE_SPAN, "--window", MONITOR_SPAN])
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.startswith("[InsufficientQuality]")
     assert "may never serve as a baseline" in err
+
+
+def test_a_refusal_exits_3_and_prints_the_mcp_refusal_under_json(archive_factory, capsys):
+    """SCOPE claim: a refusal exits 3; a usage error exits 2."""
+    from tsdive import mcp_server
+
+    path = _screen_archive(
+        archive_factory, [(10, 100.0)], eng_range=EngRange(zero=0.0, span=100.0)
+    )
+    argv = [str(path), "--baseline", BASELINE_SPAN, "--window", MONITOR_SPAN]
+    assert cmd_screen(argv) == 3
+    assert capsys.readouterr().out == ""
+    assert cmd_screen([*argv, "--json"]) == 3
+    captured = capsys.readouterr()
+    assert captured.err.startswith("[InsufficientQuality]")
+    printed = json.loads(captured.out)
+    assert printed == mcp_server.screen(str(path), BASELINE_SPAN, MONITOR_SPAN)
+    assert printed["result_kind"] == "refusal"
+    assert printed["error_type"] == "InsufficientQuality"
+    assert "may never serve as a baseline" in printed["cause"]
+
+    overlapping = [str(path), "--baseline", BASELINE_SPAN, "--window", BASELINE_SPAN, "--json"]
+    assert cmd_screen(overlapping) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err.startswith("error:")
+    assert main(["screeen"]) == 2
 
 
 @pytest.mark.parametrize("value", ["-1", "0"])
@@ -624,7 +723,7 @@ def test_screen_refuses_a_baseline_with_too_few_good_samples(archive_factory, ca
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.strip() == (
         "[InsufficientQuality] only 11 GOOD history samples; 30 required for a baseline"
     )
@@ -655,7 +754,7 @@ def test_screen_refuses_when_most_rows_have_no_mode_sample(archive_factory, caps
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.strip() == (
         "[InsufficientQuality] 60 of 60 baseline rows carry no mode sample at their "
         "own timestamp; more than half the window would be screened blind"
@@ -685,7 +784,7 @@ def test_screen_refuses_a_mode_archive_with_duplicate_timestamps(
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.startswith("[SchemaError]")
     assert "duplicate timestamps in the mode archive" in err
 
@@ -699,7 +798,7 @@ def test_spc_reports_each_rule_separately(archive_factory, capsys):
     assert capsys.readouterr().out.splitlines() == [
         "plant1:FIC101.PV  3 rule hits in 61 samples",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 02:00:00Z",
         "limits    center 52.00   sigma 1.483   lcl 47.55   ucl 56.45",
         "basis     individuals 3-sigma",
@@ -1028,6 +1127,21 @@ def test_mspc_refuses_archives_declaring_different_rates(archive_factory, capsys
     )
 
 
+def test_python_mspc_names_the_rate_keyword(archive_factory):
+    flow, temp = _mspc_archives(archive_factory, second_rate=None)
+    with pytest.raises(ValueError, match=r"pass rate_s= to state the grid, or declare "
+                       r"sample_rate_s in each tag's metadata$"):
+        tsdive.mspc([flow, temp], MSPC_BASELINE, MSPC_WINDOW)
+
+
+def test_python_names_its_ingest_call_for_a_file_that_is_no_archive(tmp_path):
+    export = tmp_path / "export.csv"
+    export.write_text("timestamp,value,quality\n", encoding="utf-8")
+    with pytest.raises(tsdive.SchemaError, match=r"build one with "
+                       r"tsdive\.ingest\('export\.csv', out=\.\.\., meta=\.\.\.\)$"):
+        tsdive.profile(export)
+
+
 def test_mspc_refuses_an_archive_that_declares_no_rate(archive_factory, capsys):
     flow, temp = _mspc_archives(archive_factory, second_rate=None)
     rc = cmd_mspc(
@@ -1037,7 +1151,7 @@ def test_mspc_refuses_an_archive_that_declares_no_rate(archive_factory, capsys):
     assert rc == 2
     assert err.strip() == (
         "error: no sample_rate_s declared by plant1:TIC101.PV; pass --rate-s to "
-        "state the grid"
+        "state the grid, or declare sample_rate_s in each tag's metadata"
     )
 
 
@@ -1045,7 +1159,7 @@ def test_mspc_refuses_a_single_archive(archive_factory, capsys):
     flow, _ = _mspc_archives(archive_factory)
     rc = cmd_mspc([str(flow), "--baseline", MSPC_BASELINE, "--window", MSPC_WINDOW])
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert err.strip() == (
         "[MspcAlignmentError] need at least two windows to align"
     )
@@ -1301,7 +1415,10 @@ def test_compare_prints_a_refused_grid_as_one_reason_line(archive_factory, capsy
     rc, captured = _compare_out(capsys, [shared, other, slower])
     out = captured.out.splitlines()
     assert rc == 0
-    assert out[0] == "plant1  3 tags   refused 0   pairs refused"
+    assert out[0] == "plant1  3 tags   refused 0   pairs refused   joint refused"
+    assert out[1].startswith("pairs     refused: archives declare different sample rates")
+    assert "pass --rate-s to state the grid" in " ".join(out[1:4])
+    assert "joint     refused: same reason as pairs" in out
     assert "Pairs that decoupled" in out
     assert out[out.index("Pairs that decoupled") + 1].startswith(
         "  archives declare different sample rates"
@@ -1357,7 +1474,7 @@ def test_run_profile_returns_the_report_lines(tmp_path):
 def test_run_segment_returns_the_segment_table(archive_factory):
     path = _stepped_archive(archive_factory)
     assert run_segment(_parser_segment().parse_args([str(path)])) == [
-        "plant1:FIC101.PV  2 segments   1 breakpoint   censored no",
+        "plant1:FIC101.PV  2 segments   1 breakpoint   censored unknown",
         "",
         "window    2024-03-01 00:00:00Z -> 01:59:00Z   usable 120",
         "method    PELT L2 on MAD-scaled values   penalty 14.36 (3*log n)   "
@@ -1377,7 +1494,7 @@ def test_run_screen_returns_the_screen_lines(archive_factory):
     assert run_screen(args) == [
         "plant1:FIC101.PV  flagged 3 of 61 (4.9%)",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 02:00:00Z",
         "method    MAD   center 52.00   scale 1.483   k 3.0   "
         "limits [47.55, 56.45]",
@@ -1400,7 +1517,7 @@ def test_run_spc_returns_the_chart_lines(archive_factory):
     assert run_spc(args) == [
         "plant1:FIC101.PV  3 rule hits in 61 samples",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 02:00:00Z",
         "limits    center 52.00   sigma 1.483   lcl 47.55   ucl 56.45",
         "basis     individuals 3-sigma",

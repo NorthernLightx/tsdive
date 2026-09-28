@@ -88,7 +88,8 @@ Every tool returns one JSON object carrying `result_kind`.
 ```
 
 `isError` stays false on a refusal, so the call succeeds and the client
-reads the reason from `error_type` and `cause`. `error_type` names a
+reads the reason from `error_type` and `cause`. `tsdive <command> --json`
+prints the same object on stdout for a refusal and exits with status 3. `error_type` names a
 class from `tsdive.errors`: `SchemaError`, `InsufficientQuality`,
 `IncomparableSamplingError`, `NonMonotonicIndex`,
 `UnresolvedUnitError`, `IncomparableUnitsError`, `RegimeTooSparse`,

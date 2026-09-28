@@ -20,15 +20,18 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
+from tsdive._naming import argname, cli_active, option
 from tsdive.detectors.flatline import FlatlineVerdict, assess_flatline
 from tsdive.errors import SchemaError
 from tsdive.features.window_features import WindowStats, compute_stats
-from tsdive.report import render_window_report
+from tsdive.report import profile_json, render_window_report
 from tsdive.store.identity import TagIdentity, TagMeta
 from tsdive.store.quality import (
     Severity,
     annotate_severity,
+    declared_value_state,
     good_mask,
     null_digital_state_values,
 )
@@ -39,17 +42,20 @@ from tsdive.store.sampling_contract import (
     SamplingContract,
 )
 from tsdive.store.tagstore import (
+    COMMENT_KEY,
     DataPhysics,
     SingleFileStore,
     Window,
     archive_extent,
     meta_from_dict,
     meta_from_parquet,
+    read_archive_table,
     safe_filename,
     write_tag,
 )
 from tsdive.switchback.archive import SwitchbackAnalysis, analyze_archives, with_power
 from tsdive.switchback.plan import SwitchbackPlan, make_plan
+from tsdive.ui.jsonout import to_jsonable
 
 _WINDOW_FORMS = (
     "window must be <START>/<END>, <START>/<DURATION>, <DURATION>/<END> "
@@ -62,6 +68,10 @@ _DURATION = re.compile(
     r"(?:(?P<minutes>\d+(?:\.\d+)?)M)?"
     r"(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?\Z"
 )
+
+
+def _overwrite_option() -> str:
+    return "--overwrite" if cli_active() else "overwrite=True"
 
 
 def _window_bound(name: str, text: str) -> pd.Timestamp:
@@ -151,7 +161,7 @@ def reference_history(
     Thresholds come from the same archive, strictly before the assessed
     window.
     """
-    table = cast(pd.DataFrame, pd.read_parquet(path))
+    table = cast(pd.DataFrame, read_archive_table(path).to_pandas())
     # The tag's own quality_codes decide what GOOD means here, exactly as
     # they do on the assessed window. Without them a source that codes
     # quality in its own vocabulary has zero GOOD reference samples, and
@@ -172,7 +182,13 @@ def reference_history(
         return [], []
     boundaries = pd.DatetimeIndex([*edges, edges[-1] + span])
 
-    good = table[good_mask(table, codes) & table["value"].notna()].reset_index(drop=True)
+    # A value-column state the tag declares in quality_codes (PI's "I/O
+    # Timeout") is no reading, exactly as on the assessed window.
+    stated = pd.Series(False, index=table.index)
+    if codes and not pd.api.types.is_numeric_dtype(table["value"]):
+        stated = table["value"].map(lambda v: declared_value_state(v, codes) is not None)
+    usable = good_mask(table, codes) & table["value"].notna() & ~stated.astype(bool)
+    good = table[usable].reset_index(drop=True)
     # Which reference window each GOOD sample belongs to. Rows at or after
     # the last boundary sit between the references and the assessed
     # window; searchsorted puts them out of range and they are dropped.
@@ -233,6 +249,16 @@ def read_meta_json(path: str | Path) -> TagMeta:
     block, so metadata written for ingest is readable back off the
     archive without a second format to keep in step.
 
+    Every key is checked, at the top level and under ``identity``. A key
+    tsdive does not read raises ``SchemaError`` naming the closest known
+    key, so a misspelt ``"unit"`` cannot leave the archive without its
+    unit.
+
+    Raises:
+        SchemaError: invalid JSON, an unknown or missing key, a value of
+            the wrong type, one end of the engineering range without the
+            other, or a ``quality_codes`` entry that names no severity.
+
     Examples:
         >>> import json
         >>> import tsdive
@@ -243,58 +269,172 @@ def read_meta_json(path: str | Path) -> TagMeta:
         >>> read = tsdive.read_meta_json("FIC101.PV.json")
         >>> str(read.identity), read.unit_raw, read.sample_rate_s
         ('plant1:FIC101.PV', 'm3/h', 3.0)
+
+        A misspelt key raises instead of being dropped:
+
+        >>> meta["unit"] = meta.pop("unit_raw")
+        >>> with open("FIC101.PV.json", "w", encoding="utf-8") as f:
+        ...     json.dump(meta, f)
+        >>> tsdive.read_meta_json("FIC101.PV.json")
+        Traceback (most recent call last):
+        ...
+        tsdive.errors.SchemaError: FIC101.PV.json: unknown key 'unit'; did you mean 'unit_raw'?
     """
     text = Path(path).read_text(encoding="utf-8")
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as e:
         raise SchemaError(f"{Path(path).name}: not valid JSON ({e})") from e
-    if not isinstance(payload, dict):
-        raise SchemaError(f"{Path(path).name}: expected a JSON object of tag metadata")
-    severities = {s.value for s in Severity}
-    for code, declared in (payload.get("quality_codes") or {}).items():
-        if not isinstance(declared, str) or declared.strip().upper() not in severities:
-            raise SchemaError(
-                f"{Path(path).name}: quality_codes maps {code!r} to {declared!r}; "
-                f"expected one of {', '.join(sorted(severities))}"
-            )
-    return meta_from_dict(payload)
+    return meta_from_dict(payload, label=Path(path).name)
 
 
 def _read_source(path: Path) -> pd.DataFrame:
     if path.suffix.lower() == ".csv":
         return cast(pd.DataFrame, pd.read_csv(path))
     if path.suffix.lower() in {".parquet", ".pq"}:
-        return cast(pd.DataFrame, pd.read_parquet(path))
+        try:
+            return cast(pd.DataFrame, pd.read_parquet(path))
+        except pa.ArrowInvalid as e:
+            raise SchemaError(f"{path.name}: not a readable parquet file ({e})") from e
     raise SchemaError(
         f"{path.name}: unsupported input {path.suffix!r}; ingest reads .csv and .parquet"
     )
 
 
-def _parse_timestamps(raw: pd.Series, column: str) -> list[pd.Timestamp]:
+# A numeric date whose first two fields are day and month in some order:
+# 01/02/2026, 1.2.26, 13-02-2026. Year-first forms such as ISO 8601 do
+# not match, so they never reach the day/month decision.
+_DAY_MONTH = re.compile(r"\s*(\d{1,2})([/.\-])(\d{1,2})\2(\d{4}|\d{2})(?!\d)(.*)\Z", re.DOTALL)
+
+
+def _date_order(raw: pd.Series, column: str, *, dayfirst: bool) -> bool:
+    """True when the column's numeric dates read day first, False when month first.
+
+    A row whose first field exceeds 12 reads only day first, one whose
+    second field exceeds 12 only month first, and one with both fields at
+    12 or less reads both ways. Without ``dayfirst`` a row that reads both
+    ways raises ``SchemaError``, and so does a column holding rows of both
+    one-way kinds: one parse must never read two rows in two orders.
+    """
+    ambiguous: str | None = None
+    day_only: str | None = None
+    month_only: str | None = None
+    for v in raw:
+        m = _DAY_MONTH.match(v) if isinstance(v, str) else None
+        if m is None:
+            continue
+        first, second = int(m.group(1)), int(m.group(3))
+        if dayfirst and second > 12:
+            raise SchemaError(
+                f"{column}: {v!r} has no month {second} when read day first; "
+                f"drop {argname('dayfirst', '--dayfirst')}, or pass "
+                f"{argname('timestamp_format', '--timestamp-format')} with the order the "
+                "export uses"
+            )
+        if first <= 12 and second <= 12:
+            ambiguous = ambiguous or v
+        elif first > 12 and second <= 12:
+            day_only = day_only or v
+        elif second > 12 and first <= 12:
+            month_only = month_only or v
+    if dayfirst:
+        return True
+    if ambiguous is not None:
+        m = cast(re.Match[str], _DAY_MONTH.match(ambiguous))
+        first, second, year = m.group(1), m.group(3), m.group(4)
+        raise SchemaError(
+            f"{column}: {ambiguous!r} reads as day {first} of month {second} or as "
+            f"month {first}, day {second} of {year}; pass "
+            f"{option('dayfirst', '--dayfirst', None if cli_active() else 'True')} to read "
+            f"day first, or {argname('timestamp_format', '--timestamp-format')} with a "
+            "strptime format such as '%d/%m/%Y %H:%M:%S'"
+        )
+    if day_only is not None and month_only is not None:
+        raise SchemaError(
+            f"{column}: {day_only!r} reads only day first and {month_only!r} only "
+            "month first; export the column in one date order, or pass "
+            f"{argname('timestamp_format', '--timestamp-format')} to state it"
+        )
+    return day_only is not None
+
+
+def _month_first(value: object, *, dayfirst: bool) -> object:
+    """``value`` with a numeric day/month date rewritten month first, slash-separated.
+
+    pandas reads such a date month first, and a ``dayfirst`` hint also
+    swaps ISO 8601 dates (2024-03-01 becomes 3 January), so the order is
+    fixed here and pandas never sees the hint.
+    """
+    m = _DAY_MONTH.match(value) if isinstance(value, str) else None
+    if m is None:
+        return value
+    first, _, second, year, rest = m.groups()
+    day, month = (first, second) if dayfirst else (second, first)
+    return f"{month}/{day}/{year}{rest}"
+
+
+def _parse_timestamps(
+    raw: pd.Series,
+    column: str,
+    *,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
+) -> list[pd.Timestamp]:
     """Parse each element to a Timestamp, refusing the first unparseable one.
 
     Element-wise on purpose. ``pd.to_datetime`` over a whole column whose
     rows carry different UTC offsets returns object dtype (and warns that
     a future pandas will raise), which makes every ``.dt`` accessor
     downstream fail with an AttributeError instead of a typed refusal.
+
+    With ``timestamp_format`` every element must match that strptime
+    format. Without it, numeric day/month dates are read in the one order
+    ``_date_order`` finds, or raise ``SchemaError``.
     """
+    if timestamp_format is not None and dayfirst:
+        raise ValueError(
+            f"pass {argname('timestamp_format', '--timestamp-format')} or "
+            f"{argname('dayfirst', '--dayfirst')}, not both"
+        )
     stamps: list[pd.Timestamp] = []
+    if timestamp_format is not None:
+        for v in raw:
+            try:
+                ts = cast(pd.Timestamp, pd.to_datetime(v, format=timestamp_format))
+            except (ValueError, TypeError):
+                ts = pd.NaT
+            if ts is pd.NaT or pd.isna(ts):
+                raise SchemaError(
+                    f"{column}: {v!r} does not match "
+                    f"{argname('timestamp_format', '--timestamp-format')} {timestamp_format!r}"
+                )
+            stamps.append(ts)
+        return stamps
+    order = _date_order(raw, column, dayfirst=dayfirst)
     for v in raw:
-        ts = cast(pd.Timestamp, pd.to_datetime(v, errors="coerce"))
+        ts = cast(
+            pd.Timestamp, pd.to_datetime(_month_first(v, dayfirst=order), errors="coerce")
+        )
         if ts is pd.NaT or pd.isna(ts):
             raise SchemaError(f"{column}: {v!r} is not a timestamp tsdive can parse")
         stamps.append(ts)
     return stamps
 
 
-def _to_utc(raw: pd.Series, tz: str | None, column: str) -> pd.Series:
+def _to_utc(
+    raw: pd.Series,
+    tz: str | None,
+    column: str,
+    *,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
+) -> pd.Series:
     """Parse a source timestamp column into UTC, or raise ``SchemaError``.
 
     Naive timestamps carry no offset, so tsdive cannot know what
     instant they name. With ``tz`` the caller states the source's zone and
     the column is localised then converted; without it, a naive column
-    raises ``SchemaError`` naming the column and the ``--tz`` flag.
+    raises ``SchemaError`` naming the column and ``tz`` (``--tz`` in the CLI).
 
     Rows with different UTC offsets all name real instants and are
     converted individually. A column that mixes naive and offset-bearing
@@ -302,7 +442,9 @@ def _to_utc(raw: pd.Series, tz: str | None, column: str) -> pd.Series:
     rows and not others, and the export is telling two stories about its
     own clock.
     """
-    stamps = _parse_timestamps(raw, column)
+    stamps = _parse_timestamps(
+        raw, column, timestamp_format=timestamp_format, dayfirst=dayfirst
+    )
     aware = [ts.tz is not None for ts in stamps]
     if any(aware) and not all(aware):
         raise SchemaError(
@@ -316,8 +458,8 @@ def _to_utc(raw: pd.Series, tz: str | None, column: str) -> pd.Series:
         )
     if tz is None:
         raise SchemaError(
-            f"{column} is naive (no UTC offset); pass --tz <IANA zone> to state what "
-            "zone the source is in - tsdive will not assume UTC"
+            f"{column} is naive (no UTC offset); pass {option('tz', '--tz', '<IANA zone>')} "
+            "to state what zone the source is in - tsdive will not assume UTC"
         )
     validate_tz_names((tz,))
     local = pd.Series(pd.DatetimeIndex(stamps), index=raw.index)
@@ -348,21 +490,24 @@ def _resolve_quality(
     if quality_col is not None and quality_col in frame.columns:
         if assume_quality is not None:
             raise SchemaError(
-                f"{label}: --assume-quality was given but {quality_col!r} exists; "
-                "refusing to overwrite the source's own quality codes"
+                f"{label}: {argname('assume_quality', '--assume-quality')} was given but "
+                f"{quality_col!r} exists; refusing to overwrite the source's own quality "
+                "codes"
             )
         return frame[quality_col], False
     if assume_quality is None:
         raise SchemaError(
             f"{label}: no quality column {quality_col!r}. A value without a "
             "quality code is not a measurement; name the right column with "
-            "--quality-col, or state --assume-quality GOOD|UNCERTAIN|BAD, which "
-            "is recorded on the archive and reported in every profile"
+            f"{argname('quality_col', '--quality-col')}, or state "
+            f"{option('assume_quality', '--assume-quality', 'GOOD|UNCERTAIN|BAD')}, "
+            "which is recorded on the archive and reported in every profile"
         )
     declared = assume_quality.strip().upper()
     if declared not in {s.value for s in Severity}:
         raise SchemaError(
-            f"--assume-quality {assume_quality!r} is not a severity; "
+            f"{argname('assume_quality', '--assume-quality')} {assume_quality!r} is not "
+            "a severity; "
             f"expected one of {', '.join(s.value for s in Severity)}"
         )
     return pd.Series([declared] * len(frame), index=frame.index), True
@@ -387,6 +532,7 @@ def _prepare_archive(
         annotate_severity(out_frame, stamped.quality_codes),
         role=stamped.role,
         tag=stamped.identity,
+        codes=stamped.quality_codes,
     )
     return out_frame, stamped
 
@@ -402,6 +548,8 @@ def ingest(
     tz: str | None = None,
     assume_quality: str | None = None,
     overwrite: bool = False,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
 ) -> Path:
     """Turn a CSV or parquet export into a tsdive archive.
 
@@ -414,9 +562,20 @@ def ingest(
     is the explicit override, and it is recorded on the archive
     (``quality_assumed``) and printed by every profile of it.
 
+    Timestamps are parsed row by row, so rows with different UTC offsets
+    each keep their own. A numeric date such as ``01/02/2026`` reads as 1
+    February day first and 2 January month first; a column holding one
+    raises ``SchemaError`` unless ``dayfirst`` or ``timestamp_format`` (a
+    strptime format every row must match) states the order. A column
+    whose dates read only one way, such as ``3/14/2024 1:05 PM``, parses
+    without either.
+
     Raises:
         SchemaError: unreadable input, missing column, naive timestamps
-            without ``tz``, or an unusable ``assume_quality`` value.
+            without ``tz``, a date that reads day first and month first
+            with no order stated, a row that does not match
+            ``timestamp_format``, or an unusable ``assume_quality`` value.
+        ValueError: both ``timestamp_format`` and ``dayfirst``.
         FileExistsError: ``out`` exists and ``overwrite`` is False.
 
     Examples:
@@ -430,6 +589,20 @@ def ingest(
         >>> out = tsdive.ingest("fic101.csv", out="archive/plant1/FIC101.PV.parquet", meta=meta)
         >>> out.as_posix(), len(pd.read_parquet(out))
         ('archive/plant1/FIC101.PV.parquet', 562)
+
+        An export whose dates read both ways states its order:
+
+        >>> pd.DataFrame({"timestamp": ["01/02/2026 08:00:00", "13/02/2026 08:00:00"],
+        ...               "value": [61.0, 62.0], "quality": ["GOOD", "GOOD"]}
+        ...              ).to_csv("eu.csv", index=False)
+        >>> tsdive.ingest("eu.csv", out="eu.parquet", meta=meta, tz="Europe/Paris")
+        Traceback (most recent call last):
+        ...
+        tsdive.errors.SchemaError: timestamp: '01/02/2026 08:00:00' reads as day 01 of month 02 ...
+        >>> out = tsdive.ingest("eu.csv", out="eu.parquet", meta=meta, tz="Europe/Paris",
+        ...                     dayfirst=True)
+        >>> list(pd.read_parquet(out)["timestamp"].dt.strftime("%Y-%m-%d %H:%M"))
+        ['2026-02-01 07:00', '2026-02-13 07:00']
     """
     src = Path(source)
     frame = _read_source(src)
@@ -443,7 +616,13 @@ def ingest(
         frame, label=src.name, quality_col=quality_col, assume_quality=assume_quality
     )
     out_frame, stamped = _prepare_archive(
-        timestamps=_to_utc(frame[timestamp_col], tz, timestamp_col),
+        timestamps=_to_utc(
+            frame[timestamp_col],
+            tz,
+            timestamp_col,
+            timestamp_format=timestamp_format,
+            dayfirst=dayfirst,
+        ),
         values=frame[value_col],
         quality=quality,
         assumed=assumed,
@@ -472,7 +651,8 @@ def _wide_columns(
         for tag in chosen:
             if tag not in columns:
                 raise SchemaError(
-                    f"{label}: no column {tag!r} named in --tags; columns are {listed}"
+                    f"{label}: no column {tag!r} named in {argname('tags', '--tags')}; "
+                    f"columns are {listed}"
                 )
     else:
         quality_cols = {f"{c}{quality_suffix}" for c in columns} if quality_suffix else set()
@@ -528,6 +708,8 @@ def ingest_wide(
     tz: str | None = None,
     assume_quality: str | None = None,
     overwrite: bool = False,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
 ) -> list[Path]:
     """Turn a wide export, one column per tag, into one archive per tag.
 
@@ -537,13 +719,17 @@ def ingest_wide(
     Metadata for a tag comes from ``meta_dir / f"{safe_filename(tag)}.json"``
     and its archive goes to ``out_dir / f"{safe_filename(point_id)}.parquet"``.
     Every check runs before the first archive is written, so a refusal
-    leaves ``out_dir`` as it was.
+    leaves ``out_dir`` as it was. Timestamps are parsed as
+    [`ingest`][tsdive.ingest] parses them, ``timestamp_format`` and
+    ``dayfirst`` included.
 
     Raises:
         SchemaError: unreadable input; a missing timestamp, tag, quality
-            or metadata file; naive timestamps without ``tz``; or
+            or metadata file; naive timestamps without ``tz``; a date that
+            reads day first and month first with no order stated; or
             ``quality_suffix`` given together with ``assume_quality``.
-        ValueError: two tags or two point ids that share one file name.
+        ValueError: two tags or two point ids that share one file name, or
+            both ``timestamp_format`` and ``dayfirst``.
         FileExistsError: an archive exists and ``overwrite`` is False.
 
     Examples:
@@ -577,16 +763,18 @@ def ingest_wide(
     _check_distinct_filenames(chosen, what="tags")
     if quality_suffix is not None and assume_quality is not None:
         raise SchemaError(
-            f"{label}: --assume-quality was given with --quality-suffix "
-            f"{quality_suffix!r}; the export carries its own quality codes, so "
-            "drop one of the two"
+            f"{label}: {argname('assume_quality', '--assume-quality')} was given with "
+            f"{argname('quality_suffix', '--quality-suffix')} {quality_suffix!r}; the "
+            "export carries its own quality codes, so drop one of the two"
         )
     if quality_suffix is None and assume_quality is None:
+        suffix = argname("quality_suffix", "--quality-suffix")
+        assume = argname("assume_quality", "--assume-quality")
         raise SchemaError(
-            f"{label}: no --quality-suffix and no --assume-quality; name the suffix "
-            "of the per-tag quality columns with --quality-suffix, or state "
-            "--assume-quality GOOD|UNCERTAIN|BAD, which is recorded on every "
-            "archive and reported in every profile"
+            f"{label}: no {suffix} and no {assume}; name the suffix of the per-tag "
+            f"quality columns with {suffix}, or state "
+            f"{option('assume_quality', '--assume-quality', 'GOOD|UNCERTAIN|BAD')}, "
+            "which is recorded on every archive and reported in every profile"
         )
     quality_cols = _wide_quality_columns(
         frame, chosen, label=label, quality_suffix=quality_suffix
@@ -598,7 +786,7 @@ def ingest_wide(
         if not meta_path.exists():
             raise SchemaError(
                 f"tag {tag!r}: no metadata file {meta_path.as_posix()}; write it by "
-                "hand or with --init-meta"
+                f"hand or with {argname('init_meta', '--init-meta')}"
             )
         metas[tag] = read_meta_json(meta_path)
     _check_distinct_filenames(
@@ -613,9 +801,15 @@ def ingest_wide(
         for target in targets.values():
             if target.exists():
                 raise FileExistsError(
-                    f"{target} already exists; pass overwrite=True to replace it"
+                    f"{target} already exists; pass {_overwrite_option()} to replace it"
                 )
-    timestamps = _to_utc(frame[timestamp_col], tz, timestamp_col)
+    timestamps = _to_utc(
+        frame[timestamp_col],
+        tz,
+        timestamp_col,
+        timestamp_format=timestamp_format,
+        dayfirst=dayfirst,
+    )
     prepared: list[tuple[Path, pd.DataFrame, TagMeta]] = []
     for tag in chosen:
         quality, assumed = _resolve_quality(
@@ -642,6 +836,7 @@ _META_TEMPLATE_KEYS = (
     "eng_range_zero",
     "eng_range_span",
     "sample_rate_s",
+    "retrieval_mode",
     "asset",
     "loop_id",
     "role",
@@ -723,7 +918,7 @@ def init_meta(
         for target in targets.values():
             if target.exists():
                 raise FileExistsError(
-                    f"{target} already exists; pass overwrite=True to replace it"
+                    f"{target} already exists; pass {_overwrite_option()} to replace it"
                 )
     root.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
@@ -743,12 +938,113 @@ def init_meta(
     return written
 
 
+# What each key of a single-tag template means, written into the template
+# under COMMENT_KEY so the file explains itself.
+_KEY_NOTES = {
+    "identity": "source_id names the historian or collector, point_id the tag in it; "
+    "both required, never renamed",
+    "name": "display name; required",
+    "unit_raw": "unit exactly as the historian writes it; null leaves the archive "
+    "without a unit",
+    "unit_canonical": "leave null; tsdive resolves unit_raw itself",
+    "eng_range_zero": "bottom of the engineering range; with eng_range_span it enables "
+    "the clipping check",
+    "eng_range_span": "width of the engineering range, greater than 0",
+    "sample_rate_s": "declared scan rate in seconds; compare and mspc align on it",
+    "retrieval_mode": "RECORDED or INTERPOLATED, how the export retrieved its "
+    "samples; null reads as RECORDED",
+    "asset": "unit or equipment the tag belongs to",
+    "loop_id": "control loop id",
+    "role": "PV, SP, OP or MODE; MODE for a tag whose values are string states",
+    "quality_codes": "each raw quality code mapped to GOOD, UNCERTAIN or BAD; a null "
+    "entry raises SchemaError until it names a severity",
+    "quality_assumed": "leave null; ingest sets it when the quality is assumed",
+}
+
+
+def init_tag_meta(
+    source: str | Path,
+    *,
+    out: str | Path,
+    timestamp_col: str = "timestamp",
+    value_col: str = "value",
+    quality_col: str = "quality",
+    overwrite: bool = False,
+) -> Path:
+    """Write a metadata template for a single-tag export and return its path.
+
+    The template holds every key of ``tsdive.meta`` in schema order, and
+    a ``_comments`` object saying what each key means and which columns
+    of the export were found. ``identity``, ``name`` and ``unit_raw`` are
+    left ``null`` for the caller: nothing about the tag is read off the
+    data. When ``quality_col`` exists, ``quality_codes`` lists each raw
+    code found in it, mapped to a severity only where the code spells
+    ``GOOD``, ``UNCERTAIN`` or ``BAD`` itself; every other code stays
+    ``null``. [`read_meta_json`][tsdive.read_meta_json] refuses the file
+    until the identity, the name and every code are filled.
+
+    Raises:
+        SchemaError: unreadable input, or a missing timestamp or value
+            column.
+        FileExistsError: ``out`` exists and ``overwrite`` is False.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import tsdive
+        >>> pd.DataFrame({"ts": ["2024-03-01T00:00:00Z", "2024-03-01T00:01:00Z"],
+        ...               "v": [61.0, 62.0], "q": ["Good", "Questionable"]}
+        ...              ).to_csv("fic101.csv", index=False)
+        >>> path = tsdive.init_tag_meta("fic101.csv", out="fic101.json", timestamp_col="ts",
+        ...                             value_col="v", quality_col="q")
+        >>> import json
+        >>> template = json.loads(path.read_text(encoding="utf-8"))
+        >>> template["identity"], template["unit_raw"], template["quality_codes"]
+        ({'source_id': None, 'point_id': None}, None, {'Good': 'GOOD', 'Questionable': None})
+        >>> template["_comments"]["columns"]
+        "timestamp 'ts', value 'v', quality 'q'; the export has ts, v, q"
+    """
+    src = Path(source)
+    frame = _read_source(src)
+    columns = [str(c) for c in frame.columns]
+    for role, column in (("timestamp", timestamp_col), ("value", value_col)):
+        if column not in columns:
+            raise SchemaError(
+                f"{src.name}: no {role} column {column!r}; columns are {', '.join(columns)}"
+            )
+    target = Path(out)
+    if target.exists() and not overwrite:
+        raise FileExistsError(f"{target} already exists; pass {_overwrite_option()} to replace it")
+    has_quality = quality_col in columns
+    found = f"timestamp {timestamp_col!r}, value {value_col!r}"
+    if has_quality:
+        found += f", quality {quality_col!r}"
+    else:
+        found += (
+            f", no quality column {quality_col!r} (name it, or state the quality at "
+            "ingest)"
+        )
+    notes = {**_KEY_NOTES, "columns": f"{found}; the export has {', '.join(columns)}"}
+    payload: dict[str, object] = {
+        COMMENT_KEY: notes,
+        "identity": {"source_id": None, "point_id": None},
+        "name": None,
+        **dict.fromkeys(_META_TEMPLATE_KEYS),
+    }
+    if has_quality:
+        payload["quality_codes"] = _quality_code_template(frame[quality_col])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+    return target
+
+
 @dataclass(frozen=True)
 class Profile:
     """One archive window, its statistics, and an optional flatline verdict.
 
     Holds objects, not text: [`render`][tsdive.Profile.render] is the only place the report
     lines are produced, and it is the same renderer the CLI prints.
+    [`to_dict`][tsdive.Profile.to_dict] returns the document ``tsdive profile
+    --json`` prints, like the ``to_dict`` of every other analysis result.
     """
 
     window: Window
@@ -768,6 +1064,24 @@ class Profile:
             coverage 0.933   GOOD 561/562   censored yes   gaps 1
         """
         return render_window_report(self.window, self.flatline, self.stats)
+
+    def to_dict(self) -> dict[str, object]:
+        """The document ``tsdive profile --json`` prints, ready for ``json.dumps``.
+
+        Built by the same function the CLI calls, so the two are equal
+        key for key.
+
+        Examples:
+            >>> import tsdive
+            >>> p = tsdive.profile("data/demo/fic101_demo.parquet",
+            ...                    "2024-03-30T20:00:00Z/2024-03-31T06:00:00Z")
+            >>> doc = p.to_dict()
+            >>> doc["tag"], doc["range"]["censored"], doc["quality"]["counts"]["GOOD"]
+            ('demo:FIC101.PV', True, 561)
+        """
+        return cast(
+            dict[str, object], to_jsonable(profile_json(self.window, self.flatline, self.stats))
+        )
 
     @property
     def identity(self) -> TagIdentity:
@@ -975,7 +1289,9 @@ def switchback_analyze(
         target: the tag, as ``source:point`` or a point id that one
             archive carries.
         covariates: tags declared before the analysis for the adjusted
-            estimate.
+            estimate. Each one's own B - A difference is tested with the
+            same design, and ``covariate_checks`` flags one the setting
+            moves (p < 0.05), whose adjustment can absorb the difference.
 
     Raises:
         ScheduleMismatch: the plan was edited or is not balanced.
@@ -1000,6 +1316,8 @@ def switchback_analyze(
         (0.6024, 0.154)
         >>> round(result.adjusted.estimate, 4), round(result.adjusted.p_value, 3)
         (0.2847, 0.001)
+        >>> [(check.tag, check.moves) for check in result.covariate_checks]
+        [('demo:FI200.PV', False), ('demo:TT001.PV', False)]
     """
     resolved = plan if isinstance(plan, SwitchbackPlan) else SwitchbackPlan.read_json(plan)
     return analyze_archives(archives, resolved, target=target, covariates=tuple(covariates))

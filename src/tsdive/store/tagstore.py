@@ -12,8 +12,11 @@ than editing them: it refuses an existing file unless the caller says
 
 from __future__ import annotations
 
+import difflib
 import json
+import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +27,7 @@ import pandas as pd
 import pyarrow as pa
 from pyarrow import parquet
 
+from tsdive._naming import cli_active
 from tsdive.errors import IncomparableSamplingError, NonMonotonicIndex, SchemaError
 from tsdive.store import gaps as gaps_mod
 from tsdive.store import units as units_mod
@@ -39,7 +43,7 @@ from tsdive.store.quality import (
     severity_meets,
     validate_schema,
 )
-from tsdive.store.sampling_contract import SamplingContract
+from tsdive.store.sampling_contract import RetrievalMode, SamplingContract
 from tsdive.store.timebase import TimestampAuditReport, require_utc, timestamp_audit
 
 META_KEY = "tsdive.meta"
@@ -108,13 +112,56 @@ class Window:
     physics: DataPhysics
 
 
+def _build_hint(path: Path) -> str:
+    if cli_active():
+        return f"build one with tsdive ingest {path.name} --out ARCHIVE --meta META.json"
+    return f"build one with tsdive.ingest({path.name!r}, out=..., meta=...)"
+
+
+def _archive_io[T](path: Path, read: Callable[[], T]) -> T:
+    """``read()``, with a file that is not parquet raised as ``SchemaError``.
+
+    pyarrow reports a CSV or any other file as missing parquet magic
+    bytes, which names neither the file nor the step that makes one.
+    """
+    try:
+        return read()
+    except pa.ArrowInvalid as e:
+        raise SchemaError(
+            f"{path.name} is not a tsdive archive (a parquet file written by "
+            f"tsdive ingest); {_build_hint(path)}"
+        ) from e
+
+
+def read_archive_schema(path: str | Path) -> pa.Schema:
+    """The parquet schema of an archive, or ``SchemaError`` when the file is not parquet."""
+    file = Path(path)
+    return _archive_io(file, lambda: parquet.read_schema(file))
+
+
+def read_archive_table(path: str | Path, columns: list[str] | None = None) -> pa.Table:
+    """An archive's rows as a pyarrow table, or ``SchemaError`` when the file is not parquet."""
+    file = Path(path)
+    return _archive_io(file, lambda: parquet.read_table(file, columns=columns))
+
+
 def meta_from_parquet(path: Path) -> TagMeta:
-    """Load TagMeta embedded in a parquet file's key-value metadata."""
-    schema = parquet.read_schema(path)
+    """Load TagMeta embedded in a parquet file's key-value metadata.
+
+    Raises:
+        SchemaError: the file is not parquet, carries no ``tsdive.meta``,
+            or carries a malformed one.
+        FileNotFoundError: no file at ``path``.
+    """
+    path = Path(path)
+    schema = read_archive_schema(path)
     raw = schema.metadata.get(META_KEY.encode("ascii")) if schema.metadata else None
     if raw is None:
-        raise SchemaError(f"{path.name}: no {META_KEY} metadata; refusing to invent tag metadata")
-    return meta_from_dict(json.loads(raw))
+        raise SchemaError(
+            f"{path.name}: no {META_KEY} metadata, so it is not a tsdive archive; "
+            f"{_build_hint(path)}"
+        )
+    return meta_from_dict(json.loads(raw), label=path.name)
 
 
 def meta_to_dict(meta: TagMeta) -> dict:
@@ -126,6 +173,7 @@ def meta_to_dict(meta: TagMeta) -> dict:
         "eng_range_zero": meta.eng_range.zero if meta.eng_range else None,
         "eng_range_span": meta.eng_range.span if meta.eng_range else None,
         "sample_rate_s": meta.sample_rate_s,
+        "retrieval_mode": meta.retrieval_mode.value if meta.retrieval_mode else None,
         "asset": meta.asset,
         "loop_id": meta.loop_id,
         "role": meta.role.value if meta.role else None,
@@ -134,20 +182,175 @@ def meta_to_dict(meta: TagMeta) -> dict:
     }
 
 
-def meta_from_dict(d: dict) -> TagMeta:
+# Every key a tsdive.meta object may carry, in the order docs/SCHEMA.md
+# lists them, and the keys of its "identity" object.
+META_KEYS = (
+    "identity",
+    "name",
+    "unit_raw",
+    "unit_canonical",
+    "eng_range_zero",
+    "eng_range_span",
+    "sample_rate_s",
+    "retrieval_mode",
+    "asset",
+    "loop_id",
+    "role",
+    "quality_codes",
+    "quality_assumed",
+)
+IDENTITY_KEYS = ("source_id", "point_id")
+# A template's notes on its own keys: an object of strings that the
+# reader checks for shape and otherwise skips. No archive carries it.
+COMMENT_KEY = "_comments"
+_TEXT_KEYS = ("name", "unit_raw", "unit_canonical", "asset", "loop_id")
+
+
+def _unknown_key(label: str, key: str, known: tuple[str, ...], prefix: str = "") -> SchemaError:
+    """The refusal for a key tsdive does not read, naming the closest known key."""
+    shown = f"{prefix}{key}"
+    if not prefix and key == "eng_range":
+        return SchemaError(
+            f"{label}: unknown key 'eng_range'; write the range as eng_range_zero "
+            "and eng_range_span, two numbers at the top level"
+        )
+    close = difflib.get_close_matches(key, known, n=1)
+    if close:
+        return SchemaError(
+            f"{label}: unknown key {shown!r}; did you mean {prefix + close[0]!r}?"
+        )
+    return SchemaError(
+        f"{label}: unknown key {shown!r}; the known keys are {', '.join(known)}"
+    )
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _check_meta_dict(d: object, label: str) -> None:
+    """Raise ``SchemaError`` unless ``d`` is a well-formed ``tsdive.meta`` object.
+
+    Every key is checked at every level, so a misspelt key raises instead
+    of dropping the fact it carried. Values are checked for type, and the
+    engineering range for both ends being present and a positive span.
+    """
+    if not isinstance(d, dict):
+        raise SchemaError(f"{label}: expected a JSON object of tag metadata")
+    for key in d:
+        if key not in META_KEYS and key != COMMENT_KEY:
+            raise _unknown_key(label, str(key), (*META_KEYS, COMMENT_KEY))
+    notes = d.get(COMMENT_KEY)
+    if COMMENT_KEY in d and not (
+        isinstance(notes, dict) and all(isinstance(v, str) for v in notes.values())
+    ):
+        raise SchemaError(f"{label}: {COMMENT_KEY} must be an object of strings")
+    if "identity" not in d:
+        raise SchemaError(f"{label}: missing required key 'identity'")
+    ident = d["identity"]
+    if not isinstance(ident, dict):
+        raise SchemaError(
+            f"{label}: identity must be an object with source_id and point_id"
+        )
+    for key in ident:
+        if key not in IDENTITY_KEYS:
+            raise _unknown_key(label, str(key), IDENTITY_KEYS, prefix="identity.")
+    for key in IDENTITY_KEYS:
+        if key not in ident:
+            raise SchemaError(f"{label}: missing required key 'identity.{key}'")
+        if not isinstance(ident[key], str) or not ident[key]:
+            raise SchemaError(
+                f"{label}: identity.{key} must be a non-empty string, not {ident[key]!r}"
+            )
+    if "name" not in d:
+        raise SchemaError(f"{label}: missing required key 'name'")
+    for key in _TEXT_KEYS:
+        value = d.get(key)
+        if value is not None and not isinstance(value, str):
+            raise SchemaError(f"{label}: {key} must be a string or null, not {value!r}")
+    if not isinstance(d["name"], str):
+        raise SchemaError(f"{label}: name must be a string, not {d['name']!r}")
+    zero, span = d.get("eng_range_zero"), d.get("eng_range_span")
+    if (zero is None) != (span is None):
+        given, missing = (
+            ("eng_range_zero", "eng_range_span") if span is None
+            else ("eng_range_span", "eng_range_zero")
+        )
+        raise SchemaError(
+            f"{label}: {given} is set and {missing} is not; state both ends of the "
+            "range or neither"
+        )
+    for key, value in (("eng_range_zero", zero), ("eng_range_span", span)):
+        if value is not None and not (_is_number(value) and math.isfinite(value)):
+            raise SchemaError(f"{label}: {key} must be a finite number, not {value!r}")
+    if span is not None and span <= 0:
+        raise SchemaError(
+            f"{label}: eng_range_span must be greater than 0, not {span!r}; the range "
+            "runs from eng_range_zero to eng_range_zero + eng_range_span"
+        )
+    rate = d.get("sample_rate_s")
+    if rate is not None and not (_is_number(rate) and math.isfinite(rate) and rate > 0):
+        raise SchemaError(
+            f"{label}: sample_rate_s must be a number of seconds greater than 0, "
+            f"not {rate!r}"
+        )
+    role = d.get("role")
+    if role is not None and role not in {r.value for r in Role}:
+        raise SchemaError(
+            f"{label}: role {role!r} is not one of {', '.join(r.value for r in Role)}"
+        )
+    mode = d.get("retrieval_mode")
+    if mode is not None and mode not in {m.value for m in RetrievalMode}:
+        raise SchemaError(
+            f"{label}: retrieval_mode {mode!r} is not one of "
+            f"{', '.join(m.value for m in RetrievalMode)}"
+        )
+    codes = d.get("quality_codes")
+    if codes is not None and not isinstance(codes, dict):
+        raise SchemaError(
+            f"{label}: quality_codes must be an object mapping raw codes to severities"
+        )
+    severities = {s.value for s in Severity}
+    for code, declared in (codes or {}).items():
+        if not isinstance(declared, str) or declared.strip().upper() not in severities:
+            raise SchemaError(
+                f"{label}: quality_codes maps {code!r} to {declared!r}; "
+                f"expected one of {', '.join(sorted(severities))}"
+            )
+    assumed = d.get("quality_assumed")
+    if assumed is not None and not isinstance(assumed, bool):
+        raise SchemaError(f"{label}: quality_assumed must be true or false, not {assumed!r}")
+
+
+def meta_from_dict(d: dict, *, label: str = META_KEY) -> TagMeta:
+    """Build a [`TagMeta`][tsdive.TagMeta] from a ``tsdive.meta`` object.
+
+    ``label`` names the object's origin (a file name) in every refusal.
+
+    Raises:
+        SchemaError: a key tsdive does not read, at the top level or under
+            ``identity`` (the message names the closest known key); a
+            missing required key; a value of the wrong type; one end of the
+            engineering range without the other; a span or sample rate of
+            0 or less; or a ``quality_codes`` entry that names no severity.
+
+    Examples:
+        >>> from tsdive.store.tagstore import meta_from_dict
+        >>> meta_from_dict({"identity": {"source_id": "plant1", "point_id": "FIC101.PV"},
+        ...                 "name": "FIC-101 flow", "unit": "m3/h"}, label="meta.json")
+        Traceback (most recent call last):
+        ...
+        tsdive.errors.SchemaError: meta.json: unknown key 'unit'; did you mean 'unit_raw'?
+    """
     from tsdive.store.identity import EngRange
 
+    _check_meta_dict(d, label)
     eng_range = None
     if d.get("eng_range_zero") is not None and d.get("eng_range_span") is not None:
         eng_range = EngRange(zero=float(d["eng_range_zero"]), span=float(d["eng_range_span"]))
-    try:
-        ident = d["identity"]
-        identity = TagIdentity(source_id=ident["source_id"], point_id=ident["point_id"])
-        name = d["name"]
-    except KeyError as e:
-        raise SchemaError(
-            f"{META_KEY} is missing required key {e.args[0]!r}; refusing to invent tag metadata"
-        ) from e
+    ident = d["identity"]
+    identity = TagIdentity(source_id=ident["source_id"], point_id=ident["point_id"])
+    name = d["name"]
     return TagMeta(
         identity=identity,
         name=name,
@@ -158,6 +361,9 @@ def meta_from_dict(d: dict) -> TagMeta:
         asset=d.get("asset"),
         loop_id=d.get("loop_id"),
         role=Role(d["role"]) if d.get("role") else None,
+        retrieval_mode=(
+            RetrievalMode(d["retrieval_mode"]) if d.get("retrieval_mode") else None
+        ),
         quality_codes=dict(d["quality_codes"]) if d.get("quality_codes") else None,
         quality_assumed=bool(d.get("quality_assumed", False)),
     )
@@ -215,8 +421,9 @@ def write_tag(
     out = Path(path)
     if out.exists() and not overwrite:
         raise FileExistsError(
-            f"{out} already exists; tsdive does not mutate archives. "
-            "Pass overwrite=True to replace it, or write to a new path."
+            f"{out} already exists; tsdive does not mutate archives. Pass "
+            f"{'--overwrite' if cli_active() else 'overwrite=True'} to replace it, or "
+            "write to a new path."
         )
     return _write_parquet(out, frame, meta)
 
@@ -230,10 +437,10 @@ def archive_extent(path: str | Path) -> tuple[pd.Timestamp, pd.Timestamp]:
     as an instant.
     """
     file = Path(path)
-    schema = parquet.read_schema(file)
+    schema = read_archive_schema(file)
     if "timestamp" not in schema.names:
         raise SchemaError(f"{file.name}: missing required column 'timestamp'")
-    ts = cast(pd.Series, parquet.read_table(file, columns=["timestamp"])["timestamp"].to_pandas())
+    ts = cast(pd.Series, read_archive_table(file, columns=["timestamp"])["timestamp"].to_pandas())
     if len(ts) == 0:
         raise SchemaError(
             f"{file.name}: archive has no samples, so it has no extent; "
@@ -301,6 +508,11 @@ class TagStore:
         and coverage. A window with no samples reports ``coverage=0.0`` and
         one ``unknown`` gap spanning the window - never a fake 1.0.
 
+        When the tag's metadata declares ``retrieval_mode``, the window's
+        contract carries that mode in place of the one ``contract`` states:
+        the export fixed how its samples were retrieved, and no read of the
+        archive can change it.
+
         A window whose timestamps go backwards is refused with
         [`NonMonotonicIndex`][tsdive.NonMonotonicIndex] before any physics is
         computed. Gaps and coverage over a re-sorted index would describe
@@ -309,7 +521,7 @@ class TagStore:
         path = self.archive_path(identity)
         if not path.exists():
             raise FileNotFoundError(f"no archive at {path}")
-        table = parquet.read_table(path)
+        table = read_archive_table(path)
         df = table.to_pandas()
         validate_schema(df)
         require_utc(df["timestamp"])
@@ -318,8 +530,12 @@ class TagStore:
         end_ts = cast(pd.Timestamp, pd.Timestamp(end))
         in_window = df[(df["timestamp"] >= start_ts) & (df["timestamp"] <= end_ts)]
         meta = meta_from_parquet(path)
+        if meta.retrieval_mode is not None:
+            contract = replace(contract, retrieval_mode=meta.retrieval_mode)
         annotated = annotate_severity(in_window, meta.quality_codes)
-        annotated = null_digital_state_values(annotated, role=meta.role, tag=identity)
+        annotated = null_digital_state_values(
+            annotated, role=meta.role, tag=identity, codes=meta.quality_codes
+        )
 
         # A MODE tag's value is a state label, not a measurement: "R1" is
         # present and usable, and asking whether it is a finite float is

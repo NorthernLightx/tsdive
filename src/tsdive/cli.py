@@ -6,7 +6,9 @@ The working loop a new archive walks:
 
 Every command after ``ingest`` takes the same window syntax
 (``START/END``, ``START/PT5H``, ``PT5H/END``, or a date for one UTC day)
-and refuses the same way: ``[ErrorName] message`` on stderr, exit 2. On
+and refuses the same way: ``[ErrorName] message`` on stderr and exit
+status 3 (``REFUSED``), with the refusal object on stdout under
+``--json``. A usage error or invalid input exits 2 (``USAGE``). On
 ``profile`` an omitted window means the archive's whole extent, which
 the report states like any other window.
 
@@ -28,6 +30,7 @@ import pandas as pd
 from pyarrow import parquet
 
 from tsdive import __version__, analyses
+from tsdive._naming import cli_names
 from tsdive.analyses import (
     CompareAnalysis,
     MspcAnalysis,
@@ -35,12 +38,13 @@ from tsdive.analyses import (
     SegmentAnalysis,
     SpcAnalysis,
 )
-from tsdive.analyses_render import render_lines, window_json
+from tsdive.analyses_render import render_lines
 from tsdive.api import (
     Profile,
     ingest,
     ingest_wide,
     init_meta,
+    init_tag_meta,
     parse_window,
     profile,
     read_meta_json,
@@ -48,7 +52,6 @@ from tsdive.api import (
     switchback_plan,
 )
 from tsdive.changepoints import DEFAULT_PENALTY_MULTIPLIER
-from tsdive.detectors.flatline import FlatlineVerdict
 from tsdive.errors import TSDiveError
 from tsdive.features.window_features import compute_stats
 from tsdive.report import (
@@ -58,8 +61,6 @@ from tsdive.report import (
     plural,
     render_window_report,
 )
-from tsdive.store.gaps import DATA_LOSS_CLASSES
-from tsdive.store.quality import Severity
 from tsdive.store.sampling_contract import (
     CalculationBasis,
     RetrievalMode,
@@ -73,14 +74,16 @@ from tsdive.store.tagstore import (
 from tsdive.switchback.archive import SwitchbackAnalysis
 from tsdive.switchback.plan import SwitchbackPlan
 from tsdive.switchback.render import plan_lines
-from tsdive.ui.jsonout import to_jsonable
+from tsdive.ui.jsonout import refusal_json, to_jsonable
 from tsdive.ui.term import colour_enabled, colourise, red
 
 MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time series
 
 commands, in the order an archive walks them:
   ingest <csv|parquet> --out ARCHIVE --meta META.json
-                                          build an archive from an export
+                                          build an archive from an export;
+                                          --init-meta META.json writes the
+                                          metadata template first
   ingest <csv|parquet> --wide --out DIR --meta-dir DIR
                                           one archive per column of a wide export
   profile <parquet> [--window START/END]  data physics and statistics for a window
@@ -117,7 +120,19 @@ options, on every command:
 
 windows, wherever START/END appears above:
   START/END, START/PT5H, PT5H/END, or a date for one whole UTC day
+
+exit status:
+  0                                       the answer was printed
+  2                                       usage error or invalid input
+  3                                       refusal: a typed tsdive error, printed
+                                          as [ErrorName] on stderr and, under
+                                          --json, as one object on stdout
 """
+
+# Exit status of a command. ``run`` keeps its own rule, stated in its help.
+OK = 0
+USAGE = 2
+REFUSED = 3
 
 
 def _positive_int(text: str) -> int:
@@ -228,6 +243,19 @@ def _print_refusal(prefix: str, message: str, args: argparse.Namespace) -> None:
     print(f"{red(prefix, on)} {message}", file=sys.stderr)
 
 
+def _refused(error: TSDiveError, args: argparse.Namespace) -> int:
+    """Report a typed refusal and return its exit status, ``REFUSED``.
+
+    The ``[ErrorName] message`` line goes to stderr. Under ``--json`` the
+    refusal object the MCP server returns is also printed on stdout, so a
+    script that parses stdout reads a refusal as JSON too.
+    """
+    _print_refusal(f"[{type(error).__name__}]", str(error), args)
+    if getattr(args, "json", False):
+        print(json.dumps(refusal_json(error), indent=2))
+    return REFUSED
+
+
 def _print_lines(lines: Sequence[str], args: argparse.Namespace) -> None:
     """Write a command's answer to stdout, coloured only for a terminal."""
     on = colour_enabled(sys.stdout, no_color=_no_color(args))
@@ -243,19 +271,23 @@ def _report_and_exit(
     (``tsdive run``) and a caller that wants a process exit code share
     one body and can never disagree about what a refusal is. Colour is
     applied here and nowhere else, so every renderer stays plain text.
+    Messages raised inside name CLI flags (``--rate-s``), not keywords.
+
+    Returns ``OK``, ``REFUSED`` for a ``TSDiveError``, and ``USAGE`` for a
+    malformed argument, a missing file or an existing output.
     """
     try:
-        if getattr(args, "json", False) and to_json is not None:
-            print(json.dumps(to_jsonable(to_json(args)), indent=2))
-            return 0
-        _print_lines(fn(args), args)
-        return 0
+        with cli_names():
+            if getattr(args, "json", False) and to_json is not None:
+                print(json.dumps(to_jsonable(to_json(args)), indent=2))
+                return OK
+            _print_lines(fn(args), args)
+        return OK
     except TSDiveError as e:
-        _print_refusal(f"[{type(e).__name__}]", str(e), args)
-        return 2
+        return _refused(e, args)
     except (ValueError, FileNotFoundError, FileExistsError) as e:
         _print_refusal("error:", str(e), args)
-        return 2
+        return USAGE
 
 
 def _parser_screen() -> argparse.ArgumentParser:
@@ -580,7 +612,10 @@ SWITCHBACK_DOC = """tsdive switchback - plan and analyze a randomized trial of s
 def _parser_switchback_plan() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tsdive switchback plan")
     parser.add_argument(
-        "--window", required=True, help="ISO 8601 START/END in UTC the schedule runs over"
+        "--window",
+        required=True,
+        help="ISO 8601 START/END the schedule runs over; bounds with a UTC offset "
+        "are converted to UTC",
     )
     parser.add_argument(
         "--block", required=True, help="block length as an ISO 8601 duration, like PT1H"
@@ -609,7 +644,8 @@ def _parser_switchback_plan() -> argparse.ArgumentParser:
     parser.add_argument(
         "--history-window",
         default=None,
-        help="ISO 8601 START/END in UTC of the history, at least as long as the schedule",
+        help="ISO 8601 START/END of the history, at least as long as the schedule; "
+        "bounds with a UTC offset are converted to UTC",
     )
     return _add_output_flags(parser)
 
@@ -679,6 +715,29 @@ def json_switchback_analyze(args: argparse.Namespace) -> dict[str, object]:
     return _switchback_analyzed(args).to_dict()
 
 
+def _switchback_analyze_status(args: argparse.Namespace) -> int:
+    """Print the analysis; ``REFUSED`` when its raw estimate is refused.
+
+    The report is printed either way, so the refusal reason stays on the
+    page. A refused adjusted estimate with a raw one standing keeps
+    ``OK``: the row says why the adjustment has no answer.
+    """
+    done: list[SwitchbackAnalysis] = []
+
+    def analysed(a: argparse.Namespace) -> SwitchbackAnalysis:
+        done.append(_switchback_analyzed(a))
+        return done[-1]
+
+    status = _report_and_exit(
+        lambda a: render_lines(analysed(a).render()),
+        args,
+        to_json=lambda a: analysed(a).to_dict(),
+    )
+    if status == OK and done and done[-1].direct.refused:
+        return REFUSED
+    return status
+
+
 def cmd_switchback(argv: Sequence[str] | None = None) -> int:
     """Dispatch ``tsdive switchback plan`` and ``tsdive switchback analyze``."""
     rest = list(sys.argv[2:] if argv is None else argv)
@@ -699,11 +758,7 @@ def cmd_switchback(argv: Sequence[str] | None = None) -> int:
             to_json=json_switchback_plan,
         )
     if sub == "analyze":
-        return _report_and_exit(
-            run_switchback_analyze,
-            _parser_switchback_analyze().parse_args(tail),
-            to_json=json_switchback_analyze,
-        )
+        return _switchback_analyze_status(_parser_switchback_analyze().parse_args(tail))
     print(f"unknown switchback command {sub!r}; try 'plan' or 'analyze'", file=sys.stderr)
     return 2
 
@@ -758,128 +813,8 @@ def run_profile(args: argparse.Namespace) -> list[str]:
     return render_lines(_profiled(args).render())
 
 
-def _flatline_json(verdict: FlatlineVerdict) -> dict[str, object]:
-    if verdict.saturated_not_frozen or verdict.not_assessed is not None:
-        text = "NOT ASSESSED"
-    else:
-        text = "FLATLINE SUSPECTED" if verdict.fired else "no flatline"
-    return {
-        "verdict": text,
-        "fired": verdict.fired,
-        "saturated_not_frozen": verdict.saturated_not_frozen,
-        "not_assessed": verdict.not_assessed,
-        "signals": list(verdict.signals),
-    }
-
-
-def _profile_json(result: Profile) -> dict[str, object]:
-    """Every number the profile report states, keyed for a program."""
-    window = result.window
-    p = window.physics
-    cov = p.coverage
-    ta = p.timestamp_audit
-    u = p.unit
-    stats = result.stats
-    f = stats.features
-    c = window.contract
-    return {
-        "tag": str(window.identity),
-        "name": window.meta.name,
-        "window": window_json(window),
-        "contract": {
-            "calculation_basis": c.calculation_basis,
-            "retrieval_mode": c.retrieval_mode,
-            "aggregate_type": c.aggregate_type,
-            "stepped": c.stepped,
-            "digest": c.digest(),
-        },
-        "units": {
-            "raw": u.raw,
-            "canonical": u.canonical,
-            "pint_units": u.pint_units,
-            "reference_condition": u.reference_condition,
-            "resolved": u.resolved,
-        },
-        "coverage": {
-            "coverage": cov.coverage,
-            "valid_fraction": p.valid_fraction,
-            "n_gaps": cov.n_gaps,
-            "n_data_loss_gaps": sum(
-                1 for g in cov.gaps if g.classification.cls in DATA_LOSS_CLASSES
-            ),
-            "longest_gap_s": cov.longest_gap_s,
-            "edge_slack_s": p.edge_slack_s,
-            "edge_slack_start_s": p.edge_slack_start_s,
-            "edge_slack_end_s": p.edge_slack_end_s,
-            "gaps": [
-                {
-                    "start": g.start,
-                    "end": g.end,
-                    "duration_s": g.duration_s,
-                    "class": g.classification.cls,
-                    "rule": g.classification.rule,
-                }
-                for g in cov.gaps
-            ],
-        },
-        "quality": {
-            "counts": {s.value: p.severity_counts.get(s, 0) for s in Severity},
-            "assumed_at_ingest": window.meta.quality_assumed,
-            "unmapped_codes": p.unmapped_quality_codes,
-            "unmapped_look_like_opc_da": p.unmapped_look_like_opc_da,
-        },
-        "range": {
-            "clipped_fraction": p.clipping.fraction,
-            "n_clipped": p.clipping.n_clipped,
-            "censored": p.clipping.censored,
-            "beyond_float32_count": p.implausible_magnitude_count,
-        },
-        "timestamps": {
-            "audited": ta.n_samples,
-            "duplicates": len(ta.duplicate_timestamps),
-            "non_monotonic": len(ta.non_monotonic_positions),
-            "dst_transitions": [
-                {
-                    "tz": t.tz,
-                    "instant": t.instant_utc,
-                    "offset_before_s": t.offset_before_s,
-                    "offset_after_s": t.offset_after_s,
-                }
-                for t in ta.dst_transitions
-            ],
-        },
-        "values": {
-            "n_good": f.n_good,
-            "n_samples": f.n_samples,
-            "state_valued": stats.state_valued,
-            "state_counts": [{"state": s, "n": n} for s, n in stats.state_counts],
-            "min": f.min,
-            "p05": stats.p05,
-            "median": f.median,
-            "p95": stats.p95,
-            "max": f.max,
-            "mean": f.weighted_mean,
-            "mean_basis": c.calculation_basis,
-            "mean_note": stats.mean_note,
-            "std": f.std,
-            "mad": stats.mad,
-            "distinct": stats.distinct_count,
-            "stall_s": f.stall_s,
-            "changes_per_hour": f.changes_per_hour,
-            "interval_median_s": stats.interval_median_s,
-            "interval_p05_s": stats.interval_p05_s,
-            "interval_p95_s": stats.interval_p95_s,
-            "declared_rate_s": stats.declared_rate_s,
-            "interval_differs_from_declared": stats.interval_differs_from_declared,
-        },
-        "flatline": (
-            None if result.flatline is None else _flatline_json(result.flatline)
-        ),
-    }
-
-
 def json_profile(args: argparse.Namespace) -> dict[str, object]:
-    return _profile_json(_profiled(args))
+    return _profiled(args).to_dict()
 
 
 def cmd_profile(argv: Sequence[str] | None = None) -> int:
@@ -913,10 +848,25 @@ def _parser_ingest() -> argparse.ArgumentParser:
         help="archive to create; with --wide, directory for one archive per tag",
     )
     parser.add_argument(
-        "--meta", default=None, help="JSON file of tag metadata (the tsdive.meta object)"
+        "--meta",
+        default=None,
+        help="JSON file of tag metadata (the tsdive.meta object); a key it does not "
+        "define raises SchemaError",
     )
     parser.add_argument(
         "--timestamp-col", default="timestamp", help="timestamp column of the export"
+    )
+    parser.add_argument(
+        "--timestamp-format",
+        default=None,
+        metavar="FORMAT",
+        help="strptime format every timestamp must match, like '%%d/%%m/%%Y %%H:%%M:%%S'",
+    )
+    parser.add_argument(
+        "--dayfirst",
+        action="store_true",
+        help="read numeric dates day first, so 01/02/2026 is 1 February; without it "
+        "or --timestamp-format a date that reads both ways raises SchemaError",
     )
     parser.add_argument(
         "--value-col", default=None, help="value column of a single-tag export (default value)"
@@ -925,6 +875,14 @@ def _parser_ingest() -> argparse.ArgumentParser:
         "--quality-col",
         default=None,
         help="quality column of a single-tag export (default quality)",
+    )
+    parser.add_argument(
+        "--init-meta",
+        default=None,
+        metavar="FILE|DIR",
+        help="write a metadata template to FILE and stop, then fill it in and ingest "
+        "with --meta FILE; with --wide, write a <tag>.json template per tag column "
+        "into DIR, then ingest with --meta-dir DIR",
     )
     wide = parser.add_argument_group("wide exports, one column per tag")
     wide.add_argument(
@@ -950,13 +908,6 @@ def _parser_ingest() -> argparse.ArgumentParser:
         default=None,
         metavar="S",
         help="each tag's quality column is <tag><S>",
-    )
-    wide.add_argument(
-        "--init-meta",
-        default=None,
-        metavar="DIR",
-        help="write a <tag>.json metadata template per tag column into DIR and stop; "
-        "fill them in, then ingest with --meta-dir DIR",
     )
     wide.add_argument(
         "--source-id",
@@ -1003,7 +954,11 @@ def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespac
         ("--meta-dir", args.meta_dir),
         ("--tz", args.tz),
         ("--assume-quality", args.assume_quality),
+        ("--timestamp-format", args.timestamp_format),
+        ("--dayfirst", args.dayfirst or None),
     )
+    if args.timestamp_format is not None and args.dayfirst:
+        parser.error("--timestamp-format and --dayfirst both state the date order; pass one")
     if args.wide:
         for flag, value in single_only:
             if value is not None:
@@ -1023,9 +978,14 @@ def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespac
             if args.meta_dir is None:
                 parser.error("--wide requires --meta-dir")
     else:
-        for flag, value in (*wide_only, ("--init-meta", args.init_meta), *init_only):
+        for flag, value in (*wide_only, *init_only):
             if value is not None:
                 parser.error(f"{flag} requires --wide")
+        if args.init_meta is not None:
+            for flag, value in (*ingest_only, ("--meta", args.meta)):
+                if value is not None:
+                    parser.error(f"{flag} does not apply with --init-meta")
+            return
         if args.out is None:
             parser.error("the following arguments are required: --out")
         if args.meta is None:
@@ -1037,8 +997,23 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
     parser = _parser_ingest()
     args = parser.parse_args(argv)
     _check_ingest_flags(parser, args)
+    with cli_names():
+        return _ingest(args)
 
+
+def _ingest(args: argparse.Namespace) -> int:
     try:
+        if args.init_meta is not None and not args.wide:
+            template = init_tag_meta(
+                args.source,
+                out=args.init_meta,
+                timestamp_col=args.timestamp_col,
+                value_col=args.value_col or "value",
+                quality_col=args.quality_col or "quality",
+                overwrite=args.overwrite,
+            )
+            _print_lines([label_line("wrote", template.as_posix())], args)
+            return OK
         if args.init_meta is not None:
             templates = init_meta(
                 args.source,
@@ -1062,6 +1037,8 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
                 tz=args.tz,
                 assume_quality=args.assume_quality,
                 overwrite=args.overwrite,
+                timestamp_format=args.timestamp_format,
+                dayfirst=args.dayfirst,
             )
             _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
             _warn_assumed_quality(args.assume_quality)
@@ -1079,6 +1056,8 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
             tz=args.tz,
             assume_quality=args.assume_quality,
             overwrite=args.overwrite,
+            timestamp_format=args.timestamp_format,
+            dayfirst=args.dayfirst,
         )
         quality = (
             f"quality assumed {args.assume_quality.strip().upper()}"
@@ -1097,13 +1076,12 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
             lines.append(label_line("tz", f"{args.tz} -> UTC"))
         _print_lines(lines, args)
         _warn_assumed_quality(args.assume_quality)
-        return 0
+        return OK
     except TSDiveError as e:
-        _print_refusal(f"[{type(e).__name__}]", str(e), args)
-        return 2
+        return _refused(e, args)
     except (ValueError, OSError) as e:
         _print_refusal("error:", str(e), args)
-        return 2
+        return USAGE
 
 
 def _parser_report_html() -> argparse.ArgumentParser:
@@ -1123,11 +1101,15 @@ def _parser_report_html() -> argparse.ArgumentParser:
 
 def cmd_report_html(argv: Sequence[str] | None = None) -> int:
     """Render one static HTML page that profiles each archive over one window."""
+    args = _parser_report_html().parse_args(argv)
+    with cli_names():
+        return _report_html(args)
+
+
+def _report_html(args: argparse.Namespace) -> int:
     from tsdive.narrate import EvidenceLedger
     from tsdive.ui.static_report import render_static_report, write_static_report
     from tsdive.ui.svg import window_figure
-
-    args = _parser_report_html().parse_args(argv)
 
     try:
         start, end = (
@@ -1182,13 +1164,12 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
             ],
             args,
         )
-        return 0
+        return OK
     except TSDiveError as e:
-        _print_refusal(f"[{type(e).__name__}]", str(e), args)
-        return 2
+        return _refused(e, args)
     except (ValueError, FileNotFoundError) as e:
         _print_refusal("error:", str(e), args)
-        return 2
+        return USAGE
 
 
 # The analysis steps a plan may name, in pipeline order: a plan's listing
@@ -1242,7 +1223,12 @@ SCHEDULED_STEPS = frozenset({"switchback"})
 
 
 def _parser_run() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="tsdive run")
+    parser = argparse.ArgumentParser(
+        prog="tsdive run",
+        epilog="exit status: 0 when the ledger holds at least one profile or finding, "
+        "refused steps included as rows of the ledger; 2 when the plan cannot be read "
+        "or no step produced a result",
+    )
     parser.add_argument("plan", help="TOML plan naming archives, windows and steps")
     parser.add_argument(
         "-o",
@@ -1256,26 +1242,37 @@ def _parser_run() -> argparse.ArgumentParser:
 
 
 def cmd_run(argv: Sequence[str] | None = None) -> int:
-    """Walk one plan over several archives into one evidence ledger."""
+    """Walk one plan over several archives into one evidence ledger.
+
+    A refused step is a row of the ledger and does not change the exit
+    status: 0 when the ledger holds at least one profile or finding, 2
+    when the plan cannot be read or no step produced a result.
+    """
+    args = _parser_run().parse_args(argv)
+    with cli_names():
+        return _run(args)
+
+
+def _run(args: argparse.Namespace) -> int:
     from tsdive.plan import execute, load_plan, write_run
 
-    args = _parser_run().parse_args(argv)
     plan_path = Path(args.plan)
     try:
         plan = load_plan(plan_path)
     except TSDiveError as e:
-        _print_refusal(f"[{type(e).__name__}]", str(e), args)
-        return 2
+        return _refused(e, args)
     except (ValueError, OSError) as e:
         # Nothing is written for a plan that never started: an unknown
         # step or an unmatched glob leaves no half-run output directory.
         _print_refusal("error:", str(e), args)
-        return 2
+        return USAGE
     profiles, findings, refusals, figures = execute(plan)
     out_dir = Path(args.out) if args.out else plan_path.parent / "tsdive-run"
     _, _, lines = write_run(plan, out_dir, profiles, findings, refusals, figures)
     _print_lines(lines, args)
-    return 0 if profiles or findings else 2
+    # A refused step is a row of the ledger, so it does not decide the
+    # status; a ledger with no profile and no finding does.
+    return OK if profiles or findings else USAGE
 
 
 def main(argv: Sequence[str] | None = None) -> int:

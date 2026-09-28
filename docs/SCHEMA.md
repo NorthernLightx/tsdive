@@ -30,7 +30,7 @@ about the surrounding directory, which is what the CLI uses.
 | column | dtype | rule |
 |---|---|---|
 | `timestamp` | `datetime64[ns, UTC]` (any tz-aware datetime64) | must be timezone-aware |
-| `value` | numeric, or null (string only on `role: MODE` tags) | digital states are nulled on read, never coerced |
+| `value` | numeric, or null (string only on `role: MODE` tags, or as a state the tag's `quality_codes` names) | digital states are nulled on read, never coerced |
 | `quality` | string or integer | mandatory; stored verbatim |
 
 Extra columns are carried through untouched.
@@ -127,6 +127,15 @@ numeric. A leftover string on a measurement tag raises `SchemaError`
 naming the tag and the first offending value: nulling it would delete
 data nobody said was unusable, and coercing it would invent a number.
 
+Some historians write a state in the value column instead of a number:
+PI writes `I/O Timeout`, `Shutdown` or `Pt Created`. Map each such state
+in the tag's `quality_codes`, for example `{"I/O Timeout": "BAD"}`. A
+value that names a key of the map is a declared state: the archive keeps
+the text verbatim, the read nulls the value, and the row takes the
+declared severity, or its quality column's severity when that one is
+worse. A numeric value never matches a key, so `{"0": "BAD"}` does not
+drop readings of 0.
+
 The one legal string-valued path is a tag whose metadata declares
 `role: MODE`. A mode tag's value *is* a state label (`"R1"`), so it
 survives the read verbatim, its rows count as valid, and no numeric
@@ -186,6 +195,7 @@ it is refused: tsdive will not invent an identity for an archive.
 | `eng_range_zero` | number or null | engineering range zero |
 | `eng_range_span` | number or null | engineering range span; needed for clipping detection |
 | `sample_rate_s` | number or null | declared scan rate, used to classify sparse gaps |
+| `retrieval_mode` | `RECORDED`/`INTERPOLATED` or null | how the export retrieved its samples; every read states it in the contract, and null reads as `RECORDED` |
 | `asset` | string or null | unit or equipment the tag belongs to |
 | `loop_id` | string or null | control loop id |
 | `role` | `PV`/`SP`/`OP`/`MODE` or null | role within that loop |
@@ -267,15 +277,33 @@ tsdive ingest export.csv \
 
 `--meta` is a JSON file holding exactly the `tsdive.meta` object
 documented above, so the metadata you write for ingest is the metadata
-you read back off the archive. Only the three named columns are carried
+you read back off the archive. A key the table does not list raises
+`SchemaError` naming the closest known key, so a misspelt `unit` cannot
+leave the archive without its unit. Only the three named columns are carried
 over; anything else in the export is left behind, so the archive holds
 exactly what its schema promises.
+
+`tsdive ingest export.csv --init-meta meta.json` writes that file as a
+template and stops. It takes `--timestamp-col`, `--value-col` and
+`--quality-col` like the ingest itself, leaves `identity`, `name` and
+`unit_raw` null for you to fill, and lists each raw code of the quality
+column under `quality_codes`. A `_comments` object says what each key
+means and which columns the export has; the reader checks it is an
+object of strings and skips it, so you can keep it. The template raises
+`SchemaError` until the identity, the name and every quality code are
+filled. An existing file is replaced only with `--overwrite`.
 
 Timestamps that already carry an offset are converted to UTC and `--tz`
 is ignored. Naive timestamps need `--tz <IANA zone>`: they are localised
 to it and then converted. Without `--tz` the ingest raises `SchemaError`,
 because an export with no offset does not name an instant. Local times that a DST transition makes ambiguous or
 nonexistent are refused too, naming the zone.
+
+A numeric date such as `01/02/2026` reads as 1 February day first and 2
+January month first. A column holding one raises `SchemaError` until you
+state the order with `--dayfirst` or with `--timestamp-format`, a
+strptime format every row must match. A column whose dates read only one
+way, such as `3/14/2024 1:05 PM`, parses without either.
 
 A missing quality column is refused for the same reason a missing
 quality column is refused everywhere else. `--assume-quality
@@ -291,11 +319,15 @@ the source's own codes are never overwritten.
 |---|---|
 | missing `timestamp`, `value` or `quality` | `SchemaError` |
 | naive timestamps | `SchemaError` |
-| non-numeric `value` on a tag that is not `role: MODE` | `SchemaError`, naming the tag and value |
-| no `tsdive.meta` on the file | `SchemaError` |
+| non-numeric `value` on a tag that is not `role: MODE`, and not a state its `quality_codes` names | `SchemaError`, naming the tag and value |
+| no `tsdive.meta` on the file | `SchemaError`, naming the `tsdive ingest` step that writes one |
+| a file that is not parquet, such as the CSV export itself | `SchemaError`, naming the `tsdive ingest` step |
 | `tsdive.meta` missing a required key | `SchemaError`, naming the key |
+| a key `tsdive.meta` does not define, at any level | `SchemaError`, naming the closest known key |
+| one end of the engineering range without the other, or a span of 0 or less | `SchemaError` |
 | `quality_codes` naming a severity that does not exist | `SchemaError` |
 | ingesting naive timestamps without `--tz` | `SchemaError` |
+| ingesting a date that reads day first and month first, with no order stated | `SchemaError` |
 | ingesting a source with no quality column and no `--assume-quality` | `SchemaError` |
 | `--assume-quality` on a source that has a quality column | `SchemaError` |
 | writing over an existing archive | `FileExistsError` |

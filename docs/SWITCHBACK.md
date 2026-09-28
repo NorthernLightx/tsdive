@@ -39,6 +39,14 @@ in a least-squares fit on the declared covariates, refitted for every
 assignment. A covariate sample joins the target sample with the same
 timestamp. Declare the covariates before you look at the result.
 
+`analyze` also tests each covariate's own difference between B and A,
+with the same design and washout. A covariate the setting moves, such as
+a controller output, carries part of the effect, and the adjusted
+estimate can absorb it. When that test gives p < 0.05 the report prints
+`covariate <tag> moves with the setting` under the adjusted estimate,
+and `--json` sets `moves_with_setting` under `covariate_checks`. Report
+the unadjusted estimate then.
+
 | refusal | when |
 |---|---|
 | `too_few` | fewer than 30 samples kept past the washout |
@@ -48,7 +56,12 @@ timestamp. Declare the covariates before you look at the result.
 | `collinear` | the covariates follow the schedule |
 
 `analyze` prints a refusal in place of the numbers, with the counts that
-caused it.
+caused it. A refused difference in means exits with status 3; a refused
+adjusted estimate beside a difference in means exits 0.
+
+An edited plan file raises `ScheduleMismatch` naming the digest the file
+records. Restore the plan file with that digest: the analysis needs the
+plan as drawn.
 
 ## When to use it
 
@@ -152,7 +165,7 @@ schedule  2024-06-03 00:00:00Z -> 2024-06-04 00:00:00Z   (1 d)
 blocks    24 of 1 h   A 12   B 12   washout 15 min
 design    over 10^6 balanced assignments   1000 drawn   smallest p 0.000999
 units     degC -> degrees Celsius
-quality   GOOD 1.000   censored no
+quality   GOOD 1.000   censored unknown
 
 Difference in means  (B - A over the kept samples)
   estimate  +0.6024 degrees Celsius   p 0.154

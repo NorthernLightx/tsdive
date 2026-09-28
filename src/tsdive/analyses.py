@@ -22,6 +22,7 @@ from typing import cast
 
 import pandas as pd
 
+from tsdive._naming import argname
 from tsdive.analyses_render import (
     CONTRIBUTORS_KEPT,
     compare_json,
@@ -592,7 +593,9 @@ def mspc(
             accepted, in (0, 1].
 
     Raises:
-        ValueError: malformed window, overlapping windows.
+        ValueError: malformed window, overlapping windows, or no ``rate_s``
+            where an archive declares no ``sample_rate_s`` or the archives
+            declare different ones.
         TSDiveError: a censored baseline, archives that do not align, or
             any typed refusal from the read path.
 
@@ -623,7 +626,7 @@ def mspc(
         monitor=monitors[0],
         tags=[str(b.identity) for b in bases],
         rate_s=rate,
-        rate_source="declared" if rate_s is None else "--rate-s",
+        rate_source="declared" if rate_s is None else argname("rate_s", "--rate-s"),
         quantile=quantile,
         train=train,
         test=test,
@@ -687,6 +690,12 @@ def compare(
         rate_s: grid rate in seconds. Omitted, the rate every archive
             declares.
 
+    A pair or joint table that cannot be built, for example because an
+    archive declares no ``sample_rate_s`` and no ``rate_s`` is passed,
+    holds its reason in ``pairs.reason`` and ``joint.reason``. The report
+    prints it under the headline, and ``to_dict()["refused_tables"]``
+    maps each refused table to its reason.
+
     Raises:
         ValueError: malformed periods, overlapping or swapped periods.
         TSDiveError: any typed refusal that stops the whole comparison;
@@ -701,6 +710,8 @@ def compare(
         ['demo:TIC101.PV', 'demo:FIC101.PV']
         >>> c.frame["spread_ratio"].round(1).tolist()
         [6.0, 0.5]
+        >>> c.to_dict()["refused_tables"]
+        {}
     """
     result = compare_periods(
         [os.fspath(p) for p in archives], before, after, rate_s=rate_s

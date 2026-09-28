@@ -137,7 +137,7 @@ def test_naive_timestamps_without_tz_are_refused(tmp_path, capsys):
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert "naive" in err
     assert "--tz" in err
     assert not (tmp_path / "no.parquet").exists()
@@ -185,6 +185,105 @@ def test_naive_and_aware_timestamps_in_one_column_are_refused(tmp_path):
         )
 
 
+EU_STAMPS = ["01/02/2026 08:00:00", "01/02/2026 08:01:00", "13/02/2026 08:02:00"]
+
+
+def _ingest_stamps(tmp_path, stamps, name="dates", **kwargs):
+    out = tmp_path / f"{name}.parquet"
+    tsdive.ingest(
+        _csv(tmp_path, stamps=stamps, name=f"{name}.csv"),
+        out=out,
+        meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+        timestamp_col="ts",
+        value_col="v",
+        quality_col="q",
+        **kwargs,
+    )
+    return [t.strftime("%Y-%m-%d %H:%M") for t in pd.read_parquet(out)["timestamp"]]
+
+
+def test_a_date_that_reads_both_ways_is_refused(tmp_path, capsys):
+    """SCOPE claim: a day/month-ambiguous date with no stated order raises SchemaError."""
+    with pytest.raises(SchemaError) as info:
+        _ingest_stamps(tmp_path, EU_STAMPS, tz="Europe/Paris")
+    message = str(info.value)
+    assert "'01/02/2026 08:00:00'" in message
+    assert "pass dayfirst=True to read day first, or timestamp_format with" in message
+
+    out = tmp_path / "cli.parquet"
+    rc = cmd_ingest([str(_csv(tmp_path, stamps=EU_STAMPS, name="cli.csv")), "--out", str(out),
+                     "--meta", str(_meta_file(tmp_path)), "--timestamp-col", "ts",
+                     "--value-col", "v", "--quality-col", "q", "--tz", "Europe/Paris"])
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "reads as day 01 of month 02 or as month 01, day 02" in err
+    assert "pass --dayfirst to read day first, or --timestamp-format with" in err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "order",
+    [{"dayfirst": True}, {"timestamp_format": "%d/%m/%Y %H:%M:%S"}],
+    ids=["dayfirst", "format"],
+)
+def test_a_stated_order_reads_every_row_the_same_way(tmp_path, order):
+    assert _ingest_stamps(tmp_path, EU_STAMPS, tz="Europe/Paris", **order) == [
+        "2026-02-01 07:00",
+        "2026-02-01 07:01",
+        "2026-02-13 07:02",
+    ]
+
+
+def test_cli_dayfirst_and_timestamp_format_reach_the_parser(tmp_path, capsys):
+    common = ["--meta", str(_meta_file(tmp_path)), "--timestamp-col", "ts", "--value-col",
+              "v", "--quality-col", "q", "--tz", "Europe/Paris"]
+    src = str(_csv(tmp_path, stamps=EU_STAMPS, name="eu.csv"))
+    assert cmd_ingest([src, "--out", str(tmp_path / "a.parquet"), "--dayfirst", *common]) == 0
+    fmt = ["--timestamp-format", "%d/%m/%Y %H:%M:%S"]
+    assert cmd_ingest([src, "--out", str(tmp_path / "b.parquet"), *fmt, *common]) == 0
+    a = pd.read_parquet(tmp_path / "a.parquet")["timestamp"]
+    assert list(a) == list(pd.read_parquet(tmp_path / "b.parquet")["timestamp"])
+    assert a.iloc[2] == pd.Timestamp("2026-02-13 07:02:00+00:00")
+    with pytest.raises(SystemExit) as info:
+        cmd_ingest([src, "--out", str(tmp_path / "c.parquet"), "--dayfirst", *fmt, *common])
+    assert info.value.code == 2
+    assert "pass one" in capsys.readouterr().err
+
+
+def test_us_dates_that_read_one_way_still_parse(tmp_path):
+    stamps = ["3/14/2024 1:05 PM", "3/14/2024 1:06 PM", "3/15/2024 9:00 AM"]
+    assert _ingest_stamps(tmp_path, stamps, tz="America/New_York") == [
+        "2024-03-14 17:05",
+        "2024-03-14 17:06",
+        "2024-03-15 13:00",
+    ]
+
+
+def test_dates_in_two_one_way_orders_are_refused(tmp_path):
+    with pytest.raises(SchemaError, match="reads only day first and '02/14/2026 08:01:00' only "
+                       "month first"):
+        _ingest_stamps(tmp_path, ["13/02/2026 08:00:00", "02/14/2026 08:01:00"], tz="UTC")
+
+
+def test_dayfirst_refuses_a_month_above_12(tmp_path):
+    with pytest.raises(SchemaError, match="'02/14/2026 08:00:00' has no month 14 when read day"):
+        _ingest_stamps(tmp_path, ["02/14/2026 08:00:00"], tz="UTC", dayfirst=True)
+
+
+def test_dayfirst_leaves_iso_dates_alone(tmp_path):
+    assert _ingest_stamps(tmp_path, AWARE, dayfirst=True) == [
+        "2024-03-01 00:00",
+        "2024-03-01 00:01",
+        "2024-03-01 00:02",
+    ]
+
+
+def test_a_row_off_the_stated_format_names_value_and_format(tmp_path):
+    with pytest.raises(SchemaError, match=r"'2024-03-01T00:00:00Z' does not match "
+                       r"timestamp_format '%d/%m/%Y %H:%M:%S'"):
+        _ingest_stamps(tmp_path, AWARE, timestamp_format="%d/%m/%Y %H:%M:%S")
+
+
 def test_unparseable_timestamp_names_the_offending_value(tmp_path):
     src = _csv(tmp_path, stamps=["2024-03-01T00:00:00Z", "not a time"])
     with pytest.raises(SchemaError, match="is not a timestamp tsdive can parse"):
@@ -214,7 +313,7 @@ def test_missing_quality_column_is_refused(tmp_path, capsys):
         ]
     )
     err = capsys.readouterr().err
-    assert rc == 2
+    assert rc == 3
     assert "--assume-quality" in err
     assert not (tmp_path / "no.parquet").exists()
 
@@ -295,6 +394,87 @@ def test_meta_json_missing_a_required_key_is_refused(tmp_path):
         tsdive.read_meta_json(path)
 
 
+def test_unknown_meta_keys_are_refused_with_the_closest_known_key(tmp_path, capsys):
+    """SCOPE claim: a metadata key tsdive does not read raises SchemaError."""
+    payload = {k: v for k, v in META.items() if k not in ("unit_raw", "eng_range_zero",
+                                                          "eng_range_span")}
+    path = _meta_file(tmp_path)
+    path.write_text(json.dumps({**payload, "unit": "m3/h"}), encoding="utf-8")
+    with pytest.raises(SchemaError, match=r"meta\.json: unknown key 'unit'; did you mean "
+                       r"'unit_raw'\?"):
+        tsdive.read_meta_json(path)
+
+    out = tmp_path / "FIC101.PV.parquet"
+    rc = cmd_ingest([str(_csv(tmp_path, stamps=AWARE)), "--out", str(out), "--meta", str(path),
+                     "--timestamp-col", "ts", "--value-col", "v", "--quality-col", "q"])
+    assert rc != 0
+    assert "unknown key 'unit'" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_a_nested_eng_range_is_refused_naming_the_flat_keys(tmp_path):
+    path = _meta_file(tmp_path)
+    payload = {k: v for k, v in META.items() if not k.startswith("eng_range")}
+    path.write_text(json.dumps({**payload, "eng_range": {"zero": 0, "span": 200}}),
+                    encoding="utf-8")
+    with pytest.raises(SchemaError, match="unknown key 'eng_range'; write the range as "
+                       "eng_range_zero and eng_range_span"):
+        tsdive.read_meta_json(path)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"identity": {"source": "plant1", "point_id": "X"}},
+         r"unknown key 'identity\.source'; did you mean 'identity\.source_id'\?"),
+        ({"eng_range_span": None}, "eng_range_zero is set and eng_range_span is not"),
+        ({"eng_range_zero": None}, "eng_range_span is set and eng_range_zero is not"),
+        ({"eng_range_span": 0}, "eng_range_span must be greater than 0"),
+        ({"eng_range_zero": "0"}, "eng_range_zero must be a finite number"),
+        ({"sample_rate_s": -1}, "sample_rate_s must be a number of seconds greater than 0"),
+        ({"role": "pv"}, "role 'pv' is not one of PV, SP, OP, MODE"),
+        ({"unit_raw": 3}, "unit_raw must be a string or null"),
+        ({"quality_assumed": "yes"}, "quality_assumed must be true or false"),
+        ({"flow_units": "m3/h"}, r"unknown key 'flow_units'; the known keys are identity, "),
+    ],
+)
+def test_malformed_meta_values_are_refused(tmp_path, overrides, message):
+    with pytest.raises(SchemaError, match=message):
+        tsdive.read_meta_json(_meta_file(tmp_path, **overrides))
+
+
+def test_wide_ingest_refuses_an_unknown_key_in_a_meta_file_before_writing(tmp_path):
+    meta_dir = _wide_meta_dir(tmp_path)
+    path = meta_dir / "TIC201.PV.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**payload, "units": "degC"}), encoding="utf-8")
+    with pytest.raises(SchemaError, match=r"TIC201\.PV\.json: unknown key 'units'"):
+        tsdive.ingest_wide(
+            _wide_csv(tmp_path),
+            out_dir=tmp_path / "archive",
+            meta_dir=meta_dir,
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
+def test_an_archive_whose_meta_carries_an_unknown_key_is_refused(tmp_path):
+    import pyarrow as pa
+    from pyarrow import parquet
+
+    frame = pd.DataFrame({"timestamp": pd.to_datetime(AWARE), "value": [1.0, 2.0, 3.0],
+                          "quality": ["GOOD"] * 3})
+    table = pa.Table.from_pandas(frame, preserve_index=False).replace_schema_metadata(
+        {"tsdive.meta": json.dumps({**META, "unit": "m3/h"})}
+    )
+    path = tmp_path / "odd.parquet"
+    parquet.write_table(table, path)
+    with pytest.raises(SchemaError, match=r"odd\.parquet: unknown key 'unit'"):
+        meta_from_parquet(path)
+
+
 def test_ingest_refuses_an_unsupported_input(tmp_path):
     src = tmp_path / "export.xlsx"
     src.write_bytes(b"not really a spreadsheet")
@@ -331,6 +511,38 @@ def test_ingest_refuses_a_string_value_on_a_measurement_tag(tmp_path):
             value_col="v",
             quality_col="q",
         )
+
+
+def _pi_export(tmp_path):
+    path = tmp_path / "pi.csv"
+    pd.DataFrame(
+        {
+            "ts": ["2024-03-01T00:00:00Z", "2024-03-01T00:01:00Z", "2024-03-01T00:02:00Z"],
+            "v": ["50.0", "I/O Timeout", "52.0"],
+            "q": ["Good", "Bad", "Good"],
+        }
+    ).to_csv(path, index=False)
+    return path
+
+
+def test_a_pi_digital_state_in_the_value_column_ingests_once_declared(tmp_path, capsys):
+    common = dict(timestamp_col="ts", value_col="v", quality_col="q")
+    with pytest.raises(SchemaError, match=r"quality_codes, for example \{\"I/O Timeout\": "
+                       r"\"BAD\"\}"):
+        tsdive.ingest(_pi_export(tmp_path), out=tmp_path / "bare.parquet",
+                      meta=tsdive.read_meta_json(_meta_file(tmp_path)), **common)
+
+    codes = {"Good": "GOOD", "Bad": "BAD", "I/O Timeout": "BAD"}
+    out = tsdive.ingest(_pi_export(tmp_path), out=tmp_path / "pi.parquet",
+                        meta=tsdive.read_meta_json(_meta_file(tmp_path, quality_codes=codes)),
+                        **common)
+    stored = pd.read_parquet(out)
+    assert list(stored["value"]) == ["50.0", "I/O Timeout", "52.0"]  # verbatim
+    p = tsdive.profile(out)
+    counts = {k.value: n for k, n in p.physics.severity_counts.items()}
+    assert counts == {"GOOD": 2, "UNCERTAIN": 0, "BAD": 1}
+    assert pd.isna(p.frame["value"].iloc[1])
+    assert p.stats.features.max == 52.0
 
 
 def test_mode_tag_string_states_ingest_cleanly(tmp_path):
@@ -419,6 +631,21 @@ def test_wide_export_writes_one_archive_per_column_across_dst(tmp_path):
     assert p.physics.unmapped_quality_codes == []
 
 
+def test_wide_ingest_takes_the_date_order_flags(tmp_path, capsys):
+    src = tmp_path / "eu_wide.csv"
+    pd.DataFrame({"ts": EU_STAMPS, "FIC101.PV": [1.0, 2.0, 3.0]}).to_csv(src, index=False)
+    meta_dir = _wide_meta_dir(tmp_path, tags=["FIC101.PV"])
+    argv = [str(src), "--wide", "--out", str(tmp_path / "archive"), "--meta-dir", str(meta_dir),
+            "--timestamp-col", "ts", "--tz", "Europe/Paris", "--assume-quality", "GOOD"]
+    assert cmd_ingest(argv) != 0
+    assert "'01/02/2026 08:00:00' reads as day 01" in capsys.readouterr().err
+    assert cmd_ingest([*argv, "--dayfirst"]) == 0
+    stamps = pd.read_parquet(tmp_path / "archive" / "FIC101.PV.parquet")["timestamp"]
+    assert stamps.iloc[0] == pd.Timestamp("2026-02-01 07:00:00+00:00")
+    fmt = ["--timestamp-format", "%d/%m/%Y %H:%M:%S", "--overwrite"]
+    assert cmd_ingest([*argv, *fmt]) == 0
+
+
 def test_wide_tags_subset_with_assumed_quality(tmp_path):
     written = tsdive.ingest_wide(
         _wide_csv(tmp_path, quality=False),
@@ -465,7 +692,7 @@ def test_wide_missing_quality_column_is_refused(tmp_path):
 
 
 def test_wide_suffix_and_assume_quality_together_are_refused(tmp_path):
-    with pytest.raises(SchemaError, match="--assume-quality was given with --quality-suffix"):
+    with pytest.raises(SchemaError, match="assume_quality was given with quality_suffix"):
         tsdive.ingest_wide(
             _wide_csv(tmp_path),
             out_dir=tmp_path / "archive",
@@ -528,6 +755,7 @@ TEMPLATE_KEYS = [
     "eng_range_zero",
     "eng_range_span",
     "sample_rate_s",
+    "retrieval_mode",
     "asset",
     "loop_id",
     "role",
@@ -552,7 +780,7 @@ def test_init_meta_writes_one_template_per_tag_in_schema_order(tmp_path):
     assert payload["identity"] == {"source_id": "plant1", "point_id": "FIC101.PV"}
     assert payload["name"] == "FIC101.PV"
     assert payload["quality_codes"] == {"Bad": "BAD", "Good": "GOOD", "Questionable": None}
-    assert all(payload[k] is None for k in TEMPLATE_KEYS[2:10])
+    assert all(payload[k] is None for k in TEMPLATE_KEYS[2:11])
     assert payload["quality_assumed"] is None
 
 
@@ -620,3 +848,113 @@ def test_template_with_an_unmapped_code_is_refused_at_read(tmp_path):
             tz="Europe/London",
         )
     assert not (tmp_path / "archive").exists()
+
+
+def test_python_messages_name_keywords_where_the_cli_names_flags(tmp_path, capsys):
+    src = _wide_csv(tmp_path)
+    meta_dir = _wide_meta_dir(tmp_path)
+    with pytest.raises(SchemaError, match=r"no quality_suffix and no assume_quality; name the "
+                       r"suffix .* assume_quality=GOOD\|UNCERTAIN\|BAD, which"):
+        tsdive.ingest_wide(src, out_dir=tmp_path / "a", meta_dir=meta_dir, timestamp_col="ts",
+                           tz="Europe/London")
+    rc = cmd_ingest([str(src), "--wide", "--out", str(tmp_path / "a"), "--meta-dir",
+                     str(meta_dir), "--timestamp-col", "ts", "--tz", "Europe/London"])
+    assert rc != 0
+    assert "no --quality-suffix and no --assume-quality" in capsys.readouterr().err
+
+    naive = _csv(tmp_path, stamps=NAIVE, name="naive.csv")
+    with pytest.raises(SchemaError, match="pass tz=<IANA zone> to state"):
+        tsdive.ingest(naive, out=tmp_path / "n.parquet",
+                      meta=tsdive.read_meta_json(_meta_file(tmp_path)), timestamp_col="ts",
+                      value_col="v", quality_col="q")
+
+
+def test_a_single_tag_template_leaves_the_tag_to_the_reader(tmp_path, capsys):
+    src = tmp_path / "pi.csv"
+    pd.DataFrame(
+        {
+            "ts": AWARE,
+            "v": [50.0, 51.0, 52.0],
+            "q": ["Good", "Questionable", "Good"],
+            "note": ["", "", ""],
+        }
+    ).to_csv(src, index=False)
+    meta_path = tmp_path / "meta" / "fic.json"
+    argv = [str(src), "--init-meta", str(meta_path), "--timestamp-col", "ts", "--value-col",
+            "v", "--quality-col", "q"]
+    assert cmd_ingest(argv) == 0
+    assert capsys.readouterr().out.strip() == f"wrote     {meta_path.as_posix()}"
+    template = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert list(template) == ["_comments", *TEMPLATE_KEYS]
+    assert template["identity"] == {"source_id": None, "point_id": None}
+    assert (template["name"], template["unit_raw"]) == (None, None)
+    assert template["quality_codes"] == {"Good": "GOOD", "Questionable": None}
+    assert template["_comments"]["columns"] == (
+        "timestamp 'ts', value 'v', quality 'q'; the export has ts, v, q, note"
+    )
+    assert set(template["_comments"]) == {*TEMPLATE_KEYS, "columns"}
+    with pytest.raises(SchemaError, match=r"identity\.source_id must be a non-empty string"):
+        tsdive.read_meta_json(meta_path)
+
+    assert cmd_ingest(argv) == 2
+    assert "already exists; pass --overwrite" in capsys.readouterr().err
+    assert cmd_ingest([*argv, "--overwrite"]) == 0
+    capsys.readouterr()
+
+    template.update(
+        identity={"source_id": "plant1", "point_id": "FIC101.PV"},
+        name="FIC-101 flow",
+        unit_raw="m3/h",
+        quality_codes={"Good": "GOOD", "Questionable": "UNCERTAIN"},
+    )
+    meta_path.write_text(json.dumps(template), encoding="utf-8")
+    out = tmp_path / "fic.parquet"
+    assert cmd_ingest([str(src), "--out", str(out), "--meta", str(meta_path), "--timestamp-col",
+                       "ts", "--value-col", "v", "--quality-col", "q"]) == 0
+    assert meta_from_parquet(out).unit_raw == "m3/h"
+
+
+def test_a_single_tag_template_takes_no_ingest_flags(tmp_path, capsys):
+    src = _csv(tmp_path, stamps=AWARE)
+    with pytest.raises(SystemExit) as info:
+        cmd_ingest([str(src), "--init-meta", str(tmp_path / "m.json"), "--out", "x.parquet"])
+    assert info.value.code == 2
+    assert "--out does not apply with --init-meta" in capsys.readouterr().err
+
+
+def test_a_misspelt_comment_key_is_refused(tmp_path):
+    path = _meta_file(tmp_path, _comment={"unit_raw": "m3/h"})
+    with pytest.raises(SchemaError, match="unknown key '_comment'; did you mean '_comments'"):
+        tsdive.read_meta_json(path)
+
+
+def test_a_declared_retrieval_mode_reaches_every_read(tmp_path, capsys):
+    out = tmp_path / "interp.parquet"
+    tsdive.ingest(
+        _csv(tmp_path, stamps=AWARE),
+        out=out,
+        meta=tsdive.read_meta_json(_meta_file(tmp_path, retrieval_mode="INTERPOLATED")),
+        timestamp_col="ts",
+        value_col="v",
+        quality_col="q",
+    )
+    assert meta_from_parquet(out).retrieval_mode == tsdive.RetrievalMode.INTERPOLATED
+    p = tsdive.profile(out)
+    assert p.window.contract.retrieval_mode == tsdive.RetrievalMode.INTERPOLATED
+    assert "contract  TIME_WEIGHTED  INTERPOLATED  NONE" in p.render()
+    assert cmd_profile([str(out), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["contract"]["retrieval_mode"] == "INTERPOLATED"
+
+    plain = tmp_path / "recorded.parquet"
+    tsdive.ingest(_csv(tmp_path, stamps=AWARE, name="plain.csv"), out=plain,
+                  meta=tsdive.read_meta_json(_meta_file(tmp_path)), timestamp_col="ts",
+                  value_col="v", quality_col="q")
+    recorded = tsdive.profile(plain).window.contract
+    assert recorded.retrieval_mode == tsdive.RetrievalMode.RECORDED
+    assert recorded.digest() != p.window.contract.digest()
+
+
+def test_an_unknown_retrieval_mode_is_refused(tmp_path):
+    with pytest.raises(SchemaError, match="retrieval_mode 'interpolated' is not one of "
+                       "RECORDED, INTERPOLATED"):
+        tsdive.read_meta_json(_meta_file(tmp_path, retrieval_mode="interpolated"))

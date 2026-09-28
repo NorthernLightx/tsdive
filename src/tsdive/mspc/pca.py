@@ -19,6 +19,7 @@ from typing import cast
 import numpy as np
 import pandas as pd
 
+from tsdive._naming import option
 from tsdive.errors import MspcAlignmentError
 from tsdive.store.tagstore import Window
 
@@ -37,26 +38,30 @@ def common_rate(windows: Sequence[Window]) -> int:
     The grid rate decides which samples line up across tags, so picking
     one for a caller who never stated it - or averaging two declarations -
     would invent the alignment every multivariate statistic rests on.
+
+    Each message names the option to pass as the caller spells it:
+    ``--rate-s`` under the CLI, ``rate_s=`` from Python.
     """
     declared = {str(w.identity): w.meta.sample_rate_s for w in windows}
     silent = sorted(tag for tag, rate in declared.items() if rate is None)
+    rate_s = option("rate_s", "--rate-s")
     if silent:
         raise ValueError(
-            f"no sample_rate_s declared by {', '.join(silent)}; pass --rate-s to "
-            "state the grid"
+            f"no sample_rate_s declared by {', '.join(silent)}; pass {rate_s} to "
+            "state the grid, or declare sample_rate_s in each tag's metadata"
         )
     distinct = {float(r) for r in declared.values() if r is not None}
     if len(distinct) != 1:
         spread = ", ".join(f"{tag}={rate}" for tag, rate in sorted(declared.items()))
         raise ValueError(
-            f"archives declare different sample rates ({spread}); pass --rate-s to "
+            f"archives declare different sample rates ({spread}); pass {rate_s} to "
             "state the grid"
         )
     rate = distinct.pop()
     if rate != int(rate):
         raise ValueError(
             f"declared sample rate {rate} s is not a whole number of seconds; pass "
-            "--rate-s to state the grid"
+            f"{rate_s} to state the grid"
         )
     return int(rate)
 

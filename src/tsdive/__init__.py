@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from tsdive.analyses import (
     CompareAnalysis,
@@ -21,6 +21,7 @@ from tsdive.api import (
     ingest,
     ingest_wide,
     init_meta,
+    init_tag_meta,
     profile,
     read_meta_json,
     switchback_analyze,
@@ -96,6 +97,7 @@ __all__ = [
     "ingest",
     "ingest_wide",
     "init_meta",
+    "init_tag_meta",
     "mspc",
     "profile",
     "read_meta_json",

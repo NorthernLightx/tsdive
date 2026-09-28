@@ -219,6 +219,45 @@ def test_mode_tag_keeps_its_string_states():
     assert pd.isna(out["value"].iloc[2])  # digital state still nulls the value
 
 
+def _pi_frame(qualities, values):
+    frame = annotate_severity(_baseline_frame(qualities))
+    frame["value"] = pd.Series(values, index=frame.index, dtype=object)
+    return frame
+
+
+def test_a_value_column_state_declared_in_quality_codes_is_nulled_at_its_severity():
+    frame = _pi_frame(["GOOD", "GOOD", "GOOD"], ["50.1", "I/O Timeout", "50.3"])
+    out = null_digital_state_values(
+        frame, tag="plant1:FI2201.PV", codes={"i/o timeout": "BAD"}
+    )
+    assert pd.isna(out["value"].iloc[1])
+    assert list(out["value"].iloc[[0, 2]]) == [50.1, 50.3]
+    assert list(out["severity"]) == ["GOOD", "BAD", "GOOD"]
+
+
+def test_a_declared_value_state_never_lifts_a_worse_quality():
+    frame = _pi_frame(["GOOD", "BAD"], ["50.1", "Shutdown"])
+    out = null_digital_state_values(frame, codes={"Shutdown": "UNCERTAIN"})
+    assert list(out["severity"]) == ["GOOD", "BAD"]
+    assert pd.isna(out["value"].iloc[1])
+
+
+def test_a_numeric_value_is_never_a_declared_state():
+    frame = _pi_frame(["GOOD", "GOOD"], ["0", "50.1"])
+    out = null_digital_state_values(frame, codes={"0": "BAD"})
+    assert list(out["value"]) == [0.0, 50.1]
+    assert list(out["severity"]) == ["GOOD", "GOOD"]
+
+
+def test_an_undeclared_value_state_names_the_quality_codes_route_first():
+    frame = _pi_frame(["GOOD", "GOOD"], ["50.1", "I/O Timeout"])
+    with pytest.raises(SchemaError) as info:
+        null_digital_state_values(frame, tag="plant1:FI2201.PV", codes={"Good": "GOOD"})
+    message = str(info.value)
+    assert message.startswith("tag plant1:FI2201.PV: value 'I/O Timeout' is not numeric")
+    assert message.index('{"I/O Timeout": "BAD"}') < message.index("role=MODE only for a tag")
+
+
 VENDOR_CODES = {"SUB": "UNCERTAIN", "OK": "GOOD", "COMM FAILURE": "UNCERTAIN"}
 
 

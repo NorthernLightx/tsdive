@@ -45,6 +45,11 @@ def yes_no(flag: bool) -> str:
     return "yes" if flag else "no"
 
 
+def yes_no_unknown(flag: bool | None) -> str:
+    """``yes``/``no``, or ``unknown`` for ``None``: a verdict that may have no answer."""
+    return "unknown" if flag is None else yes_no(flag)
+
+
 def plural(n: int, noun: str) -> str:
     """``6 segments`` / ``1 segment``: a count and a noun that agree."""
     return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
@@ -231,12 +236,147 @@ def render_stats(window: Window, stats: WindowStats) -> list[str]:
     return rule("Values", head) + indent(body)
 
 
+def window_json(window: Window) -> dict[str, object]:
+    """The span a step read, as a program wants it."""
+    return {
+        "start": window.start,
+        "end": window.end,
+        "duration_s": (window.end - window.start).total_seconds(),
+    }
+
+
+def _flatline_json(verdict: FlatlineVerdict) -> dict[str, object]:
+    if verdict.saturated_not_frozen or verdict.not_assessed is not None:
+        text = "NOT ASSESSED"
+    else:
+        text = "FLATLINE SUSPECTED" if verdict.fired else "no flatline"
+    return {
+        "verdict": text,
+        "fired": verdict.fired,
+        "saturated_not_frozen": verdict.saturated_not_frozen,
+        "not_assessed": verdict.not_assessed,
+        "signals": list(verdict.signals),
+    }
+
+
+def profile_json(
+    window: Window, flatline: FlatlineVerdict | None, stats: WindowStats
+) -> dict[str, object]:
+    """Every number the profile report states, keyed for a program.
+
+    The document ``tsdive profile --json`` prints and
+    [`Profile.to_dict`][tsdive.Profile.to_dict] returns, before the JSON
+    encoding.
+    """
+    p = window.physics
+    cov = p.coverage
+    ta = p.timestamp_audit
+    u = p.unit
+    f = stats.features
+    c = window.contract
+    return {
+        "tag": str(window.identity),
+        "name": window.meta.name,
+        "window": window_json(window),
+        "contract": {
+            "calculation_basis": c.calculation_basis,
+            "retrieval_mode": c.retrieval_mode,
+            "aggregate_type": c.aggregate_type,
+            "stepped": c.stepped,
+            "digest": c.digest(),
+        },
+        "units": {
+            "raw": u.raw,
+            "canonical": u.canonical,
+            "pint_units": u.pint_units,
+            "reference_condition": u.reference_condition,
+            "resolved": u.resolved,
+        },
+        "coverage": {
+            "coverage": cov.coverage,
+            "valid_fraction": p.valid_fraction,
+            "n_gaps": cov.n_gaps,
+            "n_data_loss_gaps": sum(
+                1 for g in cov.gaps if g.classification.cls in DATA_LOSS_CLASSES
+            ),
+            "longest_gap_s": cov.longest_gap_s,
+            "edge_slack_s": p.edge_slack_s,
+            "edge_slack_start_s": p.edge_slack_start_s,
+            "edge_slack_end_s": p.edge_slack_end_s,
+            "gaps": [
+                {
+                    "start": g.start,
+                    "end": g.end,
+                    "duration_s": g.duration_s,
+                    "class": g.classification.cls,
+                    "rule": g.classification.rule,
+                }
+                for g in cov.gaps
+            ],
+        },
+        "quality": {
+            "counts": {s.value: p.severity_counts.get(s, 0) for s in Severity},
+            "assumed_at_ingest": window.meta.quality_assumed,
+            "unmapped_codes": p.unmapped_quality_codes,
+            "unmapped_look_like_opc_da": p.unmapped_look_like_opc_da,
+        },
+        "range": {
+            "clipped_fraction": p.clipping.fraction,
+            "n_clipped": p.clipping.n_clipped,
+            "censored": p.clipping.censored_verdict,
+            "range_known": p.clipping.range_known,
+            "beyond_float32_count": p.implausible_magnitude_count,
+        },
+        "timestamps": {
+            "audited": ta.n_samples,
+            "duplicates": len(ta.duplicate_timestamps),
+            "non_monotonic": len(ta.non_monotonic_positions),
+            "dst_transitions": [
+                {
+                    "tz": t.tz,
+                    "instant": t.instant_utc,
+                    "offset_before_s": t.offset_before_s,
+                    "offset_after_s": t.offset_after_s,
+                }
+                for t in ta.dst_transitions
+            ],
+        },
+        "values": {
+            "n_good": f.n_good,
+            "n_samples": f.n_samples,
+            "state_valued": stats.state_valued,
+            "state_counts": [{"state": s, "n": n} for s, n in stats.state_counts],
+            "min": f.min,
+            "p05": stats.p05,
+            "median": f.median,
+            "p95": stats.p95,
+            "max": f.max,
+            "mean": f.weighted_mean,
+            "mean_basis": c.calculation_basis,
+            "mean_note": stats.mean_note,
+            "std": f.std,
+            "mad": stats.mad,
+            "distinct": stats.distinct_count,
+            "stall_s": f.stall_s,
+            "changes_per_hour": f.changes_per_hour,
+            "interval_median_s": stats.interval_median_s,
+            "interval_p05_s": stats.interval_p05_s,
+            "interval_p95_s": stats.interval_p95_s,
+            "declared_rate_s": stats.declared_rate_s,
+            "interval_differs_from_declared": stats.interval_differs_from_declared,
+        },
+        "flatline": (
+            None if flatline is None else _flatline_json(flatline)
+        ),
+    }
+
+
 def _headline(window: Window, flatline: FlatlineVerdict | None) -> list[str]:
     p = window.physics
     parts = [
         f"coverage {_fmt(p.coverage.coverage)}",
         f"GOOD {int(window.frame['valid'].sum())}/{len(window.frame)}",
-        f"censored {yes_no(p.clipping.censored)}",
+        f"censored {yes_no_unknown(p.clipping.censored_verdict)}",
         f"gaps {p.coverage.n_gaps}",
     ]
     if flatline is not None:
@@ -325,16 +465,17 @@ def _quality_section(window: Window) -> list[str]:
 
 def _range_section(window: Window) -> list[str]:
     p = window.physics
-    clipped = (
-        "clipped null (eng range unknown)"
-        if p.clipping.fraction is None
-        else f"clipped {p.clipping.fraction:.4f}"
-    )
-    body = [f"{clipped}{SEP}censored {yes_no(p.clipping.censored)}"]
+    if not p.clipping.range_known:
+        clipped = "clipped null (eng range unknown)"
+    elif p.clipping.fraction is None:
+        clipped = "clipped null (no samples)"
+    else:
+        clipped = f"clipped {p.clipping.fraction:.4f}"
+    body = [f"{clipped}{SEP}censored {yes_no_unknown(p.clipping.censored_verdict)}"]
     if p.implausible_magnitude_count > 0:
         why = (
-            "not censored: eng range unknown"
-            if window.meta.eng_range is None
+            "eng range unknown"
+            if not p.clipping.range_known
             else "eng range declared; see clipped above"
         )
         body.append(f"beyond float32 range {p.implausible_magnitude_count} ({why})")

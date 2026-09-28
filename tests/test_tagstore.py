@@ -434,12 +434,12 @@ def test_values_beyond_float32_range_are_counted_not_censored(archive_factory, s
     )
     p = window.physics
     assert p.implausible_magnitude_count == 2
-    # No eng_range, so nothing censored it and the report says why.
+    # No eng_range, so nothing flags it and the report says why.
     assert not p.clipping.censored
-    assert (
-        "  beyond float32 range 2 (not censored: eng range unknown)"
-        in render_window_report(window)
-    )
+    assert p.clipping.censored_verdict is None
+    report = render_window_report(window)
+    assert "  clipped null (eng range unknown)   censored unknown" in report
+    assert "  beyond float32 range 2 (eng range unknown)" in report
 
 
 def test_no_beyond_float32_line_when_every_value_fits(archive_factory, store):

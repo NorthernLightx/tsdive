@@ -12,7 +12,7 @@ first implementation. A historian is one kind of source among several.
 |---|---|---|---|---|---|---|
 | tsdive parquet archive | native; `write_tag` | declared on every read | verbatim + `quality_codes` | gap classes | UTC required | shipped |
 | CSV / parquet export | `tsdive ingest`, one tag per file or `--wide` | declared on every read | source column, or `--assume-quality` recorded | gap classes | `--tz` required for naive stamps | shipped |
-| OSIsoft PI export | `tsdive ingest` + `quality_codes` | caller declares AF calculation basis and retrieval mode | PI string codes; `quality_codes` for site codes | compression silence is a gap class | as exported | via ingest |
+| OSIsoft PI export | `tsdive ingest` + `quality_codes` | caller declares the calculation basis on each read (`--basis`) and the retrieval mode in the tag metadata (`retrieval_mode`) | PI string codes; `quality_codes` for site codes and for states PI writes in the value column (`I/O Timeout`) | compression silence is a gap class | as exported | via ingest |
 | OPC UA history | `tsdive ingest` on a history dump | caller declares Average or TimeAverage, and stepped-ness | StatusCode severity bits + Good whitelist | deadband holds are gaps | as exported | via ingest; client planned |
 | InfluxDB / TimescaleDB export | `tsdive ingest` | retention downsampling is an aggregate contract; declare it | none in source; `--assume-quality` | continuous-query holes are gaps | as exported | via ingest |
 | MQTT / Kafka capture | not yet | event-weighted by nature | none; `--assume-quality` | publisher deadband is compression | broker and device clocks undeclared | planned |

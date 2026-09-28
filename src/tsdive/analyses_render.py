@@ -8,6 +8,7 @@ else, so every renderer here stays plain text.
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -24,8 +25,10 @@ from tsdive.compare import (
     TagChange,
 )
 from tsdive.report import (
+    LABEL_WIDTH,
     MAX_WIDTH,
     SEP,
+    WRAP_WIDTH,
     continued,
     fits,
     fmt_duration,
@@ -37,8 +40,9 @@ from tsdive.report import (
     more_line,
     plural,
     rule,
+    window_json,
     wrapped,
-    yes_no,
+    yes_no_unknown,
 )
 from tsdive.store.tagstore import Window
 
@@ -108,21 +112,12 @@ def _n_good(window: Window) -> int:
     return int(window.frame["valid"].sum())
 
 
-def window_json(window: Window) -> dict[str, object]:
-    """The span a step read, as a program wants it."""
-    return {
-        "start": window.start,
-        "end": window.end,
-        "duration_s": (window.end - window.start).total_seconds(),
-    }
-
-
 def _baseline_line(window: Window) -> str:
     """States the censoring verdict the baseline was admitted on."""
     return label_line(
         "baseline",
         f"{fmt_span(window.start, window.end)}{SEP}GOOD {_n_good(window)}{SEP}"
-        f"censored {yes_no(window.physics.clipping.censored)}",
+        f"censored {yes_no_unknown(window.physics.clipping.censored_verdict)}",
     )
 
 
@@ -134,7 +129,8 @@ def _baseline_json(window: Window) -> dict[str, object]:
     return {
         **window_json(window),
         "n_good": _n_good(window),
-        "censored": window.physics.clipping.censored,
+        "censored": window.physics.clipping.censored_verdict,
+        "range_known": window.physics.clipping.range_known,
     }
 
 
@@ -297,7 +293,7 @@ def segment_lines(a: SegmentAnalysis) -> list[str]:
         f"{plural(len(found.breakpoints), 'breakpoint')}{SEP}"
         # Not a refusal - a segment table is not a baseline - but a
         # segment pinned at full scale is a saturation, not a regime.
-        f"censored {yes_no(window.physics.clipping.censored)}",
+        f"censored {yes_no_unknown(window.physics.clipping.censored_verdict)}",
         "",
         label_line(
             "window",
@@ -318,7 +314,8 @@ def segment_json(a: SegmentAnalysis) -> dict[str, object]:
     return {
         "tag": str(a.window.identity),
         "window": window_json(a.window),
-        "censored": a.window.physics.clipping.censored,
+        "censored": a.window.physics.clipping.censored_verdict,
+        "range_known": a.window.physics.clipping.range_known,
         "usable": found.n_used,
         "method": found.method,
         "penalty": found.penalty,
@@ -682,10 +679,38 @@ def _compare_headline(result: CompareResult) -> str:
         else f"pairs {len(table.clearing)} of {table.n_pairs} clearing"
     )
     counts = f"refused {result.n_refused}{SEP}{pairs}"
+    if result.joint.reason is not None:
+        counts += f"{SEP}joint refused"
     tags = plural(len(result.tags), "tag")
     if result.source_id is None:
         return f"{tags}  {counts}"
     return f"{result.source_id}  {tags}{SEP}{counts}"
+
+
+def _refused_tables(result: CompareResult) -> dict[str, str]:
+    """Table name -> reason, for the pairs and joint tables that hold no rows."""
+    reasons = {"pairs": result.pairs.reason, "joint": result.joint.reason}
+    return {table: reason for table, reason in reasons.items() if reason is not None}
+
+
+def _refused_lines(result: CompareResult) -> list[str]:
+    """One ``<table> refused: <reason>`` line per refused table, under the headline."""
+    lines: list[str] = []
+    seen: dict[str, str] = {}
+    for table, reason in _refused_tables(result).items():
+        text = f"refused: same reason as {seen[reason]}" if reason in seen else (
+            f"refused: {reason}"
+        )
+        seen.setdefault(reason, table)
+        first, *rest = textwrap.wrap(
+            text,
+            width=WRAP_WIDTH - LABEL_WIDTH - 2,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+        lines.append(label_line(table, first))
+        lines.extend(continued(line) for line in rest)
+    return lines
 
 
 def _period_line(label: str, span: tuple[pd.Timestamp, pd.Timestamp]) -> str:
@@ -701,6 +726,7 @@ def compare_lines(a: CompareAnalysis) -> list[str]:
     table = a.pairs
     lines = [
         _compare_headline(a),
+        *_refused_lines(a),
         "",
         _period_line("before", a.before),
         _period_line("after", a.after),
@@ -801,4 +827,5 @@ def compare_json(a: CompareAnalysis) -> dict[str, object]:
             }
         ),
         "joint_reason": joint.reason,
+        "refused_tables": _refused_tables(a),
     }

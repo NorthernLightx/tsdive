@@ -26,12 +26,40 @@ _OVER_UNDER_STATES = {"Over Range", "Under Range"}
 
 @dataclass(frozen=True)
 class ClippingReport:
-    """``fraction`` is ``None`` when the engineering range is unknown."""
+    """How many samples of a window sit at the engineering range or carry a range state.
+
+    ``fraction`` is ``None`` when the engineering range is unknown or the
+    window holds no samples. ``censored`` is True when any sample is
+    flagged, and the baseline refusal reads it. ``range_known`` is False
+    when the tag declares no engineering range: only a digital range state
+    can flag a sample then, so a tag pegged at its top reads unflagged.
+    ``censored_verdict`` is the value every report prints.
+    """
 
     fraction: float | None
     n_clipped: int
     n_samples: int
     censored: bool
+    range_known: bool
+
+    @property
+    def censored_verdict(self) -> bool | None:
+        """True when a sample is flagged, False when a declared range flags none, else None.
+
+        ``None`` means no engineering range is declared and no digital range
+        state flags a sample, so whether the window is censored is unknown.
+
+        Examples:
+            >>> from tsdive.store.clipping import clipped_fraction
+            >>> from tsdive.store.identity import EngRange
+            >>> clipped_fraction([200.0, 200.0], ["GOOD", "GOOD"], None).censored_verdict
+            >>> clipped_fraction([200.0, 50.0], ["GOOD", "GOOD"],
+            ...                  EngRange(zero=0.0, span=200.0)).censored_verdict
+            True
+        """
+        if self.censored:
+            return True
+        return False if self.range_known else None
 
 
 def clipped_fraction(
@@ -60,24 +88,28 @@ def clipped_fraction(
         # is not evidence of saturation.
         flags = flags | (v >= eng_range.high - tol) | (v <= eng_range.zero + tol)
     n_clipped = int(flags.sum())
-    if eng_range is None or eng_range.span <= 0:
-        fraction = None
-    else:
-        fraction = n_clipped / n if n > 0 else None
+    range_known = eng_range is not None and eng_range.span > 0
+    fraction = n_clipped / n if range_known and n > 0 else None
     return ClippingReport(
         fraction=fraction,
         n_clipped=n_clipped,
         n_samples=n,
         censored=n_clipped > 0,
+        range_known=range_known,
     )
 
 
 def assert_usable_baseline(meta: TagMeta, report: ClippingReport) -> None:
-    """Refuse censored windows as baselines.
+    """Raise ``InsufficientQuality`` when a baseline window has a flagged sample.
 
     A window where the sensor sat at full scale carries no information
     about normal operation; using one as a baseline poisons every
     downstream comparison.
+
+    The check reads ``censored``, not ``censored_verdict``. A window whose
+    verdict is unknown (no engineering range declared, no digital range
+    state) is accepted as a baseline, and the reports print ``censored
+    unknown`` beside it.
     """
     if report.censored:
         # A digital range state censors a window with no eng range to

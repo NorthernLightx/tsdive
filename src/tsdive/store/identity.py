@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from tsdive.store.sampling_contract import RetrievalMode
+
 
 class Role(StrEnum):
     """Control-loop role of a tag. Nullable on TagMeta; populated when known."""
@@ -59,6 +61,10 @@ class TagMeta:
     asset: str | None = None
     loop_id: str | None = None
     role: Role | None = None
+    # How the export's samples were retrieved from the historian (PI's
+    # Recorded or Interpolated). The export fixed it, so every read of the
+    # archive states it in place of the caller's RECORDED default.
+    retrieval_mode: RetrievalMode | None = None
     # Raw vendor code -> "GOOD" / "UNCERTAIN" / "BAD", for codes only this
     # source's owner can interpret. Consulted before the global tables, so
     # a site declares what its own codes mean instead of editing library
