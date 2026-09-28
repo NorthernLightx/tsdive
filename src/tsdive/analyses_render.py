@@ -38,7 +38,7 @@ from tsdive.report import (
     plural,
     rule,
     wrapped,
-    yes_no,
+    yes_no_unknown,
 )
 from tsdive.store.tagstore import Window
 
@@ -122,7 +122,7 @@ def _baseline_line(window: Window) -> str:
     return label_line(
         "baseline",
         f"{fmt_span(window.start, window.end)}{SEP}GOOD {_n_good(window)}{SEP}"
-        f"censored {yes_no(window.physics.clipping.censored)}",
+        f"censored {yes_no_unknown(window.physics.clipping.censored_verdict)}",
     )
 
 
@@ -134,7 +134,8 @@ def _baseline_json(window: Window) -> dict[str, object]:
     return {
         **window_json(window),
         "n_good": _n_good(window),
-        "censored": window.physics.clipping.censored,
+        "censored": window.physics.clipping.censored_verdict,
+        "range_known": window.physics.clipping.range_known,
     }
 
 
@@ -297,7 +298,7 @@ def segment_lines(a: SegmentAnalysis) -> list[str]:
         f"{plural(len(found.breakpoints), 'breakpoint')}{SEP}"
         # Not a refusal - a segment table is not a baseline - but a
         # segment pinned at full scale is a saturation, not a regime.
-        f"censored {yes_no(window.physics.clipping.censored)}",
+        f"censored {yes_no_unknown(window.physics.clipping.censored_verdict)}",
         "",
         label_line(
             "window",
@@ -318,7 +319,8 @@ def segment_json(a: SegmentAnalysis) -> dict[str, object]:
     return {
         "tag": str(a.window.identity),
         "window": window_json(a.window),
-        "censored": a.window.physics.clipping.censored,
+        "censored": a.window.physics.clipping.censored_verdict,
+        "range_known": a.window.physics.clipping.range_known,
         "usable": found.n_used,
         "method": found.method,
         "penalty": found.penalty,

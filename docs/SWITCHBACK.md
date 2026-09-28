@@ -152,7 +152,7 @@ schedule  2024-06-03 00:00:00Z -> 2024-06-04 00:00:00Z   (1 d)
 blocks    24 of 1 h   A 12   B 12   washout 15 min
 design    over 10^6 balanced assignments   1000 drawn   smallest p 0.000999
 units     degC -> degrees Celsius
-quality   GOOD 1.000   censored no
+quality   GOOD 1.000   censored unknown
 
 Difference in means  (B - A over the kept samples)
   estimate  +0.6024 degrees Celsius   p 0.154

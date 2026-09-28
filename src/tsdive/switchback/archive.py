@@ -262,9 +262,13 @@ class SwitchbackAnalysis:
         return _good_share(self.target)
 
     @property
-    def censored(self) -> bool:
-        """True when a target sample sits at its engineering range limit."""
-        return self.target.physics.clipping.censored
+    def censored(self) -> bool | None:
+        """Whether a target sample sits at its engineering range limit.
+
+        ``None`` when the target declares no engineering range and no
+        digital range state flags a sample.
+        """
+        return self.target.physics.clipping.censored_verdict
 
     @property
     def frame(self) -> pd.DataFrame:

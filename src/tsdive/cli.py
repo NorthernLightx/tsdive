@@ -831,7 +831,8 @@ def _profile_json(result: Profile) -> dict[str, object]:
         "range": {
             "clipped_fraction": p.clipping.fraction,
             "n_clipped": p.clipping.n_clipped,
-            "censored": p.clipping.censored,
+            "censored": p.clipping.censored_verdict,
+            "range_known": p.clipping.range_known,
             "beyond_float32_count": p.implausible_magnitude_count,
         },
         "timestamps": {

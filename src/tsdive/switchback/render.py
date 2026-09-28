@@ -23,6 +23,7 @@ from tsdive.report import (
     more_line,
     rule,
     wrapped,
+    yes_no_unknown,
 )
 from tsdive.switchback.design import PERMUTATIONS, order_of_magnitude
 from tsdive.switchback.plan import POWER_TARGET, SETTING_A, SETTING_B, json_count
@@ -224,7 +225,7 @@ def analysis_lines(a: SwitchbackAnalysis) -> list[str]:
         label_line(
             "quality",
             f"GOOD {'n/a' if good is None else f'{good:.3f}'}{SEP}"
-            f"censored {'yes' if a.censored else 'no'}",
+            f"censored {yes_no_unknown(a.censored)}",
         ),
     ]
     if a.unused:
@@ -273,6 +274,7 @@ def analysis_json(a: SwitchbackAnalysis) -> dict[str, object]:
             "quality": {
                 "good_fraction": a.good_share,
                 "censored": a.censored,
+                "range_known": a.target.physics.clipping.range_known,
                 "clipped_fraction": a.target.physics.clipping.fraction,
             },
             "plan": {

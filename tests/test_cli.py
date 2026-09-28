@@ -163,9 +163,47 @@ def test_profile_json_carries_the_numbers_the_report_states(tmp_path, capsys):
     assert payload["coverage"]["gaps"][0]["class"] == "unknown"
     assert payload["quality"]["counts"] == {"GOOD": 119, "UNCERTAIN": 0, "BAD": 1}
     assert payload["range"]["censored"] is True
+    assert payload["range"]["range_known"] is True
     assert payload["values"]["n_good"] == 119
     assert payload["values"]["median"] == 52.0
     assert payload["flatline"] is None
+
+
+def _pegged(tmp_path, eng_range):
+    """A flow tag sitting at 200 for a quarter of an hour, with or without its range."""
+    base = pd.Timestamp("2024-03-01 00:00:00+00:00")
+    stamps = [base + pd.Timedelta(60 * i, unit="s") for i in range(60)]
+    values = [120.0 + (i % 5) for i in range(45)] + [200.0] * 15
+    df = pd.DataFrame({"timestamp": stamps, "value": values, "quality": ["GOOD"] * 60})
+    meta = make_meta(eng_range=eng_range, sample_rate_s=60.0)
+    name = "ranged" if eng_range else "bare"
+    return write_archive(tmp_path / name / "FIC101.PV.parquet", df, meta)
+
+
+def test_a_pegged_tag_without_a_range_reads_censored_unknown(tmp_path, capsys):
+    bare = _pegged(tmp_path, None)
+    assert cmd_profile([str(bare)]) == 0
+    out = capsys.readouterr().out
+    assert "GOOD 60/60   censored unknown   gaps 0" in out
+    assert "  clipped null (eng range unknown)   censored unknown" in out
+    assert cmd_profile([str(bare), "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)["range"]
+    assert (doc["censored"], doc["range_known"], doc["clipped_fraction"]) == (None, False, None)
+
+    ranged = _pegged(tmp_path, EngRange(zero=0.0, span=200.0))
+    assert cmd_profile([str(ranged)]) == 0
+    assert "GOOD 60/60   censored yes   gaps 0" in capsys.readouterr().out
+    assert cmd_profile([str(ranged), "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)["range"]
+    assert (doc["censored"], doc["range_known"]) == (True, True)
+
+
+def test_an_empty_window_keeps_the_declared_range(tmp_path, capsys):
+    ranged = _pegged(tmp_path, EngRange(zero=0.0, span=200.0))
+    assert cmd_profile([str(ranged), "--window", "2024-03-02"]) == 0
+    out = capsys.readouterr().out
+    assert "  clipped null (no samples)   censored no" in out
+    assert "eng range unknown" not in out
 
 
 def test_profile_json_reports_the_flatline_verdict(tmp_path, capsys):
@@ -431,7 +469,7 @@ def test_segment_finds_the_step_without_a_mode_tag(archive_factory, capsys):
     rc = cmd_segment([str(path)])
     assert rc == 0
     assert capsys.readouterr().out.splitlines() == [
-        "plant1:FIC101.PV  2 segments   1 breakpoint   censored no",
+        "plant1:FIC101.PV  2 segments   1 breakpoint   censored unknown",
         "",
         "window    2024-03-01 00:00:00Z -> 01:59:00Z   usable 120",
         "method    PELT L2 on MAD-scaled values   penalty 14.36 (3*log n)   "
@@ -448,7 +486,7 @@ def test_segment_states_a_penalty_the_caller_chose(archive_factory, capsys):
     rc = cmd_segment([str(path), "--penalty", "1000"])
     out = capsys.readouterr().out.splitlines()
     assert rc == 0
-    assert out[0] == "plant1:FIC101.PV  1 segment   0 breakpoints   censored no"
+    assert out[0] == "plant1:FIC101.PV  1 segment   0 breakpoints   censored unknown"
     assert out[3] == (
         "method    PELT L2 on MAD-scaled values   penalty 1000   min-size 10"
     )
@@ -495,7 +533,7 @@ def test_screen_flags_a_spike_against_a_mad_baseline(archive_factory, capsys):
     assert capsys.readouterr().out.splitlines() == [
         "plant1:FIC101.PV  flagged 3 of 61 (4.9%)",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 02:00:00Z",
         "method    MAD   center 52.00   scale 1.483   k 3.0   "
         "limits [47.55, 56.45]",
@@ -525,7 +563,7 @@ def test_screen_keys_baselines_by_regime_with_a_mode_archive(archive_factory, ca
     assert capsys.readouterr().out.splitlines() == [
         "plant1:FIC101.PV  flagged 2 of 60 (3.3%)",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 01:59:00Z",
         f"mode      {modes}",
         "alignment  baseline 60/60   window 60/60",
@@ -557,7 +595,7 @@ def test_screen_counts_every_sample_once(archive_factory, capsys, baseline):
     rc = cmd_screen([str(path), "--baseline", baseline, "--window", MONITOR_SPAN])
     out = capsys.readouterr().out.splitlines()
     assert rc == 0
-    assert out[2].endswith("GOOD 60   censored no")
+    assert out[2].endswith("GOOD 60   censored unknown")
     # 60 + 61 = every sample, once
     assert out[0] == "plant1:FIC101.PV  flagged 0 of 61 (0.0%)"
 
@@ -699,7 +737,7 @@ def test_spc_reports_each_rule_separately(archive_factory, capsys):
     assert capsys.readouterr().out.splitlines() == [
         "plant1:FIC101.PV  3 rule hits in 61 samples",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 02:00:00Z",
         "limits    center 52.00   sigma 1.483   lcl 47.55   ucl 56.45",
         "basis     individuals 3-sigma",
@@ -1357,7 +1395,7 @@ def test_run_profile_returns_the_report_lines(tmp_path):
 def test_run_segment_returns_the_segment_table(archive_factory):
     path = _stepped_archive(archive_factory)
     assert run_segment(_parser_segment().parse_args([str(path)])) == [
-        "plant1:FIC101.PV  2 segments   1 breakpoint   censored no",
+        "plant1:FIC101.PV  2 segments   1 breakpoint   censored unknown",
         "",
         "window    2024-03-01 00:00:00Z -> 01:59:00Z   usable 120",
         "method    PELT L2 on MAD-scaled values   penalty 14.36 (3*log n)   "
@@ -1377,7 +1415,7 @@ def test_run_screen_returns_the_screen_lines(archive_factory):
     assert run_screen(args) == [
         "plant1:FIC101.PV  flagged 3 of 61 (4.9%)",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 02:00:00Z",
         "method    MAD   center 52.00   scale 1.483   k 3.0   "
         "limits [47.55, 56.45]",
@@ -1400,7 +1438,7 @@ def test_run_spc_returns_the_chart_lines(archive_factory):
     assert run_spc(args) == [
         "plant1:FIC101.PV  3 rule hits in 61 samples",
         "",
-        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored no",
+        "baseline  2024-03-01 00:00:00Z -> 00:59:00Z   GOOD 60   censored unknown",
         "window    2024-03-01 01:00:00Z -> 02:00:00Z",
         "limits    center 52.00   sigma 1.483   lcl 47.55   ucl 56.45",
         "basis     individuals 3-sigma",

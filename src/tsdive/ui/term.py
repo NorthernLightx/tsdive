@@ -56,6 +56,7 @@ _TOKENS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bBAD [1-9]\d*%?"), "red"),
     (re.compile(r"\bcensored no\b"), "green"),
     (re.compile(r"\bNOT ASSESSED\b"), "yellow"),
+    (re.compile(r"\bcensored unknown\b"), "yellow"),
     (re.compile(r"\bUNCERTAIN(?: [1-9]\d*%?)?(?! [0-9])"), "yellow"),
     (re.compile(r"\bflagged [1-9]\d*\b"), "bold"),
     (re.compile(r"\bbreaches [1-9]\d*\b"), "bold"),

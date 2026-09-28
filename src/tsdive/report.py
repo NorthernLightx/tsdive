@@ -45,6 +45,11 @@ def yes_no(flag: bool) -> str:
     return "yes" if flag else "no"
 
 
+def yes_no_unknown(flag: bool | None) -> str:
+    """``yes``/``no``, or ``unknown`` for ``None``: a verdict that may have no answer."""
+    return "unknown" if flag is None else yes_no(flag)
+
+
 def plural(n: int, noun: str) -> str:
     """``6 segments`` / ``1 segment``: a count and a noun that agree."""
     return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
@@ -236,7 +241,7 @@ def _headline(window: Window, flatline: FlatlineVerdict | None) -> list[str]:
     parts = [
         f"coverage {_fmt(p.coverage.coverage)}",
         f"GOOD {int(window.frame['valid'].sum())}/{len(window.frame)}",
-        f"censored {yes_no(p.clipping.censored)}",
+        f"censored {yes_no_unknown(p.clipping.censored_verdict)}",
         f"gaps {p.coverage.n_gaps}",
     ]
     if flatline is not None:
@@ -325,16 +330,17 @@ def _quality_section(window: Window) -> list[str]:
 
 def _range_section(window: Window) -> list[str]:
     p = window.physics
-    clipped = (
-        "clipped null (eng range unknown)"
-        if p.clipping.fraction is None
-        else f"clipped {p.clipping.fraction:.4f}"
-    )
-    body = [f"{clipped}{SEP}censored {yes_no(p.clipping.censored)}"]
+    if not p.clipping.range_known:
+        clipped = "clipped null (eng range unknown)"
+    elif p.clipping.fraction is None:
+        clipped = "clipped null (no samples)"
+    else:
+        clipped = f"clipped {p.clipping.fraction:.4f}"
+    body = [f"{clipped}{SEP}censored {yes_no_unknown(p.clipping.censored_verdict)}"]
     if p.implausible_magnitude_count > 0:
         why = (
-            "not censored: eng range unknown"
-            if window.meta.eng_range is None
+            "eng range unknown"
+            if not p.clipping.range_known
             else "eng range declared; see clipped above"
         )
         body.append(f"beyond float32 range {p.implausible_magnitude_count} ({why})")

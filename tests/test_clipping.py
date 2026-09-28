@@ -88,3 +88,25 @@ def test_severity_floor_helper():
 
     assert severity_floor_ok(counts, 2)
     assert not severity_floor_ok(counts, 3)
+
+
+def test_verdict_is_unknown_without_a_range_and_without_a_range_state():
+    frame = _series([200.0] * 3, ["GOOD"] * 3)
+    report = clipped_fraction(frame["value"], frame["quality"], None)
+    assert report.range_known is False
+    assert report.censored is False
+    assert report.censored_verdict is None
+
+
+def test_verdict_is_known_once_a_range_is_declared():
+    frame = _series([200.0, 50.0], ["GOOD"] * 2)
+    pegged = clipped_fraction(frame["value"], frame["quality"], EngRange(zero=0.0, span=200.0))
+    assert (pegged.range_known, pegged.censored_verdict) == (True, True)
+    clean = clipped_fraction(frame["value"], frame["quality"], EngRange(zero=0.0, span=400.0))
+    assert (clean.range_known, clean.censored_verdict) == (True, False)
+
+
+def test_an_unknown_verdict_still_admits_the_baseline():
+    frame = _series([200.0] * 3, ["GOOD"] * 3)
+    report = clipped_fraction(frame["value"], frame["quality"], None)
+    assert_usable_baseline(make_meta(), report)
