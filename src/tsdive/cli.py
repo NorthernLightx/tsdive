@@ -44,6 +44,8 @@ from tsdive.api import (
     parse_window,
     profile,
     read_meta_json,
+    switchback_analyze,
+    switchback_plan,
 )
 from tsdive.changepoints import DEFAULT_PENALTY_MULTIPLIER
 from tsdive.detectors.flatline import FlatlineVerdict
@@ -68,6 +70,9 @@ from tsdive.store.tagstore import (
     archive_extent,
     meta_from_parquet,
 )
+from tsdive.switchback.archive import SwitchbackAnalysis
+from tsdive.switchback.plan import SwitchbackPlan
+from tsdive.switchback.render import plan_lines
 from tsdive.ui.jsonout import to_jsonable
 from tsdive.ui.term import colour_enabled, colourise, red
 
@@ -92,6 +97,13 @@ commands, in the order an archive walks them:
   compare <parquet...> --before START/END --after START/END
                                           what changed between two periods: tags,
                                           pairs of tags, and their joint structure
+  switchback plan --window START/END --block PT1H --washout PT10M --seed N
+                  -o PLAN.json [--history PARQUET --history-window START/END]
+                                          a balanced random schedule of settings A
+                                          and B, with its power over a history
+  switchback analyze <parquet...> --plan PLAN.json --target TAG [--covariate TAG]
+                                          the difference between settings A and B
+                                          under the plan, by randomization inference
   run <plan.toml> [-o DIR]                walk one plan over several archives into
                                           one evidence ledger
   report-html <parquet...> [--window START/END] [-o FILE]
@@ -136,6 +148,17 @@ def _positive_float(text: str) -> float:
         raise argparse.ArgumentTypeError(f"{text!r} is not a number") from None
     if not value > 0.0:
         raise argparse.ArgumentTypeError(f"must be greater than 0, not {value}")
+    return value
+
+
+def _non_negative_int(text: str) -> int:
+    """An ``argparse`` type for a seed: an integer of 0 or more."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not an integer") from None
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be 0 or more, not {value}")
     return value
 
 
@@ -528,6 +551,147 @@ def cmd_compare(argv: Sequence[str] | None = None) -> int:
     return _report_and_exit(
         run_compare, _parser_compare().parse_args(argv), to_json=json_compare
     )
+
+
+SWITCHBACK_DOC = """tsdive switchback - plan and analyze a randomized trial of settings A and B
+
+  switchback plan --window START/END --block PT1H --washout PT10M --seed N
+                  -o PLAN.json [--history PARQUET --history-window START/END]
+  switchback analyze <parquet...> --plan PLAN.json --target TAG [--covariate TAG]
+
+--help after plan or analyze lists every option.
+"""
+
+
+def _parser_switchback_plan() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="tsdive switchback plan")
+    parser.add_argument(
+        "--window", required=True, help="ISO 8601 START/END in UTC the schedule runs over"
+    )
+    parser.add_argument(
+        "--block", required=True, help="block length as an ISO 8601 duration, like PT1H"
+    )
+    parser.add_argument(
+        "--washout",
+        required=True,
+        help="time left out at the start of every block, like PT10M; PT0S for none",
+    )
+    parser.add_argument(
+        "--seed", required=True, type=_non_negative_int, help="seed of the assignment"
+    )
+    parser.add_argument(
+        "-o",
+        "--out",
+        required=True,
+        metavar="PLAN.json",
+        help="file the plan is written to; an existing file is refused",
+    )
+    parser.add_argument(
+        "--history",
+        default=None,
+        metavar="PARQUET",
+        help="archive of the target where nothing was switched, for the power readout",
+    )
+    parser.add_argument(
+        "--history-window",
+        default=None,
+        help="ISO 8601 START/END in UTC of the history, at least as long as the schedule",
+    )
+    return _add_output_flags(parser)
+
+
+def _planned(args: argparse.Namespace) -> tuple[SwitchbackPlan, Path]:
+    """The plan the arguments describe, written to ``--out``."""
+    start, end = parse_window(args.window)
+    plan = switchback_plan(
+        start,
+        end,
+        args.block,
+        args.washout,
+        args.seed,
+        history=args.history,
+        history_window=args.history_window,
+    )
+    return plan, plan.write_json(args.out)
+
+
+def run_switchback_plan(args: argparse.Namespace) -> list[str]:
+    """Write a balanced random schedule and report it."""
+    plan, out = _planned(args)
+    return plan_lines(plan, wrote=out.as_posix())
+
+
+def json_switchback_plan(args: argparse.Namespace) -> dict[str, object]:
+    plan, _ = _planned(args)
+    return plan.to_dict()
+
+
+def _parser_switchback_analyze() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="tsdive switchback analyze")
+    parser.add_argument(
+        "parquet", nargs="+", help="archives holding the target and every covariate"
+    )
+    parser.add_argument(
+        "--plan",
+        required=True,
+        metavar="PLAN.json",
+        help="plan file written by tsdive switchback plan",
+    )
+    parser.add_argument(
+        "--target", required=True, help="tag to analyse, as source:point or a point id"
+    )
+    parser.add_argument(
+        "--covariate",
+        action="append",
+        default=[],
+        metavar="TAG",
+        help="tag for the adjusted estimate, declared before the analysis; repeat for more",
+    )
+    return _add_output_flags(parser)
+
+
+def _switchback_analyzed(args: argparse.Namespace) -> SwitchbackAnalysis:
+    return switchback_analyze(
+        args.parquet, args.plan, target=args.target, covariates=args.covariate
+    )
+
+
+def run_switchback_analyze(args: argparse.Namespace) -> list[str]:
+    """Report the difference between settings A and B under a plan."""
+    return render_lines(_switchback_analyzed(args).render())
+
+
+def json_switchback_analyze(args: argparse.Namespace) -> dict[str, object]:
+    return _switchback_analyzed(args).to_dict()
+
+
+def cmd_switchback(argv: Sequence[str] | None = None) -> int:
+    """Dispatch ``tsdive switchback plan`` and ``tsdive switchback analyze``."""
+    rest = list(sys.argv[2:] if argv is None else argv)
+    # main() moves a leading --json or --no-color behind "switchback"; they
+    # belong to the subcommand's parser, so they move behind it again.
+    lead = 0
+    while lead < len(rest) and rest[lead] in {"--json", "--no-color"}:
+        lead += 1
+    flags, rest = rest[:lead], rest[lead:]
+    if not rest or rest[0] in {"-h", "--help"}:
+        print(SWITCHBACK_DOC.strip(), file=sys.stderr)
+        return 0 if rest else 2
+    sub, tail = rest[0], [*rest[1:], *flags]
+    if sub == "plan":
+        return _report_and_exit(
+            run_switchback_plan,
+            _parser_switchback_plan().parse_args(tail),
+            to_json=json_switchback_plan,
+        )
+    if sub == "analyze":
+        return _report_and_exit(
+            run_switchback_analyze,
+            _parser_switchback_analyze().parse_args(tail),
+            to_json=json_switchback_analyze,
+        )
+    print(f"unknown switchback command {sub!r}; try 'plan' or 'analyze'", file=sys.stderr)
+    return 2
 
 
 def _parser_profile() -> argparse.ArgumentParser:
@@ -1015,6 +1179,7 @@ STEPS: dict[str, tuple[Callable[[], argparse.ArgumentParser], StepRunner]] = {
     "spc": (_parser_spc, run_spc),
     "mspc": (_parser_mspc, run_mspc),
     "compare": (_parser_compare, run_compare),
+    "switchback": (_parser_switchback_analyze, run_switchback_analyze),
 }
 
 # The same steps returning their analysis objects instead of text, for a
@@ -1027,11 +1192,12 @@ ANALYSES: dict[str, Callable[[argparse.Namespace], object]] = {
     "spc": _spc_run,
     "mspc": _mspc_run,
     "compare": _compared,
+    "switchback": _switchback_analyzed,
 }
 
-# mspc and compare read every archive at once; the other steps run once
-# per archive.
-MULTI_TAG_STEPS = frozenset({"mspc", "compare"})
+# mspc, compare and switchback read every archive at once; the other
+# steps run once per archive.
+MULTI_TAG_STEPS = frozenset({"mspc", "compare", "switchback"})
 
 # compare grades an after period against a before period, so a plan hands
 # it --before and --after and neither --window nor --baseline.
@@ -1045,6 +1211,10 @@ EXTENT_DEFAULTED = frozenset({"profile", "segment"})
 
 # Steps that need a history window to compare against.
 BASELINED = frozenset({"screen", "spc", "mspc"})
+
+# switchback reads its schedule from the plan file its options name, so a
+# plan hands it neither a window nor periods.
+SCHEDULED_STEPS = frozenset({"switchback"})
 
 
 def _parser_run() -> argparse.ArgumentParser:
@@ -1116,11 +1286,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_mspc(argv_l[1:])
     if argv_l[0] == "compare":
         return cmd_compare(argv_l[1:])
+    if argv_l[0] == "switchback":
+        return cmd_switchback(argv_l[1:])
     if argv_l[0] == "run":
         return cmd_run(argv_l[1:])
     print(
         f"unknown command {argv_l[0]!r}; try 'profile', 'segment', 'screen', 'spc', "
-        "'mspc', 'compare', 'run', 'ingest' or 'report-html'",
+        "'mspc', 'compare', 'switchback', 'run', 'ingest' or 'report-html'",
         file=sys.stderr,
     )
     return 2

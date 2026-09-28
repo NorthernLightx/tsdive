@@ -260,7 +260,8 @@ def test_unknown_step_refuses_before_anything_runs(tmp_path, capsys):
     assert cmd_run([str(plan), "-o", str(out)]) == 2
     err = capsys.readouterr().err
     assert err.strip() == (
-        "error: unknown step(s): narrate; known: profile, segment, screen, spc, mspc, compare"
+        "error: unknown step(s): narrate; known: profile, segment, screen, spc, mspc, compare, "
+        "switchback"
     )
     assert not out.exists()
 

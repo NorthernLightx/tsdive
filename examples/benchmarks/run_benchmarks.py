@@ -53,6 +53,14 @@ DAY2 = (
 # No-change pairs scored for the coverage of compare's pair interval.
 PAIR_COVERAGE_REPLICATES = 400
 
+# Records scored for the switchback rows: AR(1) noise, one balanced
+# schedule of 16 blocks of 30 samples per record.
+SWITCHBACK_RECORDS = 400
+SWITCHBACK_SAMPLES = 480
+SWITCHBACK_BLOCK = 30
+SWITCHBACK_PHI = 0.8
+SWITCHBACK_SHIFT_SIGMA = 0.5
+
 
 def _contract(stepped: bool = True):
     from tsdive.store.sampling_contract import CalculationBasis, RetrievalMode, SamplingContract
@@ -91,6 +99,62 @@ def _window_features(store, ident) -> dict:
             }
         )
     return {"train": out[0], "monitor": out[1]}
+
+
+def _switchback_rows() -> list[tuple[str, ...]]:
+    """Claim rate at a zero shift and detection of a 0.5 sigma shift, over seeded AR(1) records.
+
+    Each record gets its own balanced schedule. The shift is a step of
+    0.5 sigma in every B block, sigma = 1.4826 MAD of the record, and a
+    claim is a 95% interval from ``tsdive.switchback.analyze`` that
+    excludes 0.
+    """
+    from tsdive.switchback import analyze, cut_blocks, make_design, setting
+    from tsdive.switchback.inference import MAD_TO_SD, mad
+
+    times = np.arange(SWITCHBACK_SAMPLES, dtype=float)
+    blocks = cut_blocks(times, SWITCHBACK_SAMPLES, SWITCHBACK_BLOCK)
+    claims = {0.0: 0, SWITCHBACK_SHIFT_SIGMA: 0}
+    for rep in range(SWITCHBACK_RECORDS):
+        rng = np.random.default_rng([42, rep])
+        noise = rng.standard_normal(SWITCHBACK_SAMPLES)
+        y = np.empty(SWITCHBACK_SAMPLES)
+        y[0] = noise[0]
+        for i in range(1, SWITCHBACK_SAMPLES):
+            y[i] = SWITCHBACK_PHI * y[i - 1] + noise[i]
+        design = make_design(blocks.k, [43, rep])
+        sigma = MAD_TO_SD * mad(y)
+        z = setting(blocks, design.observed)
+        for delta in claims:
+            result = analyze(y + delta * sigma * z, None, blocks, 0, design)
+            claims[delta] += int(result.lo > 0 or result.hi < 0)
+
+    def rate(count: int) -> str:
+        share = count / SWITCHBACK_RECORDS
+        return f"{share:.3f} ({(share * (1 - share) / SWITCHBACK_RECORDS) ** 0.5:.3f})"
+
+    dataset = (
+        f"AR(1) phi {SWITCHBACK_PHI} seed=42, {SWITCHBACK_RECORDS} records of "
+        f"{SWITCHBACK_SAMPLES} samples, {blocks.k} blocks of {SWITCHBACK_BLOCK}"
+    )
+    return [
+        (
+            "4",
+            "switchback, claim rate at a zero shift (MCSE)",
+            rate(claims[0.0]),
+            dataset,
+            "one balanced schedule per record, p over 1000 drawn assignments, against "
+            "a nominal 0.05",
+        ),
+        (
+            "4",
+            f"switchback, detection of a {SWITCHBACK_SHIFT_SIGMA} sigma shift (MCSE)",
+            rate(claims[SWITCHBACK_SHIFT_SIGMA]),
+            dataset,
+            "a step in every B block, sigma = 1.4826 MAD of the record; the 95% "
+            "interval excludes 0",
+        ),
+    ]
 
 
 def build_rows(tmp: Path) -> list[tuple[str, ...]]:
@@ -335,6 +399,7 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
             f"variance and {cmp.joint.explained_after:.3f} of day 2's",
         )
     )
+    rows.extend(_switchback_rows())
 
     # ---- stage 5: SPC rules on the drift loop ----
     drift = truth.iloc[1]

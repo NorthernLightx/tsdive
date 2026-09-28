@@ -1,6 +1,6 @@
 # MCP server
 
-`tsdive-mcp` serves five tsdive analyses to an MCP client over stdio.
+`tsdive-mcp` serves six tsdive analyses to an MCP client over stdio.
 This page lists the tools, the shape of every answer, and how to launch
 the server.
 
@@ -47,9 +47,11 @@ same arguments give the same fields as the command line.
 | `screen` | `archive`, `baseline`, `window` | `method`, `k`, `mode`, `basis`, `stepped` | center, scale, limits, `n_screened`, `n_flagged`, and the flagged timestamps |
 | `spc` | `archive`, `baseline`, `window` | `basis`, `stepped` | individuals limits, and the hits of `BEYOND_3SIGMA`, `RUN_9_SAMESIDE` and `TREND_6` |
 | `compare` | `archives`, `before`, `after` | `top`, `rate_s` | per-tag change rows, the pairwise correlation table, the joint MSPC structure |
+| `switchback_analyze` | `archives`, `plan`, `target` | `covariates` | the verified plan digest, the B minus A estimate with its p-value and 95% interval, kept samples per block, the adjusted estimate |
 
-`archive` is the path to one single-tag parquet archive. `compare` takes
-a list of them in `archives`.
+`archive` is the path to one single-tag parquet archive. `compare` and
+`switchback_analyze` take a list of them in `archives`. `plan` is the
+path of a file `tsdive switchback plan` wrote.
 
 Windows are ISO 8601 in UTC: START/END written
 `2024-03-01T00:00:00Z/2024-03-01T01:00:00Z`, START/PT1H, PT1H/END, or a
@@ -90,8 +92,8 @@ reads the reason from `error_type` and `cause`. `error_type` names a
 class from `tsdive.errors`: `SchemaError`, `InsufficientQuality`,
 `IncomparableSamplingError`, `NonMonotonicIndex`,
 `UnresolvedUnitError`, `IncomparableUnitsError`, `RegimeTooSparse`,
-`PopulationTooSparse`, `GroupLeakage`, `MspcAlignmentError` or
-`NarratorUnavailable`. `docs/SCOPE.md` states which check raises which
+`PopulationTooSparse`, `GroupLeakage`, `MspcAlignmentError`,
+`DesignTooSmall`, `ScheduleMismatch` or `NarratorUnavailable`. `docs/SCOPE.md` states which check raises which
 class.
 
 ## Tool errors

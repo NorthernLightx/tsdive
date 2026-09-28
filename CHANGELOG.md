@@ -3,7 +3,32 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
-## Unreleased
+## 0.4.0 - 2026-09-28
+
+### Added
+
+- `tsdive.switchback_plan` and `tsdive.switchback_analyze`: a balanced
+  random schedule of settings A and B over one window, written as a plan
+  file with a SHA-256 digest, and the difference between the settings on
+  a target under that plan by randomization inference, with an adjusted
+  estimate on declared covariates. `SwitchbackPlan`, `SwitchbackAnalysis`,
+  `SwitchbackEstimate`, `DesignTooSmall` and `ScheduleMismatch` are
+  exported beside them.
+- `tsdive switchback plan` and `tsdive switchback analyze`, with
+  `--history` and `--history-window` for a power readout, repeatable
+  `--covariate`, and `--json`. A `tsdive run` plan can list `switchback`
+  as a step.
+- `tsdive-mcp` serves `switchback_analyze` as a sixth tool.
+- `docs/SWITCHBACK.md` and `examples/switchback/make_trial.py`, a
+  synthetic trial for its transcripts.
+- Two benchmark rows: the switchback claim rate at a zero shift and its
+  detection of a 0.5 sigma shift on seeded AR(1) records.
+
+### Changed
+
+- `docs/SCOPE.md` states no causal claims from observational data, with
+  `switchback analyze` as the one exception, instead of no causal
+  inference at all.
 
 ### Fixed
 

@@ -1,7 +1,8 @@
 """``tsdive run``: one plan, several archives, one evidence ledger.
 
 A plan is a TOML file naming archives, a window, a baseline, a before and
-after period for ``compare``, and the steps to walk. Every step is one of
+after period for ``compare``, and the steps to walk; ``switchback`` takes
+its schedule file, target and covariates from its options. Every step is one of
 the CLI's own analyses, parsed by that
 command's own parser and rendered by its own ``render()``, so a plan can
 say nothing a command line cannot and the same validators refuse the
@@ -36,6 +37,7 @@ from tsdive.cli import (
     BASELINED,
     EXTENT_DEFAULTED,
     MULTI_TAG_STEPS,
+    SCHEDULED_STEPS,
     STEPS,
     TWO_PERIOD_STEPS,
 )
@@ -176,8 +178,17 @@ def _option_argv(options: dict[str, object]) -> list[str]:
 
 
 def _step_argv(plan: Plan, step: str, paths: Sequence[str]) -> list[str]:
-    """The command line this plan step would have been typed as."""
+    """The command line this plan step would have been typed as.
+
+    A relative switchback ``plan`` option resolves against the plan
+    file's directory, as the archive globs do.
+    """
     argv = list(paths)
+    if step in SCHEDULED_STEPS:
+        options = dict(plan.options.get(step, {}))
+        if isinstance(options.get("plan"), str):
+            options["plan"] = str(plan.path.parent / str(options["plan"]))
+        return argv + _option_argv(options)
     if step in TWO_PERIOD_STEPS:
         if plan.before is None or plan.after is None:
             raise ValueError(

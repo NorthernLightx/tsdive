@@ -26,6 +26,7 @@ import pytest
 import tsdive.errors as errors_mod
 from conftest import annotate, make_meta, write_archive
 from tsdive.errors import (
+    DesignTooSmall,
     GroupLeakage,
     IncomparableSamplingError,
     IncomparableUnitsError,
@@ -35,6 +36,7 @@ from tsdive.errors import (
     NonMonotonicIndex,
     PopulationTooSparse,
     RegimeTooSparse,
+    ScheduleMismatch,
     SchemaError,
     TSDiveError,
     UnresolvedUnitError,
@@ -460,6 +462,95 @@ def x_endpoint_variable_unset(tmp_path: Path) -> None:
             os.environ["TSDIVE_LLM_ENDPOINT"] = saved
 
 
+# --------------------------------------------------------------------------
+# DesignTooSmall and ScheduleMismatch: switchback designs and plans
+# --------------------------------------------------------------------------
+def d_four_blocks(tmp_path: Path) -> None:
+    from tsdive.switchback.design import make_design
+
+    make_design(4, 0)
+
+
+def d_six_blocks(tmp_path: Path) -> None:
+    from tsdive.switchback.design import make_design
+
+    make_design(6, 0)
+
+
+def _eight_block_plan():
+    from tsdive.switchback.plan import make_plan
+
+    return make_plan(T0, T0 + pd.Timedelta(8, unit="h"), 3600, 600, 1)
+
+
+def _resigned(plan, blocks):
+    from dataclasses import replace
+
+    from tsdive.switchback.plan import plan_digest
+
+    edited = replace(plan, blocks=tuple(blocks))
+    return replace(edited, digest=plan_digest(edited))
+
+
+def p_setting_edited_after_writing(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from tsdive.switchback.plan import verify_plan
+
+    plan = _eight_block_plan()
+    first = plan.blocks[0]
+    flipped = replace(first, setting="A" if first.setting == "B" else "B")
+    verify_plan(replace(plan, blocks=(flipped, *plan.blocks[1:])))
+
+
+def p_block_moved_with_a_new_digest(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from tsdive.switchback.plan import verify_plan
+
+    plan = _eight_block_plan()
+    blocks = list(plan.blocks)
+    blocks[1] = replace(blocks[1], start=blocks[1].start + pd.Timedelta(5, unit="min"))
+    verify_plan(_resigned(plan, blocks))
+
+
+def p_one_more_b_block(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from tsdive.switchback.plan import verify_plan
+
+    plan = _eight_block_plan()
+    i = next(b.index for b in plan.blocks if b.setting == "A")
+    blocks = list(plan.blocks)
+    blocks[i] = replace(blocks[i], setting="B")
+    verify_plan(_resigned(plan, blocks))
+
+
+def p_two_settings_swapped(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from tsdive.switchback.plan import verify_plan
+
+    plan = _eight_block_plan()
+    i = next(b.index for b in plan.blocks if b.setting == "A")
+    j = next(b.index for b in plan.blocks if b.setting == "B")
+    blocks = list(plan.blocks)
+    blocks[i] = replace(blocks[i], setting="B")
+    blocks[j] = replace(blocks[j], setting="A")
+    verify_plan(_resigned(plan, blocks))
+
+
+def p_a_third_setting(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    from tsdive.switchback.plan import verify_plan
+
+    plan = _eight_block_plan()
+    blocks = list(plan.blocks)
+    blocks[0] = replace(blocks[0], setting="C")
+    verify_plan(_resigned(plan, blocks))
+
+
 @dataclass(frozen=True)
 class Case:
     """One known defect, the refusal it must raise, and the cause it must name."""
@@ -691,6 +782,48 @@ CORPUS: list[Case] = [
         MspcAlignmentError,
         r"monitor matrix columns differ from trained model",
         m_monitor_columns_differ_from_the_model,
+    ),
+    Case(
+        "a schedule of 4 blocks",
+        DesignTooSmall,
+        r"4 blocks give 6 balanced assignments, fewer than 20",
+        d_four_blocks,
+    ),
+    Case(
+        "a schedule of 6 blocks",
+        DesignTooSmall,
+        r"6 blocks reach a smallest two-sided p of 0\.1000, above 0\.05",
+        d_six_blocks,
+    ),
+    Case(
+        "a block setting flipped after the plan was written",
+        ScheduleMismatch,
+        r"plan digest [0-9a-f]{12} does not match its schedule",
+        p_setting_edited_after_writing,
+    ),
+    Case(
+        "a block start moved and the digest recomputed",
+        ScheduleMismatch,
+        r"block 1 runs .* the plan's start and block length put block 1 at",
+        p_block_moved_with_a_new_digest,
+    ),
+    Case(
+        "one A block turned to B and the digest recomputed",
+        ScheduleMismatch,
+        r"the schedule is not balanced: 5 of 8 blocks run setting B",
+        p_one_more_b_block,
+    ),
+    Case(
+        "an A and a B block swapped and the digest recomputed",
+        ScheduleMismatch,
+        r"and seed 1 assigns it the other setting",
+        p_two_settings_swapped,
+    ),
+    Case(
+        "a block setting that is neither A nor B",
+        ScheduleMismatch,
+        r"block 0 has setting 'C'; a setting is A or B",
+        p_a_third_setting,
     ),
     # One cause: base.py reads one environment variable, which is either
     # set or absent.

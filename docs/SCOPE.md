@@ -34,6 +34,21 @@ claim below has a provoking test in `tests/`.
   `PopulationTooSparse`.
 - An under-covered multi-tag alignment raises `MspcAlignmentError`.
 - A holdout group reaching two folds raises `GroupLeakage`.
+- A switchback plan is a function of its window, block length, washout
+  and seed, and its SHA-256 digest reads only integers and ISO 8601 UTC
+  timestamps, so the same arguments give the same digest on every
+  platform (`tests/test_switchback.py`).
+- A switchback schedule with fewer than 20 balanced assignments, or a
+  smallest two-sided p-value above 0.05, raises `DesignTooSmall`
+  (`tests/test_switchback.py`).
+- `switchback analyze` raises `ScheduleMismatch` on a plan whose digest,
+  block times, balance or seed disagree with its blocks
+  (`tests/test_switchback.py`, `tests/test_switchback_api.py`).
+- Under the declared randomization, the `switchback analyze` test
+  rejects a zero difference for at most 5% of the balanced assignments
+  of an enumerated design, and its claim rate at a zero shift stays
+  within 0.05 plus 3.5 Monte Carlo SE over 400 seeded plans
+  (`tests/test_switchback.py`, `tests/test_switchback_api.py`).
 - Baselines, SPC, MSPC, ML and narration inherit every refusal above.
   Control limits come from validated baseline windows, and the stage-8
   narrator sees only the serializable evidence ledger.
@@ -48,7 +63,11 @@ claim below has a provoking test in `tests/`.
   ingested archive.
 - No alarm limits, no notification paths, no real-time posture.
 - No SIL or safety-instrumented claim.
-- No causal claims. No causal inference ships at any stage.
+- No causal claims from observational data. The one exception is
+  `switchback analyze`: it states the effect of setting B against setting
+  A under a randomized schedule that `switchback plan` drew and whose
+  digest it verifies, by randomization inference, assuming the schedule
+  was followed and carryover ended within the washout.
 - No cross-platform numeric equality. CI pins ubuntu-latest and a locked
   environment, and fingerprints record the environment because BLAS and
   library versions move floating-point results.

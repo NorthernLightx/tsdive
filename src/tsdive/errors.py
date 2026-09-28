@@ -99,6 +99,25 @@ class MspcAlignmentError(TSDiveError):
     """
 
 
+class DesignTooSmall(TSDiveError):
+    """A switchback schedule has too few blocks for a randomization test.
+
+    Raised when K balanced blocks give fewer than 20 assignments, or when
+    the smallest two-sided p-value the assignments can reach exceeds 0.05:
+    such a design cannot report a difference at the 5% level whatever the
+    samples say.
+    """
+
+
+class ScheduleMismatch(TSDiveError):
+    """A switchback plan's schedule differs from the one its fields produce.
+
+    Raised when the digest does not match the blocks, when a block's times
+    differ from the start and block length, when the schedule is not
+    balanced, or when the settings differ from the ones the seed draws.
+    """
+
+
 class NarratorUnavailable(TSDiveError):
     """LLM narration was requested with no endpoint configured.
 
