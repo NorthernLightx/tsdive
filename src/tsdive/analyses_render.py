@@ -40,6 +40,7 @@ from tsdive.report import (
     more_line,
     plural,
     rule,
+    window_json,
     wrapped,
     yes_no_unknown,
 )
@@ -109,15 +110,6 @@ PAIR_METHOD = "(Pearson on first differences, 95% block bootstrap)"
 def _n_good(window: Window) -> int:
     """Rows the window read judged trustworthy *and* usable."""
     return int(window.frame["valid"].sum())
-
-
-def window_json(window: Window) -> dict[str, object]:
-    """The span a step read, as a program wants it."""
-    return {
-        "start": window.start,
-        "end": window.end,
-        "duration_s": (window.end - window.start).total_seconds(),
-    }
 
 
 def _baseline_line(window: Window) -> str:

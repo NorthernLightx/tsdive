@@ -169,6 +169,16 @@ def test_profile_json_carries_the_numbers_the_report_states(tmp_path, capsys):
     assert payload["flatline"] is None
 
 
+def test_profile_to_dict_equals_the_cli_json(tmp_path, capsys):
+    path, _ = _demo_archive(tmp_path)
+    argv = [str(path), "--window", WINDOW, "--flatline", "--tz", "Europe/London", "--json"]
+    assert cmd_profile(argv) == 0
+    printed = json.loads(capsys.readouterr().out)
+    result = tsdive.profile(path, WINDOW, flatline=True, tz="Europe/London")
+    assert result.to_dict() == printed
+    assert printed["flatline"] is not None
+
+
 def _pegged(tmp_path, eng_range):
     """A flow tag sitting at 200 for a quarter of an hour, with or without its range."""
     base = pd.Timestamp("2024-03-01 00:00:00+00:00")

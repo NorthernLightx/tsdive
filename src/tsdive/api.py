@@ -26,7 +26,7 @@ from tsdive._naming import argname, cli_active, option
 from tsdive.detectors.flatline import FlatlineVerdict, assess_flatline
 from tsdive.errors import SchemaError
 from tsdive.features.window_features import WindowStats, compute_stats
-from tsdive.report import render_window_report
+from tsdive.report import profile_json, render_window_report
 from tsdive.store.identity import TagIdentity, TagMeta
 from tsdive.store.quality import (
     Severity,
@@ -54,6 +54,7 @@ from tsdive.store.tagstore import (
 )
 from tsdive.switchback.archive import SwitchbackAnalysis, analyze_archives, with_power
 from tsdive.switchback.plan import SwitchbackPlan, make_plan
+from tsdive.ui.jsonout import to_jsonable
 
 _WINDOW_FORMS = (
     "window must be <START>/<END>, <START>/<DURATION>, <DURATION>/<END> "
@@ -941,6 +942,8 @@ class Profile:
 
     Holds objects, not text: [`render`][tsdive.Profile.render] is the only place the report
     lines are produced, and it is the same renderer the CLI prints.
+    [`to_dict`][tsdive.Profile.to_dict] returns the document ``tsdive profile
+    --json`` prints, like the ``to_dict`` of every other analysis result.
     """
 
     window: Window
@@ -960,6 +963,24 @@ class Profile:
             coverage 0.933   GOOD 561/562   censored yes   gaps 1
         """
         return render_window_report(self.window, self.flatline, self.stats)
+
+    def to_dict(self) -> dict[str, object]:
+        """The document ``tsdive profile --json`` prints, ready for ``json.dumps``.
+
+        Built by the same function the CLI calls, so the two are equal
+        key for key.
+
+        Examples:
+            >>> import tsdive
+            >>> p = tsdive.profile("data/demo/fic101_demo.parquet",
+            ...                    "2024-03-30T20:00:00Z/2024-03-31T06:00:00Z")
+            >>> doc = p.to_dict()
+            >>> doc["tag"], doc["range"]["censored"], doc["quality"]["counts"]["GOOD"]
+            ('demo:FIC101.PV', True, 561)
+        """
+        return cast(
+            dict[str, object], to_jsonable(profile_json(self.window, self.flatline, self.stats))
+        )
 
     @property
     def identity(self) -> TagIdentity:
