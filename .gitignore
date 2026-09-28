@@ -12,3 +12,12 @@ uv.lock.bak
 *.parquet
 !tests/data/*.parquet
 tsdive-run/
+.env
+.coverage
+htmlcov/
+.mypy_cache/
+.ipynb_checkpoints/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
