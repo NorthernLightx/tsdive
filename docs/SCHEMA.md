@@ -59,35 +59,37 @@ is derived, never substituted for the raw code.
 
 Precedence when deriving severity:
 
-0. **The tag's own `quality_codes` map**, when its metadata declares one
+1. **The tag's own `quality_codes` map**, when its metadata declares one
    (see below). A code the source's owner has explained beats every
    shipped table, and is not reported as unmapped.
-1. **Numeric digital states.** These are archive state codes, not
+2. **Numeric digital states.** These are archive state codes, not
    measurements. The table ships with 248 Bad, 249 Comms Outage, 250 Scan
-   Off, 251 Substituted, 257 Over Range; register your site's own set in
-   `store/quality.py`. The `value` on such a row is forced to null, so a
-   state number like 257 can never appear in statistics as 257.0
-   engineering units.
-2. **String codes.** `GOOD`, `UNCERTAIN`, `SUBSTITUTED`, `SCAN OFF`,
+   Off, 251 Substituted, 257 Over Range. The `value` on such a row is
+   forced to null, so a state number like 257 can never appear in
+   statistics as 257.0 engineering units. Declare your site's other state
+   codes in the tag's `quality_codes`. A code mapped to `BAD` or
+   `UNCERTAIN` makes its rows not valid, so their values stay out of the
+   statistics.
+3. **String codes.** `GOOD`, `UNCERTAIN`, `SUBSTITUTED`, `SCAN OFF`,
    `BAD`, `OVER RANGE`, `UNDER RANGE`, `COMM FAILURE`. Matching is
    case-insensitive and whitespace-trimmed.
-3. **OPC UA status codes.** A numeric code that reaches this rule is
+4. **OPC UA status codes.** A numeric code that reaches this rule is
    read as an OPC UA 32-bit StatusCode. The rule is deliberately
    asymmetric. Top bits `01` (Uncertain) or `10`/`11` (Bad) are enough to
    mark a sample UNCERTAIN or BAD. They are not enough to mark one GOOD.
    `GOOD` requires
-   the code to match a registered Good status code in `OPC_UA_GOOD_CODES`
-   (`store/quality.py`): `0x00000000` Good, plus the documented
-   `0x00SS0000` Good subcodes such as `GoodNoData` and `GoodEdited`.
+   the code to match one of the Good status codes tsdive ships:
+   `0x00000000` Good, plus the documented `0x00SS0000` Good subcodes such
+   as `GoodNoData` and `GoodEdited`.
    Bits 15-0 are info bits, which qualify a status without changing it,
    so they are stripped before the lookup; when InfoType (bits 11-10) is
    `00` the spec requires the rest of them to be zero, so a value like
    `1` or `192` is not a *UA* status code.
-4. **Anything else** maps to `UNCERTAIN`, and the code is listed in the
+5. **Anything else** maps to `UNCERTAIN`, and the code is listed in the
    report under "unmapped quality codes". Unmapped never maps to GOOD,
-   including an integer whose top two bits read `00` that no registered
-   Good code matches. Extend `OPC_UA_GOOD_CODES` with your site's codes
-   rather than widening the rule.
+   including an integer whose top two bits read `00` that no shipped Good
+   code matches. Declare your site's other Good codes in the tag's
+   `quality_codes`.
 
 ### OPC DA byte qualities are a different code space
 
@@ -99,7 +101,7 @@ Uncertain and `0x00-0x3F` Bad. The two spaces disagree on both ends:
 `0` means Good in UA and Bad in DA. tsdive does not infer which space
 an export writes in.
 
-Rule 3 above is the UA reading, and it is fail-safe in only one
+Rule 4 above is the UA reading, and it is fail-safe in only one
 direction: a DA `192` lands in UNCERTAIN and is reported unmapped, but a
 DA `0` would read as UA Good, which is exactly backwards. **A DA-quality
 export must declare its codes in the tag's `quality_codes`**, which is

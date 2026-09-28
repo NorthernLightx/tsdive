@@ -204,10 +204,17 @@ def test_no_link_on_a_docs_page_leaves_the_site(hooks: ModuleType) -> None:
         else:
             result = hooks.rewrite_links(text, f"docs/{page.name}", page.name)
         assert not result.missing, f"{page.name}: {result.missing}"
-        assert len(result.to_github) == text.count("](../"), page.name
         assert "](../" not in result.text, page.name
         rewritten += len(result.to_github)
     assert rewritten > 0
+
+
+def test_a_readme_section_the_usage_page_carries_resolves_to_it(hooks: ModuleType) -> None:
+    roadmap = (ROOT / "docs" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert "](../README.md#what-it-checks)" in roadmap
+    result = hooks.rewrite_links(roadmap, "docs/ROADMAP.md", "ROADMAP.md")
+    assert "](usage.md#what-it-checks)" in result.text
+    assert "\n## What it checks\n" in hooks.usage_markdown().text
 
 
 def test_generated_pages_link_only_to_site_pages_or_urls(hooks: ModuleType) -> None:

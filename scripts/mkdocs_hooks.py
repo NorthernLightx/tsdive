@@ -150,6 +150,10 @@ GROUP_PAGES = {
     "Errors": ("errors", "The typed errors tsdive raises. Each one derives from `TSDiveError`."),
 }
 
+# README sections the usage page carries after "## Use". A link from any
+# page to one of them resolves to the usage page.
+USAGE_EXTRA_SECTIONS = ("What it checks",)
+
 # Stand-ins in docs/index.md for README sections.
 README_MARKERS = {
     "<!-- readme: intro -->": "intro",
@@ -197,11 +201,11 @@ def rewrite_links(markdown: str, source: str, page: str) -> Rewrite:
     """Resolve the relative link targets of ``markdown`` for the site page ``page``.
 
     ``source`` is the repository path the text was read from and ``page``
-    the page path under ``docs/``. A target under ``docs/``, or a root file
-    in ``ROOT_PAGES``, becomes a path relative to ``page``. Any other
-    repository file becomes its GitHub URL on main. Targets with a scheme,
-    bare anchors and absolute paths are kept. Text inside fenced code
-    blocks is kept verbatim.
+    the page path under ``docs/``. A target under ``docs/``, a root file in
+    ``ROOT_PAGES``, or a README anchor the usage page carries becomes a path
+    relative to ``page``. Any other repository file becomes its GitHub URL
+    on main. Targets with a scheme, bare anchors and absolute paths are
+    kept. Text inside fenced code blocks is kept verbatim.
     """
     result = Rewrite(text="")
     page_dir = posixpath.dirname(page) or "."
@@ -217,7 +221,9 @@ def rewrite_links(markdown: str, source: str, page: str) -> Rewrite:
         if resolved.startswith("../") or not (generated or (ROOT / resolved).exists()):
             result.missing.append(target)
             return m.group(0)
-        if resolved in ROOT_PAGES or resolved.startswith("docs/"):
+        if resolved == "README.md" and anchor in usage_anchors():
+            new = posixpath.relpath(USAGE_PAGE, page_dir) + sep + anchor
+        elif resolved in ROOT_PAGES or resolved.startswith("docs/"):
             dest = ROOT_PAGES.get(resolved, resolved.removeprefix("docs/"))
             new = posixpath.relpath(dest, page_dir) + sep + anchor
         else:
@@ -260,12 +266,38 @@ def readme_section(heading: str) -> str:
     return "\n".join(lines[start:end]).strip() + "\n"
 
 
+def _anchor(heading: str) -> str:
+    """The id MkDocs gives a heading: punctuation dropped, lower case, hyphens for spaces."""
+    text = re.sub(r"[^\w\s-]", "", heading).strip().lower()
+    return re.sub(r"[-\s]+", "-", text)
+
+
+def _usage_body() -> str:
+    body = [
+        line[1:] if outside and line.startswith("###") else line
+        for line, outside in _outside_fences(readme_section("Use"))
+    ]
+    text = "# Usage\n\n" + "".join(body)
+    for heading in USAGE_EXTRA_SECTIONS:
+        text += f"\n## {heading}\n\n{readme_section(heading)}"
+    return text
+
+
+def usage_anchors() -> frozenset[str]:
+    """The ids of the usage page's second-level headings."""
+    return frozenset(
+        _anchor(line[3:])
+        for line, outside in _outside_fences(_usage_body())
+        if outside and line.startswith("## ")
+    )
+
+
 def usage_markdown() -> Rewrite:
-    """The README ``## Use`` section as a page, headings raised one level."""
-    body = []
-    for line, outside in _outside_fences(readme_section("Use")):
-        body.append(line[1:] if outside and line.startswith("###") else line)
-    return rewrite_links("# Usage\n\n" + "".join(body), "README.md", USAGE_PAGE)
+    """The README ``## Use`` section as a page, headings raised one level.
+
+    The sections in ``USAGE_EXTRA_SECTIONS`` follow it, at their README level.
+    """
+    return rewrite_links(_usage_body(), "README.md", USAGE_PAGE)
 
 
 def index_markdown(markdown: str) -> Rewrite:

@@ -90,8 +90,8 @@ implementation, a benchmark row and a test (docs/SOURCES.md).
 ## Stage 1, store and data-physics layer
 
 Shipped: the store, `tsdive profile`, and every check it prints. The
-check-by-check table, with the error each one raises, is the "What it
-checks" section of the README. A tag is `(source_id, point_id)` and the
+check-by-check table, with the error each one raises, is the
+[What it checks](../README.md#what-it-checks) section of the README. A tag is `(source_id, point_id)` and the
 display name is metadata. `loop_id` and `role` in `{PV, SP, OP, MODE}` are
 stage-1 schema fields, not a later retrofit. A read declares its sampling
 contract as a positional argument and gets a stable digest back.
