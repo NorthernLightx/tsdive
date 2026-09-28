@@ -70,15 +70,18 @@ GOOD_FRACTION_SLACK = 0.05
 # would answer nothing.
 PAIR_MIN_COVERAGE = 0.8
 
-# Moving block bootstrap over the differenced after period. Blocks keep
-# what is left of the serial dependence after differencing; 10 samples is
-# the floor, and n**(1/3) is the standard growth rate with the sample
-# count.
-BOOTSTRAP_REPLICATES = 200
+# Moving block bootstrap over each differenced period. Blocks keep what
+# is left of the serial dependence after differencing; 10 samples is the
+# floor, and n**(1/3) is the standard growth rate with the sample count.
+BOOTSTRAP_REPLICATES = 1000
 BOOTSTRAP_SEED = 42
 BOOTSTRAP_MIN_BLOCK = 10
 BOOTSTRAP_LOW = 2.5
 BOOTSTRAP_HIGH = 97.5
+# Upper bound on the cells (replicates x rows x tags) resampled in one
+# pass per period; a pass holds at least one replicate. A small pass stays
+# in cache: 2**18 ran faster than 2**22 on 20 tags x 10,080 rows.
+BOOTSTRAP_CHUNK_CELLS = 2**18
 
 # Tags the joint table names before it summarises the rest as "other".
 CONTRIBUTORS_KEPT = 3
@@ -480,22 +483,64 @@ def _ranked(x: np.ndarray) -> np.ndarray:
     return pd.DataFrame(x).rank().to_numpy(dtype=float)
 
 
-def _block_bootstrap(x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-    """Correlation matrices of ``BOOTSTRAP_REPLICATES`` block resamples of ``x``.
+def _resampled_corr(x: np.ndarray, rows: np.ndarray, buf: np.ndarray) -> np.ndarray:
+    """Correlation matrix of ``x[rows[r]]`` for each row index ``rows[r]``.
 
-    One row index is drawn per replicate and reused for every column, so
-    a resample costs one correlation matrix however many pairs read it.
+    ``buf`` receives the resampled rows and is overwritten. A column flat
+    across a resample comes back NaN, as in :func:`_corr`.
     """
-    n = len(x)
-    block = min(max(BOOTSTRAP_MIN_BLOCK, int(n ** (1 / 3))), n)
-    n_blocks = -(-n // block)
-    offsets = np.arange(block)
-    out = np.empty((BOOTSTRAP_REPLICATES, x.shape[1], x.shape[1]), dtype=float)
-    for r in range(BOOTSTRAP_REPLICATES):
-        starts = rng.integers(0, n - block + 1, size=n_blocks)
-        idx = (starts[:, None] + offsets[None, :]).ravel()[:n]
-        out[r] = _corr(x[idx])
+    stack = buf[: len(rows)]
+    # mode="clip" lets take write straight into the buffer; mode="raise"
+    # copies through a temporary first. Every index is in range by
+    # construction, so nothing is clipped.
+    np.take(x, rows, axis=0, out=stack, mode="clip")
+    # Column means through matmul: one BLAS call instead of a strided
+    # reduction down every column.
+    n = stack.shape[1]
+    np.subtract(stack, (np.ones(n) @ stack)[:, None, :] / n, out=stack)
+    gram = np.swapaxes(stack, 1, 2) @ stack
+    scale = np.sqrt(np.diagonal(gram, axis1=1, axis2=2))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return cast(np.ndarray, gram / (scale[:, :, None] * scale[:, None, :]))
+
+
+def _block_bootstrap(before: np.ndarray, after: np.ndarray) -> np.ndarray:
+    """Resampled correlation deltas, after minus before, one matrix per replicate.
+
+    Each of the ``BOOTSTRAP_REPLICATES`` replicates draws its own blocks in
+    each period, so the spread of the deltas carries the sampling error of
+    both correlations. One row index per period is drawn per replicate and
+    reused for every column, so a replicate costs two correlation matrices
+    however many pairs read them.
+    """
+    rng = np.random.default_rng(BOOTSTRAP_SEED)
+    k = before.shape[1]
+    chunk = max(1, BOOTSTRAP_CHUNK_CELLS // (max(len(before), len(after)) * k))
+    periods = []
+    for x in (before, after):
+        n = len(x)
+        block = min(max(BOOTSTRAP_MIN_BLOCK, int(n ** (1 / 3))), n)
+        periods.append((x, block, np.empty((chunk, n, k), dtype=float)))
+    out = np.empty((BOOTSTRAP_REPLICATES, k, k), dtype=float)
+    for first in range(0, BOOTSTRAP_REPLICATES, chunk):
+        count = min(chunk, BOOTSTRAP_REPLICATES - first)
+        rho = []
+        for x, block, buf in periods:
+            n = len(x)
+            starts = rng.integers(0, n - block + 1, size=(count, -(-n // block)))
+            rows = (starts[:, :, None] + np.arange(block)).reshape(count, -1)[:, :n]
+            rho.append(_resampled_corr(x, rows, buf))
+        out[first : first + count] = rho[1] - rho[0]
     return out
+
+
+def _delta_interval(before: np.ndarray, after: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Lower and upper percentile of the resampled correlation deltas, per pair."""
+    deltas = _block_bootstrap(before, after)
+    return (
+        np.percentile(deltas, BOOTSTRAP_LOW, axis=0),
+        np.percentile(deltas, BOOTSTRAP_HIGH, axis=0),
+    )
 
 
 def _gridable(periods: Sequence[TagPeriods]) -> list[TagPeriods]:
@@ -552,9 +597,11 @@ def pair_changes(
     two unrelated tags near 1.0 and leaves the number describing the day
     rather than the coupling. Differencing removes both.
 
-    The interval is a moving block bootstrap of the after period's
-    correlation, shifted by the before period's, so it bounds the delta.
-    A pair clears when that interval excludes 0.
+    The interval runs from the 2.5th to the 97.5th percentile of the delta
+    over moving block bootstrap replicates. Each replicate resamples the
+    before and the after period with its own blocks, so the interval
+    carries the sampling error of both correlations. A pair clears when
+    that interval excludes 0.
     """
     usable = _gridable(periods)
     if len(usable) < 2:
@@ -584,9 +631,7 @@ def pair_changes(
     rho_after = _corr(d_after)
     s_before = _corr(_ranked(d_before))
     s_after = _corr(_ranked(d_after))
-    replicates = _block_bootstrap(d_after, np.random.default_rng(BOOTSTRAP_SEED))
-    lo = np.percentile(replicates, BOOTSTRAP_LOW, axis=0)
-    hi = np.percentile(replicates, BOOTSTRAP_HIGH, axis=0)
+    lo, hi = _delta_interval(d_before, d_after)
 
     columns = train.columns
     labels = {p.tag: (p.point_id if shared_source else p.tag) for p in usable}
@@ -598,10 +643,7 @@ def pair_changes(
         if not np.isfinite(delta):
             undefined += 1
             continue
-        bounds: tuple[float | None, float | None] = (
-            float(lo[i, j] - rho_before[i, j]),
-            float(hi[i, j] - rho_before[i, j]),
-        )
+        bounds: tuple[float | None, float | None] = (float(lo[i, j]), float(hi[i, j]))
         # A tag that moves at a handful of samples - a stepped setpoint -
         # has no spread in the resamples that miss them, and no
         # correlation there either. The delta still stands; only the

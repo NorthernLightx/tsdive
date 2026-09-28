@@ -49,6 +49,9 @@ DAY2 = (
     pd.Timestamp("2025-01-03 00:00:00+00:00"),
 )
 
+# No-change pairs scored for the coverage of compare's pair interval.
+PAIR_COVERAGE_REPLICATES = 400
+
 
 def _contract(stepped: bool = True):
     from tsdive.store.sampling_contract import CalculationBasis, RetrievalMode, SamplingContract
@@ -94,6 +97,7 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
 
     from tsdive.baselines import mad_baseline, regime_baselines, screen, screen_regime
     from tsdive.changepoints import segment_window
+    from tsdive.compare import _delta_interval as delta_interval
     from tsdive.compare import compare as compare_periods
     from tsdive.data import generate_backbone
     from tsdive.detectors.isolation import (
@@ -295,6 +299,27 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
             "every pair holding an SP: the differenced setpoint is 0 at all but "
             "5 samples a day, so a block resample that draws none of them "
             "leaves the column flat",
+        )
+    )
+    # Both periods are white noise at one correlation, so the true delta is
+    # 0. The pair is mixed from two independent columns instead of through a
+    # covariance factorisation, so the draws match on every platform.
+    covered = 0
+    for rep in range(PAIR_COVERAGE_REPLICATES):
+        rng = np.random.default_rng([42, rep])
+        z = rng.standard_normal((2, 240, 2))
+        before, after = np.stack([z[..., 0], 0.6 * z[..., 0] + 0.8 * z[..., 1]], axis=-1)
+        lo, hi = delta_interval(before, after)
+        covered += int(lo[0, 1] <= 0.0 <= hi[0, 1])
+    coverage = covered / PAIR_COVERAGE_REPLICATES
+    rows.append(
+        (
+            "4",
+            "compare, pair interval coverage of a zero delta (MCSE)",
+            f"{coverage:.3f} ({(coverage * (1 - coverage) / PAIR_COVERAGE_REPLICATES) ** 0.5:.3f})",
+            "white noise seed=42, 2 tags, rho 0.6, 240 differenced rows per period",
+            f"{PAIR_COVERAGE_REPLICATES} no-change replicates against a nominal 0.95; "
+            "each interval resamples both periods",
         )
     )
     contributor, share = cmp.joint.contributors[0]

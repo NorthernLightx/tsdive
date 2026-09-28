@@ -11,6 +11,7 @@ import pytest
 from conftest import EngRange, Role, make_meta
 from tsdive.compare import (
     BOOTSTRAP_REPLICATES,
+    _delta_interval,
     compare,
     parse_periods,
     read_periods,
@@ -438,8 +439,47 @@ def test_the_bootstrap_replays_identically(archive_factory):
     assert (first.lo, first.hi) == (second.lo, second.hi)
 
 
+def _pair_noise(rng: np.random.Generator, rho: float, n: int) -> np.ndarray:
+    """``n`` rows of two white-noise columns correlated at ``rho``.
+
+    Mixed from two independent columns rather than through a covariance
+    factorisation, so the draws match on every platform.
+    """
+    z = rng.standard_normal((n, 2))
+    return np.column_stack([z[:, 0], rho * z[:, 0] + np.sqrt(1.0 - rho**2) * z[:, 1]])
+
+
+def test_the_pair_interval_covers_a_zero_delta_when_nothing_changed():
+    """200 no-change pairs at rho 0.6, 240 differenced rows in each period.
+
+    An interval that resampled the after period alone and held the before
+    correlation fixed covers the true delta of 0 on about 0.8 of them.
+    """
+    covered = 0
+    for seed in range(200):
+        rng = np.random.default_rng(seed)
+        lo, hi = _delta_interval(_pair_noise(rng, 0.6, 240), _pair_noise(rng, 0.6, 240))
+        covered += int(lo[0, 1] <= 0.0 <= hi[0, 1])
+    assert covered / 200 >= 0.90
+
+
+def test_a_pair_that_drops_from_0_8_to_0_clears(archive_factory):
+    rng = np.random.default_rng(44)
+    steps = np.vstack([_pair_noise(rng, 0.8, SPLIT), _pair_noise(rng, 0.0, N - SPLIT)])
+    left, right = (50.0 + np.cumsum(steps[:, c]) for c in (0, 1))
+    paths = [
+        str(_tag(archive_factory, "FIC101.PV", [float(v) for v in left])),
+        str(_tag(archive_factory, "TIC101.PV", [float(v) for v in right])),
+    ]
+    pair = compare(paths, BEFORE, AFTER).pairs.pairs[0]
+    assert pair.pearson_before > 0.7
+    assert abs(pair.pearson_after) < 0.2
+    assert pair.hi < 0.0
+    assert pair.clears is True
+
+
 def test_ten_tags_over_a_day_stay_inside_a_time_budget(archive_factory):
-    """45 pairs x 200 resamples over 1,440-row periods, in seconds not minutes.
+    """45 pairs x 1,000 resamples of each 1,440-row period, in seconds not minutes.
 
     The published budget is 40 tags (780 pairs) over 7 days at 60 s in
     under 20 s. This is the same code path an eighth of the size; a
