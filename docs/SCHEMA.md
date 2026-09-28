@@ -279,6 +279,12 @@ to it and then converted. Without `--tz` the ingest raises `SchemaError`,
 because an export with no offset does not name an instant. Local times that a DST transition makes ambiguous or
 nonexistent are refused too, naming the zone.
 
+A numeric date such as `01/02/2026` reads as 1 February day first and 2
+January month first. A column holding one raises `SchemaError` until you
+state the order with `--dayfirst` or with `--timestamp-format`, a
+strptime format every row must match. A column whose dates read only one
+way, such as `3/14/2024 1:05 PM`, parses without either.
+
 A missing quality column is refused for the same reason a missing
 quality column is refused everywhere else. `--assume-quality
 GOOD|UNCERTAIN|BAD` is the explicit override; it writes that code on
@@ -300,6 +306,7 @@ the source's own codes are never overwritten.
 | one end of the engineering range without the other, or a span of 0 or less | `SchemaError` |
 | `quality_codes` naming a severity that does not exist | `SchemaError` |
 | ingesting naive timestamps without `--tz` | `SchemaError` |
+| ingesting a date that reads day first and month first, with no order stated | `SchemaError` |
 | ingesting a source with no quality column and no `--assume-quality` | `SchemaError` |
 | `--assume-quality` on a source that has a quality column | `SchemaError` |
 | writing over an existing archive | `FileExistsError` |

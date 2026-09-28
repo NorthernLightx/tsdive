@@ -282,24 +282,128 @@ def _read_source(path: Path) -> pd.DataFrame:
     )
 
 
-def _parse_timestamps(raw: pd.Series, column: str) -> list[pd.Timestamp]:
+# A numeric date whose first two fields are day and month in some order:
+# 01/02/2026, 1.2.26, 13-02-2026. Year-first forms such as ISO 8601 do
+# not match, so they never reach the day/month decision.
+_DAY_MONTH = re.compile(r"\s*(\d{1,2})([/.\-])(\d{1,2})\2(\d{4}|\d{2})(?!\d)(.*)\Z", re.DOTALL)
+
+
+def _date_order(raw: pd.Series, column: str, *, dayfirst: bool) -> bool:
+    """True when the column's numeric dates read day first, False when month first.
+
+    A row whose first field exceeds 12 reads only day first, one whose
+    second field exceeds 12 only month first, and one with both fields at
+    12 or less reads both ways. Without ``dayfirst`` a row that reads both
+    ways raises ``SchemaError``, and so does a column holding rows of both
+    one-way kinds: one parse must never read two rows in two orders.
+    """
+    ambiguous: str | None = None
+    day_only: str | None = None
+    month_only: str | None = None
+    for v in raw:
+        m = _DAY_MONTH.match(v) if isinstance(v, str) else None
+        if m is None:
+            continue
+        first, second = int(m.group(1)), int(m.group(3))
+        if dayfirst and second > 12:
+            raise SchemaError(
+                f"{column}: {v!r} has no month {second} when read day first; "
+                "drop --dayfirst, or pass --timestamp-format with the order the "
+                "export uses"
+            )
+        if first <= 12 and second <= 12:
+            ambiguous = ambiguous or v
+        elif first > 12 and second <= 12:
+            day_only = day_only or v
+        elif second > 12 and first <= 12:
+            month_only = month_only or v
+    if dayfirst:
+        return True
+    if ambiguous is not None:
+        m = cast(re.Match[str], _DAY_MONTH.match(ambiguous))
+        first, second, year = m.group(1), m.group(3), m.group(4)
+        raise SchemaError(
+            f"{column}: {ambiguous!r} reads as day {first} of month {second} or as "
+            f"month {first}, day {second} of {year}; pass --dayfirst to read day "
+            "first, or --timestamp-format with a strptime format such as "
+            "'%d/%m/%Y %H:%M:%S'"
+        )
+    if day_only is not None and month_only is not None:
+        raise SchemaError(
+            f"{column}: {day_only!r} reads only day first and {month_only!r} only "
+            "month first; export the column in one date order, or pass "
+            "--timestamp-format to state it"
+        )
+    return day_only is not None
+
+
+def _month_first(value: object, *, dayfirst: bool) -> object:
+    """``value`` with a numeric day/month date rewritten month first, slash-separated.
+
+    pandas reads such a date month first, and a ``dayfirst`` hint also
+    swaps ISO 8601 dates (2024-03-01 becomes 3 January), so the order is
+    fixed here and pandas never sees the hint.
+    """
+    m = _DAY_MONTH.match(value) if isinstance(value, str) else None
+    if m is None:
+        return value
+    first, _, second, year, rest = m.groups()
+    day, month = (first, second) if dayfirst else (second, first)
+    return f"{month}/{day}/{year}{rest}"
+
+
+def _parse_timestamps(
+    raw: pd.Series,
+    column: str,
+    *,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
+) -> list[pd.Timestamp]:
     """Parse each element to a Timestamp, refusing the first unparseable one.
 
     Element-wise on purpose. ``pd.to_datetime`` over a whole column whose
     rows carry different UTC offsets returns object dtype (and warns that
     a future pandas will raise), which makes every ``.dt`` accessor
     downstream fail with an AttributeError instead of a typed refusal.
+
+    With ``timestamp_format`` every element must match that strptime
+    format. Without it, numeric day/month dates are read in the one order
+    :func:`_date_order` finds, or raise ``SchemaError``.
     """
+    if timestamp_format is not None and dayfirst:
+        raise ValueError("pass --timestamp-format or --dayfirst, not both")
     stamps: list[pd.Timestamp] = []
+    if timestamp_format is not None:
+        for v in raw:
+            try:
+                ts = cast(pd.Timestamp, pd.to_datetime(v, format=timestamp_format))
+            except (ValueError, TypeError):
+                ts = pd.NaT
+            if ts is pd.NaT or pd.isna(ts):
+                raise SchemaError(
+                    f"{column}: {v!r} does not match --timestamp-format {timestamp_format!r}"
+                )
+            stamps.append(ts)
+        return stamps
+    order = _date_order(raw, column, dayfirst=dayfirst)
     for v in raw:
-        ts = cast(pd.Timestamp, pd.to_datetime(v, errors="coerce"))
+        ts = cast(
+            pd.Timestamp, pd.to_datetime(_month_first(v, dayfirst=order), errors="coerce")
+        )
         if ts is pd.NaT or pd.isna(ts):
             raise SchemaError(f"{column}: {v!r} is not a timestamp tsdive can parse")
         stamps.append(ts)
     return stamps
 
 
-def _to_utc(raw: pd.Series, tz: str | None, column: str) -> pd.Series:
+def _to_utc(
+    raw: pd.Series,
+    tz: str | None,
+    column: str,
+    *,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
+) -> pd.Series:
     """Parse a source timestamp column into UTC, or raise ``SchemaError``.
 
     Naive timestamps carry no offset, so tsdive cannot know what
@@ -313,7 +417,9 @@ def _to_utc(raw: pd.Series, tz: str | None, column: str) -> pd.Series:
     rows and not others, and the export is telling two stories about its
     own clock.
     """
-    stamps = _parse_timestamps(raw, column)
+    stamps = _parse_timestamps(
+        raw, column, timestamp_format=timestamp_format, dayfirst=dayfirst
+    )
     aware = [ts.tz is not None for ts in stamps]
     if any(aware) and not all(aware):
         raise SchemaError(
@@ -413,6 +519,8 @@ def ingest(
     tz: str | None = None,
     assume_quality: str | None = None,
     overwrite: bool = False,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
 ) -> Path:
     """Turn a CSV or parquet export into a tsdive archive.
 
@@ -425,9 +533,20 @@ def ingest(
     is the explicit override, and it is recorded on the archive
     (``quality_assumed``) and printed by every profile of it.
 
+    Timestamps are parsed row by row, so rows with different UTC offsets
+    each keep their own. A numeric date such as ``01/02/2026`` reads as 1
+    February day first and 2 January month first; a column holding one
+    raises ``SchemaError`` unless ``dayfirst`` or ``timestamp_format`` (a
+    strptime format every row must match) states the order. A column
+    whose dates read only one way, such as ``3/14/2024 1:05 PM``, parses
+    without either.
+
     Raises:
         SchemaError: unreadable input, missing column, naive timestamps
-            without ``tz``, or an unusable ``assume_quality`` value.
+            without ``tz``, a date that reads day first and month first
+            with no order stated, a row that does not match
+            ``timestamp_format``, or an unusable ``assume_quality`` value.
+        ValueError: both ``timestamp_format`` and ``dayfirst``.
         FileExistsError: ``out`` exists and ``overwrite`` is False.
 
     Examples:
@@ -441,6 +560,20 @@ def ingest(
         >>> out = tsdive.ingest("fic101.csv", out="archive/plant1/FIC101.PV.parquet", meta=meta)
         >>> out.as_posix(), len(pd.read_parquet(out))
         ('archive/plant1/FIC101.PV.parquet', 562)
+
+        An export whose dates read both ways states its order:
+
+        >>> pd.DataFrame({"timestamp": ["01/02/2026 08:00:00", "13/02/2026 08:00:00"],
+        ...               "value": [61.0, 62.0], "quality": ["GOOD", "GOOD"]}
+        ...              ).to_csv("eu.csv", index=False)
+        >>> tsdive.ingest("eu.csv", out="eu.parquet", meta=meta, tz="Europe/Paris")
+        Traceback (most recent call last):
+        ...
+        tsdive.errors.SchemaError: timestamp: '01/02/2026 08:00:00' reads as day 01 of month 02 ...
+        >>> out = tsdive.ingest("eu.csv", out="eu.parquet", meta=meta, tz="Europe/Paris",
+        ...                     dayfirst=True)
+        >>> list(pd.read_parquet(out)["timestamp"].dt.strftime("%Y-%m-%d %H:%M"))
+        ['2026-02-01 07:00', '2026-02-13 07:00']
     """
     src = Path(source)
     frame = _read_source(src)
@@ -454,7 +587,13 @@ def ingest(
         frame, label=src.name, quality_col=quality_col, assume_quality=assume_quality
     )
     out_frame, stamped = _prepare_archive(
-        timestamps=_to_utc(frame[timestamp_col], tz, timestamp_col),
+        timestamps=_to_utc(
+            frame[timestamp_col],
+            tz,
+            timestamp_col,
+            timestamp_format=timestamp_format,
+            dayfirst=dayfirst,
+        ),
         values=frame[value_col],
         quality=quality,
         assumed=assumed,
@@ -539,6 +678,8 @@ def ingest_wide(
     tz: str | None = None,
     assume_quality: str | None = None,
     overwrite: bool = False,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
 ) -> list[Path]:
     """Turn a wide export, one column per tag, into one archive per tag.
 
@@ -548,13 +689,17 @@ def ingest_wide(
     Metadata for a tag comes from ``meta_dir / f"{safe_filename(tag)}.json"``
     and its archive goes to ``out_dir / f"{safe_filename(point_id)}.parquet"``.
     Every check runs before the first archive is written, so a refusal
-    leaves ``out_dir`` as it was.
+    leaves ``out_dir`` as it was. Timestamps are parsed as
+    [`ingest`][tsdive.ingest] parses them, ``timestamp_format`` and
+    ``dayfirst`` included.
 
     Raises:
         SchemaError: unreadable input; a missing timestamp, tag, quality
-            or metadata file; naive timestamps without ``tz``; or
+            or metadata file; naive timestamps without ``tz``; a date that
+            reads day first and month first with no order stated; or
             ``quality_suffix`` given together with ``assume_quality``.
-        ValueError: two tags or two point ids that share one file name.
+        ValueError: two tags or two point ids that share one file name, or
+            both ``timestamp_format`` and ``dayfirst``.
         FileExistsError: an archive exists and ``overwrite`` is False.
 
     Examples:
@@ -626,7 +771,13 @@ def ingest_wide(
                 raise FileExistsError(
                     f"{target} already exists; pass overwrite=True to replace it"
                 )
-    timestamps = _to_utc(frame[timestamp_col], tz, timestamp_col)
+    timestamps = _to_utc(
+        frame[timestamp_col],
+        tz,
+        timestamp_col,
+        timestamp_format=timestamp_format,
+        dayfirst=dayfirst,
+    )
     prepared: list[tuple[Path, pd.DataFrame, TagMeta]] = []
     for tag in chosen:
         quality, assumed = _resolve_quality(

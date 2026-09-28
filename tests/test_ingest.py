@@ -185,6 +185,103 @@ def test_naive_and_aware_timestamps_in_one_column_are_refused(tmp_path):
         )
 
 
+EU_STAMPS = ["01/02/2026 08:00:00", "01/02/2026 08:01:00", "13/02/2026 08:02:00"]
+
+
+def _ingest_stamps(tmp_path, stamps, name="dates", **kwargs):
+    out = tmp_path / f"{name}.parquet"
+    tsdive.ingest(
+        _csv(tmp_path, stamps=stamps, name=f"{name}.csv"),
+        out=out,
+        meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+        timestamp_col="ts",
+        value_col="v",
+        quality_col="q",
+        **kwargs,
+    )
+    return [t.strftime("%Y-%m-%d %H:%M") for t in pd.read_parquet(out)["timestamp"]]
+
+
+def test_a_date_that_reads_both_ways_is_refused(tmp_path, capsys):
+    """SCOPE claim: a day/month-ambiguous date with no stated order raises SchemaError."""
+    with pytest.raises(SchemaError) as info:
+        _ingest_stamps(tmp_path, EU_STAMPS, tz="Europe/Paris")
+    message = str(info.value)
+    assert "'01/02/2026 08:00:00'" in message
+    assert "--dayfirst" in message and "--timestamp-format" in message
+
+    out = tmp_path / "cli.parquet"
+    rc = cmd_ingest([str(_csv(tmp_path, stamps=EU_STAMPS, name="cli.csv")), "--out", str(out),
+                     "--meta", str(_meta_file(tmp_path)), "--timestamp-col", "ts",
+                     "--value-col", "v", "--quality-col", "q", "--tz", "Europe/Paris"])
+    assert rc != 0
+    assert "reads as day 01 of month 02 or as month 01, day 02" in capsys.readouterr().err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "order",
+    [{"dayfirst": True}, {"timestamp_format": "%d/%m/%Y %H:%M:%S"}],
+    ids=["dayfirst", "format"],
+)
+def test_a_stated_order_reads_every_row_the_same_way(tmp_path, order):
+    assert _ingest_stamps(tmp_path, EU_STAMPS, tz="Europe/Paris", **order) == [
+        "2026-02-01 07:00",
+        "2026-02-01 07:01",
+        "2026-02-13 07:02",
+    ]
+
+
+def test_cli_dayfirst_and_timestamp_format_reach_the_parser(tmp_path, capsys):
+    common = ["--meta", str(_meta_file(tmp_path)), "--timestamp-col", "ts", "--value-col",
+              "v", "--quality-col", "q", "--tz", "Europe/Paris"]
+    src = str(_csv(tmp_path, stamps=EU_STAMPS, name="eu.csv"))
+    assert cmd_ingest([src, "--out", str(tmp_path / "a.parquet"), "--dayfirst", *common]) == 0
+    fmt = ["--timestamp-format", "%d/%m/%Y %H:%M:%S"]
+    assert cmd_ingest([src, "--out", str(tmp_path / "b.parquet"), *fmt, *common]) == 0
+    a = pd.read_parquet(tmp_path / "a.parquet")["timestamp"]
+    assert list(a) == list(pd.read_parquet(tmp_path / "b.parquet")["timestamp"])
+    assert a.iloc[2] == pd.Timestamp("2026-02-13 07:02:00+00:00")
+    with pytest.raises(SystemExit) as info:
+        cmd_ingest([src, "--out", str(tmp_path / "c.parquet"), "--dayfirst", *fmt, *common])
+    assert info.value.code == 2
+    assert "pass one" in capsys.readouterr().err
+
+
+def test_us_dates_that_read_one_way_still_parse(tmp_path):
+    stamps = ["3/14/2024 1:05 PM", "3/14/2024 1:06 PM", "3/15/2024 9:00 AM"]
+    assert _ingest_stamps(tmp_path, stamps, tz="America/New_York") == [
+        "2024-03-14 17:05",
+        "2024-03-14 17:06",
+        "2024-03-15 13:00",
+    ]
+
+
+def test_dates_in_two_one_way_orders_are_refused(tmp_path):
+    with pytest.raises(SchemaError, match="reads only day first and '02/14/2026 08:01:00' only "
+                       "month first"):
+        _ingest_stamps(tmp_path, ["13/02/2026 08:00:00", "02/14/2026 08:01:00"], tz="UTC")
+
+
+def test_dayfirst_refuses_a_month_above_12(tmp_path):
+    with pytest.raises(SchemaError, match="'02/14/2026 08:00:00' has no month 14 when read day"):
+        _ingest_stamps(tmp_path, ["02/14/2026 08:00:00"], tz="UTC", dayfirst=True)
+
+
+def test_dayfirst_leaves_iso_dates_alone(tmp_path):
+    assert _ingest_stamps(tmp_path, AWARE, dayfirst=True) == [
+        "2024-03-01 00:00",
+        "2024-03-01 00:01",
+        "2024-03-01 00:02",
+    ]
+
+
+def test_a_row_off_the_stated_format_names_value_and_format(tmp_path):
+    with pytest.raises(SchemaError, match=r"'2024-03-01T00:00:00Z' does not match "
+                       r"--timestamp-format '%d/%m/%Y %H:%M:%S'"):
+        _ingest_stamps(tmp_path, AWARE, timestamp_format="%d/%m/%Y %H:%M:%S")
+
+
 def test_unparseable_timestamp_names_the_offending_value(tmp_path):
     src = _csv(tmp_path, stamps=["2024-03-01T00:00:00Z", "not a time"])
     with pytest.raises(SchemaError, match="is not a timestamp tsdive can parse"):
@@ -498,6 +595,21 @@ def test_wide_export_writes_one_archive_per_column_across_dst(tmp_path):
     assert "DST (Europe/London) 2024-03-31 01:00:00Z  +0h -> +1h" in p.render()
     assert sum(p.physics.severity_counts.values()) == len(WIDE_INSTANTS)
     assert p.physics.unmapped_quality_codes == []
+
+
+def test_wide_ingest_takes_the_date_order_flags(tmp_path, capsys):
+    src = tmp_path / "eu_wide.csv"
+    pd.DataFrame({"ts": EU_STAMPS, "FIC101.PV": [1.0, 2.0, 3.0]}).to_csv(src, index=False)
+    meta_dir = _wide_meta_dir(tmp_path, tags=["FIC101.PV"])
+    argv = [str(src), "--wide", "--out", str(tmp_path / "archive"), "--meta-dir", str(meta_dir),
+            "--timestamp-col", "ts", "--tz", "Europe/Paris", "--assume-quality", "GOOD"]
+    assert cmd_ingest(argv) != 0
+    assert "'01/02/2026 08:00:00' reads as day 01" in capsys.readouterr().err
+    assert cmd_ingest([*argv, "--dayfirst"]) == 0
+    stamps = pd.read_parquet(tmp_path / "archive" / "FIC101.PV.parquet")["timestamp"]
+    assert stamps.iloc[0] == pd.Timestamp("2026-02-01 07:00:00+00:00")
+    fmt = ["--timestamp-format", "%d/%m/%Y %H:%M:%S", "--overwrite"]
+    assert cmd_ingest([*argv, *fmt]) == 0
 
 
 def test_wide_tags_subset_with_assumed_quality(tmp_path):

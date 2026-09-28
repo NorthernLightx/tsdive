@@ -923,6 +923,18 @@ def _parser_ingest() -> argparse.ArgumentParser:
         "--timestamp-col", default="timestamp", help="timestamp column of the export"
     )
     parser.add_argument(
+        "--timestamp-format",
+        default=None,
+        metavar="FORMAT",
+        help="strptime format every timestamp must match, like '%%d/%%m/%%Y %%H:%%M:%%S'",
+    )
+    parser.add_argument(
+        "--dayfirst",
+        action="store_true",
+        help="read numeric dates day first, so 01/02/2026 is 1 February; without it "
+        "or --timestamp-format a date that reads both ways raises SchemaError",
+    )
+    parser.add_argument(
         "--value-col", default=None, help="value column of a single-tag export (default value)"
     )
     parser.add_argument(
@@ -1007,7 +1019,11 @@ def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespac
         ("--meta-dir", args.meta_dir),
         ("--tz", args.tz),
         ("--assume-quality", args.assume_quality),
+        ("--timestamp-format", args.timestamp_format),
+        ("--dayfirst", args.dayfirst or None),
     )
+    if args.timestamp_format is not None and args.dayfirst:
+        parser.error("--timestamp-format and --dayfirst both state the date order; pass one")
     if args.wide:
         for flag, value in single_only:
             if value is not None:
@@ -1066,6 +1082,8 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
                 tz=args.tz,
                 assume_quality=args.assume_quality,
                 overwrite=args.overwrite,
+                timestamp_format=args.timestamp_format,
+                dayfirst=args.dayfirst,
             )
             _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
             _warn_assumed_quality(args.assume_quality)
@@ -1083,6 +1101,8 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
             tz=args.tz,
             assume_quality=args.assume_quality,
             overwrite=args.overwrite,
+            timestamp_format=args.timestamp_format,
+            dayfirst=args.dayfirst,
         )
         quality = (
             f"quality assumed {args.assume_quality.strip().upper()}"
