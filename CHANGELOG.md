@@ -3,7 +3,7 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
-## Unreleased
+## 0.4.0 - 2026-09-28
 
 ### Added
 
