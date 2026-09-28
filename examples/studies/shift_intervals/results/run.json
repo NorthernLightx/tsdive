@@ -171,6 +171,110 @@
       "seed_rule": "first 8 bytes, little endian, of sha256 over the cell's sorted name=repr(value) pairs joined by '|'; the seed column of synthetic.csv",
       "wall_seconds": 117.6
     },
+    "tep": {
+      "adjusted_refusals": {
+        "too_many_covariates": 655200
+      },
+      "after_samples": [
+        161,
+        320
+      ],
+      "before_samples": [
+        1,
+        160
+      ],
+      "cache": {
+        "cache_sha256": "ee6e1d65cb2c",
+        "directory": "data/tep_shift_cache",
+        "onset_check": {
+          "fault": 6,
+          "fault_free_mean": [
+            0.2491,
+            0.2489,
+            0.2494,
+            0.2495,
+            0.2516,
+            0.2515,
+            0.2526,
+            0.2527,
+            0.2521,
+            0.2521,
+            0.2545,
+            0.2546
+          ],
+          "fault_mean": [
+            0.2491,
+            0.2489,
+            0.2494,
+            0.2495,
+            0.2516,
+            0.2515,
+            -0.0001,
+            -0.0,
+            0.0001,
+            0.0001,
+            -0.0001,
+            0.0001
+          ],
+          "samples": [
+            155,
+            156,
+            157,
+            158,
+            159,
+            160,
+            161,
+            162,
+            163,
+            164,
+            165,
+            166
+          ],
+          "variable": "xmeas_1"
+        },
+        "peak_memory_bytes": 16518692864,
+        "runs": [
+          1,
+          350
+        ],
+        "samples": [
+          1,
+          320
+        ]
+      },
+      "code": {
+        "git_head": "9bcb36d7084b1980d1249c7ea2c91054082abdf6",
+        "tsdive_version": "0.3.0"
+      },
+      "conditions": 21,
+      "dataset_manifest_sha256": "f57ab3ee3443",
+      "fault_free_ensemble_check": {
+        "xmeas_1_22": {
+          "max_abs_level_z": 2.2785,
+          "max_abs_spread_z": 14.7487
+        },
+        "xmeas_23_41": {
+          "max_abs_level_z": 1.855,
+          "max_abs_spread_z": 15.9491
+        },
+        "xmv_1_11": {
+          "max_abs_level_z": 2.5132,
+          "max_abs_spread_z": 14.2446
+        }
+      },
+      "n_per_row": 1310400,
+      "n_rows": 1512,
+      "per_row_file": "data/tep_shift_cache/shift_rows.parquet",
+      "scored_runs": [
+        251,
+        350
+      ],
+      "truth_runs": [
+        1,
+        250
+      ],
+      "wall_seconds": 164.5
+    },
     "turbine": {
       "code": {
         "git_head": "78bce5d9004d5485f243096199f40761de3b4b40",

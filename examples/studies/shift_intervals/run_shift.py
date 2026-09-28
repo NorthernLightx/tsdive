@@ -43,7 +43,14 @@ rows as recorded, ``y_test`` the target):
 - ``turbine_vg_change``: the vortex generator retrofit, the upgraded rows
   against as many rows before them; no truth is known.
 
-In the 3W and SKAB beds every tag of a split is the target in turn and its
+``tep`` reads samples 1-320 of the TEP testing runs from the cache
+``build_tep_cache.py`` writes: before is samples 1-160, after is 161-320,
+the fault steps in after sample 160. The truth per (condition, variable) is
+the mean over runs 1-250 of the run's own estimate (0 for the fault-free
+level); runs 251-350 are scored, every variable as the target. Per-row results stay in the
+cache directory.
+
+In the 3W, SKAB and TEP beds every tag of a split is the target in turn and its
 covariates are every other tag that passes R0 on the split. In the turbine
 bed the target is ``y_test`` and the covariates are the declared tags that
 pass R0. Nothing is fitted across records.
@@ -65,6 +72,11 @@ Outputs in ``--out``:
   var(residual) / var(target) over the after period.
 - ``turbine.csv``: the same rows for the turbine bed, with the truth in the
   estimate's units where one is known.
+- ``tep.csv``: one row per (condition, variable group, quantity, method,
+  refusal set) of the raw arm: coverage of the ensemble truth and its Monte
+  Carlo SE, the claim rate (fault-free) or detection rate, the median width,
+  the answered share and the median ratio of the truth's standard error to
+  the interval width.
 - ``summary.csv``: one row per (design, quantity, method, adjustment,
   refusal set) over the row CSVs: clear rate pooled and averaged per well,
   folder or pair, coverage where a truth is known, the record-level rate at
@@ -105,6 +117,7 @@ DEFAULT_3W_SOURCE = "data/3w"
 DEFAULT_ARCHIVES = "data/skab_archives"
 DEFAULT_SKAB_SOURCE = "data/skab"
 DEFAULT_TURBINE = "data/turbine_upgrade"
+DEFAULT_TEP_CACHE = "data/tep_shift_cache"
 DEFAULT_REPLICATES = 200
 SYNTHETIC_BUDGET_S = 1200
 
@@ -112,7 +125,8 @@ BED_SYNTHETIC = "synthetic"
 BED_PLACEBO = "placebo"
 BED_KNOWN = "known_change"
 BED_TURBINE = "turbine"
-BEDS = (BED_SYNTHETIC, BED_PLACEBO, BED_KNOWN, BED_TURBINE)
+BED_TEP = "tep"
+BEDS = (BED_SYNTHETIC, BED_PLACEBO, BED_KNOWN, BED_TURBINE, BED_TEP)
 
 DESIGN_3W_PLACEBO = "3w_placebo"
 DESIGN_SKAB_FREE = "skab_free_placebo"
@@ -128,6 +142,7 @@ PLACEBO_CSV = "placebo.csv"
 KNOWN_CSV = "known_change.csv"
 SUMMARY_CSV = "summary.csv"
 TURBINE_CSV = "turbine.csv"
+TEP_CSV = "tep.csv"
 
 SUBGROUP_COLS = [f"s{i:02d}" for i in range(60)]
 PLACEBO_WINDOWS = 2  # per period
@@ -173,6 +188,20 @@ TURBINE_INJECT_R = (0.02, 0.05, 0.09)
 TURBINE_INJECT_V = 9.0
 TURBINE_WEEK = pd.Timedelta(7, unit="D")
 TURBINE_STEP = pd.Timedelta(10, unit="min")
+
+DESIGN_TEP = "tep_fault_onset"
+TEP_CACHE_FILE = "tep_testing_1_320.parquet"
+TEP_ROWS_FILE = "shift_rows.parquet"
+TEP_BEFORE = 160  # the fault steps in after this sample (see build_tep_cache.py)
+TEP_LAST = 320
+TEP_TRUTH_RUNS = 250  # runs 1-250 give the truth
+TEP_SCORED_RUNS = (251, 350)
+TEP_VARIABLES = [f"xmeas_{i}" for i in range(1, 42)] + [f"xmv_{i}" for i in range(1, 12)]
+TEP_GROUPS = {
+    "xmeas_1_22": [f"xmeas_{i}" for i in range(1, 23)],
+    "xmeas_23_41": [f"xmeas_{i}" for i in range(23, 42)],
+    "xmv_1_11": [f"xmv_{i}" for i in range(1, 12)],
+}
 
 GRID_LEVEL = "level"
 GRID_AFFECTED = "affected_covariate"
@@ -464,6 +493,7 @@ class Split:
     targets: tuple[str, ...] | None = None  # None: every tag
     covariate_pool: tuple[str, ...] | None = None  # None: every tag
     truth: dict[str, float] = field(default_factory=dict)  # level truth per target
+    spread_truth: dict[str, float] = field(default_factory=dict)  # log SD ratio truth
 
 
 def rel(path: Path) -> str:
@@ -746,8 +776,8 @@ def score_split(split: Split) -> list[dict]:
 
     The covariates of a target are every other tag of the covariate pool
     that passes R0 on this split, declared before any interval is computed.
-    A level row carries the split's truth for its target, NaN when none is
-    known.
+    A row carries the split's truth for its target and quantity, NaN when
+    none is known.
     """
     tags = sorted(split.before)
     targets = list(split.targets) if split.targets is not None else tags
@@ -762,10 +792,12 @@ def score_split(split: Split) -> list[dict]:
     rows = []
     for tag in targets:
         covariates = [t for t in usable_tags if t != tag]
-        truth = split.truth.get(tag, math.nan)
+        truths = {
+            sh.LEVEL: split.truth.get(tag, math.nan),
+            sh.SPREAD: split.spread_truth.get(tag, math.nan),
+        }
         for row in sh.score_target(split.before, split.after, tag, covariates):
-            level_truth = truth if row["quantity"] == sh.LEVEL else math.nan
-            rows.append({**head, "tag": tag, **row, "truth": level_truth})
+            rows.append({**head, "tag": tag, **row, "truth": truths[row["quantity"]]})
     return rows
 
 
@@ -817,11 +849,8 @@ ROW_FLAGS = ["clears", "before_trend", "covariate_outside", "covariate_shifted",
 ROW_ORDER = ["design", "record", "segment", "tag", "quantity", "method", "adjustment"]
 
 
-def rows_frame(rows: list[dict], with_truth: bool = False) -> pd.DataFrame:
-    """Rows as written: level values in before-period SDs of the target, rounded.
-
-    With ``with_truth`` the frame keeps a ``truth`` column in the same units.
-    """
+def scaled_frame(rows: list[dict]) -> pd.DataFrame:
+    """Rows with level values in before-period SDs of the target, unrounded."""
     frame = pd.DataFrame(rows)
     level = frame["quantity"] == sh.LEVEL
     for column in ("estimate", "lo", "hi", "truth"):
@@ -830,6 +859,15 @@ def rows_frame(rows: list[dict], with_truth: bool = False) -> pd.DataFrame:
     for column in ROW_FLAGS:
         frame[column] = frame[column].map({True: 1, False: 0}).astype("Int8")
     frame["refused"] = frame["refused"].astype(int)
+    return frame
+
+
+def rows_frame(rows: list[dict], with_truth: bool = False) -> pd.DataFrame:
+    """Rows as written: level values in before-period SDs of the target, rounded.
+
+    With ``with_truth`` the frame keeps a ``truth`` column in the same units.
+    """
+    frame = scaled_frame(rows)
     columns = [*ROW_COLUMNS, "truth"] if with_truth else ROW_COLUMNS
     frame = round_frame(frame, [*ROW_FLOATS, "truth"] if with_truth else ROW_FLOATS)
     frame = frame.sort_values(ROW_ORDER, kind="stable").reset_index(drop=True)
@@ -1268,6 +1306,227 @@ def run_turbine(directory: Path, out: Path) -> dict:
     }
 
 
+# ---------------------------------------------------------------- TEP
+
+
+def tep_arrays(frame: pd.DataFrame, fault: int) -> np.ndarray:
+    """(runs, 320, 52) float64 values of one condition, runs and samples in order."""
+    chosen = frame[frame["fault"] == fault].sort_values(["run", "sample"], kind="stable")
+    runs = chosen["run"].nunique()
+    samples = chosen["sample"].to_numpy()
+    if len(chosen) != runs * TEP_LAST or not np.array_equal(
+        samples, np.tile(np.arange(1, TEP_LAST + 1), runs)
+    ):
+        raise ValueError(f"fault {fault}: the cache does not hold samples 1-{TEP_LAST} per run")
+    return chosen[TEP_VARIABLES].to_numpy(dtype=float).reshape(runs, TEP_LAST, len(TEP_VARIABLES))
+
+
+def tep_truth(values: np.ndarray, fault_free: bool) -> dict[str, np.ndarray]:
+    """Ensemble truth over the truth runs: level and log SD ratio, with standard errors.
+
+    The fault-free level truth is 0, with the ensemble estimate kept beside it
+    as a check. The spread truth is the ensemble estimate for every condition:
+    the fault-free runs start with a lower spread, so their log SD ratio of
+    samples 161-320 over 1-160 is not 0.
+    """
+    before = values[:TEP_TRUTH_RUNS, :TEP_BEFORE, :]
+    after = values[:TEP_TRUTH_RUNS, TEP_BEFORE:TEP_LAST, :]
+    level = after.mean(axis=1) - before.mean(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        spread = np.log(after.std(axis=1, ddof=1) / before.std(axis=1, ddof=1))
+    out = {
+        "level_ensemble": level.mean(axis=0),
+        "level_se": level.std(axis=0, ddof=1) / math.sqrt(TEP_TRUTH_RUNS),
+        "spread_ensemble": spread.mean(axis=0),
+        "spread_se": spread.std(axis=0, ddof=1) / math.sqrt(TEP_TRUTH_RUNS),
+    }
+    out["level"] = np.zeros(len(TEP_VARIABLES)) if fault_free else out["level_ensemble"]
+    out["spread"] = out["spread_ensemble"]
+    return out
+
+
+TEP_KEEP = [
+    "record",
+    "tag",
+    "quantity",
+    "method",
+    "adjustment",
+    "n_covariates",
+    "scale",
+    "estimate",
+    "lo",
+    "hi",
+    "width",
+    "p_value",
+    "clears",
+    "refused",
+    "reason",
+    "truth",
+    "trend_t",
+    "lag1",
+    "lag1_after",
+    "before_trend",
+    "too_persistent",
+]
+
+
+def score_tep_condition(values: np.ndarray, fault: int) -> tuple[pd.DataFrame, dict]:
+    """Rows of the scored runs of one condition and its truth arrays."""
+    truth = tep_truth(values, fault_free=fault == 0)
+    first, last = TEP_SCORED_RUNS
+    rows = []
+    for run in range(first, last + 1):
+        index = run - 1
+        split = Split(
+            design=DESIGN_TEP,
+            record=f"fault{fault:02d}_run{run:03d}",
+            group=f"fault{fault:02d}",
+            segment=0,
+            before={v: values[index, :TEP_BEFORE, j] for j, v in enumerate(TEP_VARIABLES)},
+            after={v: values[index, TEP_BEFORE:TEP_LAST, j] for j, v in enumerate(TEP_VARIABLES)},
+            truth={v: float(truth["level"][j]) for j, v in enumerate(TEP_VARIABLES)},
+            spread_truth={v: float(truth["spread"][j]) for j, v in enumerate(TEP_VARIABLES)},
+        )
+        rows += score_split(split)
+    frame = scaled_frame(rows)[TEP_KEEP]
+    frame.insert(0, "fault", fault)
+    return frame, truth
+
+
+def _tep_group(tag: str) -> str:
+    for group, variables in TEP_GROUPS.items():
+        if tag in variables:
+            return group
+    raise KeyError(tag)
+
+
+def aggregate_tep(frame: pd.DataFrame, truths: dict[int, dict]) -> list[dict]:
+    """One row per (condition, variable group, quantity, method, refusal set), raw arm."""
+    raw = frame[frame["adjustment"] == sh.RAW].copy()
+    raw["variable_group"] = raw["tag"].map(_tep_group)
+    se_of = {}
+    for fault, truth in truths.items():
+        for j, variable in enumerate(TEP_VARIABLES):
+            se_of[(fault, variable, sh.LEVEL)] = float(truth["level_se"][j])
+            se_of[(fault, variable, sh.SPREAD)] = float(truth["spread_se"][j])
+    out = []
+    keys = ["fault", "variable_group", "quantity", "method"]
+    for (fault, group, quantity, method), rows in raw.groupby(keys, sort=True):
+        for refusal_set in sh.RAW_REFUSAL_SETS:
+            refused = refused_mask(rows, refusal_set)
+            answered = rows[~refused]
+            covered = (answered["lo"] <= answered["truth"]) & (answered["truth"] <= answered["hi"])
+            coverage = _share(covered)
+            clears = _share(answered["clears"].eq(1))
+            raw_width = answered["width"] * (
+                answered["scale"] if quantity == sh.LEVEL else 1.0
+            )
+            ratios = []
+            for variable, widths in raw_width.groupby(answered["tag"]):
+                median = float(widths.median())
+                if median > 0:
+                    ratios.append(se_of[(fault, variable, quantity)] / median)
+            out.append(
+                {
+                    "condition": "fault_free" if fault == 0 else f"fault_{fault}",
+                    "fault": int(fault),
+                    "variable_group": group,
+                    "quantity": quantity,
+                    "method": method,
+                    "refusal_set": refusal_set,
+                    "n_variables": int(rows["tag"].nunique()),
+                    "n_rows": len(rows),
+                    "n_answered": len(answered),
+                    "answered_share": _share(~refused),
+                    "coverage": coverage,
+                    "coverage_mcse": (
+                        math.sqrt(coverage * (1 - coverage) / len(answered))
+                        if len(answered)
+                        else None
+                    ),
+                    "claim_rate": clears if fault == 0 else None,
+                    "detect_rate": clears if fault != 0 else None,
+                    "median_width": float(answered["width"].median()) if len(answered) else None,
+                    "median_truth_se_over_width": float(np.median(ratios)) if ratios else None,
+                    "rate_before_trend": _share(_flag(rows, sh.BEFORE_TREND)),
+                    "rate_too_persistent": _share(_flag(rows, sh.TOO_PERSISTENT)),
+                    "median_lag1": float(rows["lag1"].median()),
+                }
+            )
+    return out
+
+
+TEP_FLOATS = [
+    "answered_share",
+    "coverage",
+    "coverage_mcse",
+    "claim_rate",
+    "detect_rate",
+    "median_width",
+    "median_truth_se_over_width",
+    "rate_before_trend",
+    "rate_too_persistent",
+    "median_lag1",
+]
+
+
+def run_tep(cache: Path, out: Path) -> dict:
+    started = time.perf_counter()
+    manifest = json.loads((cache / "MANIFEST.json").read_text("utf-8"))
+    data = pd.read_parquet(cache / TEP_CACHE_FILE)
+    faults = sorted(int(f) for f in data["fault"].unique())
+    frames, truths, check = [], {}, {}
+    for fault in faults:
+        values = tep_arrays(data, fault)
+        frame, truth = score_tep_condition(values, fault)
+        frames.append(frame)
+        truths[fault] = truth
+        if fault == 0:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                z_level = truth["level_ensemble"] / truth["level_se"]
+                z_spread = truth["spread_ensemble"] / truth["spread_se"]
+            check = {
+                group: {
+                    "max_abs_level_z": r4(np.nanmax(np.abs(z_level[idx]))),
+                    "max_abs_spread_z": r4(np.nanmax(np.abs(z_spread[idx]))),
+                }
+                for group, variables in TEP_GROUPS.items()
+                for idx in [[TEP_VARIABLES.index(v) for v in variables]]
+            }
+    del data
+    rows = pd.concat(frames, ignore_index=True)
+    rows.to_parquet(cache / TEP_ROWS_FILE, index=False)
+    table = pd.DataFrame(aggregate_tep(rows, truths))
+    table = round_frame(table, TEP_FLOATS)
+    write_csv(table, out / TEP_CSV)
+    adjusted = rows[rows["adjustment"] == sh.ADJUSTED]
+    return {
+        "code": code_version(),
+        "dataset_manifest_sha256": manifest["source_manifest_sha256"],
+        "cache": {
+            "directory": rel(cache),
+            "cache_sha256": manifest["cache_sha256"],
+            "runs": manifest["runs"],
+            "samples": manifest["samples"],
+            "peak_memory_bytes": manifest.get("peak_memory_bytes"),
+            "onset_check": manifest.get("onset_check"),
+        },
+        "before_samples": [1, TEP_BEFORE],
+        "after_samples": [TEP_BEFORE + 1, TEP_LAST],
+        "truth_runs": [1, TEP_TRUTH_RUNS],
+        "scored_runs": list(TEP_SCORED_RUNS),
+        "conditions": len(faults),
+        "fault_free_ensemble_check": check,
+        "adjusted_refusals": {
+            str(k): int(v) for k, v in adjusted["reason"].value_counts().sort_index().items()
+        },
+        "per_row_file": rel(cache / TEP_ROWS_FILE),
+        "n_per_row": len(rows),
+        "n_rows": len(table),
+        "wall_seconds": round(time.perf_counter() - started, 1),
+    }
+
+
 # ---------------------------------------------------------------- main
 
 
@@ -1311,6 +1570,7 @@ def run(
     source_3w: Path | None = ROOT / DEFAULT_3W_SOURCE,
     source_skab: Path | None = ROOT / DEFAULT_SKAB_SOURCE,
     turbine: Path = ROOT / DEFAULT_TURBINE,
+    tep_cache: Path = ROOT / DEFAULT_TEP_CACHE,
 ) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     sources = {"3w": source_sha(source_3w), "skab": source_sha(source_skab)}
@@ -1323,6 +1583,8 @@ def run(
         sections[BED_KNOWN] = run_known(aligned, archives, sources, out)
     if BED_TURBINE in beds:
         sections[BED_TURBINE] = run_turbine(turbine, out)
+    if BED_TEP in beds:
+        sections[BED_TEP] = run_tep(tep_cache, out)
     if BED_PLACEBO in beds or BED_KNOWN in beds or BED_TURBINE in beds:
         write_summary(out)
     return update_run_json(out, sections)
@@ -1336,6 +1598,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", default=DEFAULT_3W_SOURCE)
     parser.add_argument("--skab-source", default=DEFAULT_SKAB_SOURCE)
     parser.add_argument("--turbine", default=DEFAULT_TURBINE)
+    parser.add_argument("--tep-cache", default=DEFAULT_TEP_CACHE)
     parser.add_argument("--out", default=str(HERE / "results"))
     parser.add_argument("--beds", nargs="+", choices=BEDS, default=list(BEDS))
     parser.add_argument("--replicates", type=int, default=DEFAULT_REPLICATES)
@@ -1350,6 +1613,7 @@ def main(argv: list[str] | None = None) -> int:
         source_3w=Path(args.source),
         source_skab=Path(args.skab_source),
         turbine=Path(args.turbine),
+        tep_cache=Path(args.tep_cache),
     )
     for bed in args.beds:
         print(f"{bed}: {info['beds'][bed]['wall_seconds']} s, {info['beds'][bed]['n_rows']} rows")

@@ -16,6 +16,7 @@ ROOT = Path(__file__).parents[1]
 STUDY = ROOT / "examples" / "studies" / "shift_intervals"
 sys.path.insert(0, str(STUDY))
 
+import build_tep_cache as btc  # noqa: E402
 import run_shift as rs  # noqa: E402
 import shift as sh  # noqa: E402
 
@@ -771,3 +772,107 @@ def test_turbine_rerun_writes_identical_csvs(turbine_bed):
         & (summary["refusal_set"] == "base")
     ]
     assert injected["coverage"].notna().all()
+
+
+# ---------------------------------------------------------------- TEP-shaped bed
+TEP_RUNS = 12
+
+
+def _tep_frame(faults: list[int], runs: int, samples: int, seed: int) -> pd.DataFrame:
+    """White-noise runs; fault 1 steps xmeas_1 by 3 after sample 160, fault 6 zeroes it."""
+    rng = np.random.default_rng(seed)
+    parts = []
+    for fault in faults:
+        for run in range(1, runs + 1):
+            sample = np.arange(1, samples + 1)
+            values = rng.standard_normal((samples, len(btc.VARIABLES)))
+            if fault == 1:
+                values[sample > 160, 0] += 3.0
+            if fault == 6:
+                values[sample > 160, 0] = 0.0
+            frame = pd.DataFrame(values, columns=btc.VARIABLES)
+            frame.insert(0, "sample", sample)
+            frame.insert(0, "simulationRun", run)
+            frame.insert(0, "faultNumber", fault)
+            parts.append(frame)
+    return pd.concat(parts, ignore_index=True)
+
+
+def test_tep_cache_builder_keeps_runs_and_samples(tmp_path):
+    pyreadr = pytest.importorskip("pyreadr")
+    source = tmp_path / "tep"
+    source.mkdir()
+    pyreadr.write_rdata(
+        str(source / btc.FILES["fault_free"]), _tep_frame([0], 3, 330, 1), df_name="fault_free"
+    )
+    pyreadr.write_rdata(
+        str(source / btc.FILES["faulty"]), _tep_frame([1, 6], 3, 330, 2), df_name="faulty"
+    )
+    (source / "MANIFEST.sha256.json").write_text("{}\n", encoding="utf-8")
+    manifest = btc.build(source, tmp_path / "cache", runs=2)
+    assert manifest["n_rows"] == 3 * 2 * btc.LAST_SAMPLE
+    assert manifest["faults"] == [0, 1, 6]
+    assert manifest["non_finite_values"] == 0
+    onset = manifest["onset_check"]
+    assert onset["fault_mean"][onset["samples"].index(161)] == 0.0
+    cache = pd.read_parquet(tmp_path / "cache" / btc.CACHE_NAME)
+    assert cache["run"].max() == 2 and cache["sample"].max() == btc.LAST_SAMPLE
+    assert cache["xmeas_1"].dtype == np.float32
+
+
+@pytest.fixture(scope="module")
+def tep_bed(tmp_path_factory) -> tuple[dict, Path, Path, Path]:
+    root = tmp_path_factory.mktemp("tep")
+    cache = root / "cache"
+    cache.mkdir()
+    frame = _tep_frame([0, 1], TEP_RUNS, 320, 3)
+    frame = frame.rename(columns={"faultNumber": "fault", "simulationRun": "run"})
+    frame.to_parquet(cache / rs.TEP_CACHE_FILE, index=False)
+    (cache / "MANIFEST.json").write_text(
+        '{"source_manifest_sha256": "0123456789ab", "cache_sha256": "ba9876543210", '
+        '"runs": [1, 12], "samples": [1, 320]}\n',
+        encoding="utf-8",
+    )
+    patch = pytest.MonkeyPatch()
+    patch.setattr(rs, "TEP_TRUTH_RUNS", 8)
+    patch.setattr(rs, "TEP_SCORED_RUNS", (9, TEP_RUNS))
+    try:
+        info = rs.run(root / "a", (rs.BED_TEP,), tep_cache=cache)
+        rs.run(root / "b", (rs.BED_TEP,), tep_cache=cache)
+    finally:
+        patch.undo()
+    return info, root / "a", root / "b", cache
+
+
+def test_tep_bed_scores_the_step_against_its_ensemble_truth(tep_bed):
+    info, out, _, cache = tep_bed
+    table = pd.read_csv(out / rs.TEP_CSV)
+    assert set(table["condition"]) == {"fault_free", "fault_1"}
+    assert set(table["variable_group"]) == set(rs.TEP_GROUPS)
+    base = table[(table["refusal_set"] == "base") & (table["quantity"] == sh.LEVEL)]
+    free = base[base["condition"] == "fault_free"]
+    assert free["claim_rate"].notna().all() and free["detect_rate"].isna().all()
+    rows = pd.read_parquet(cache / rs.TEP_ROWS_FILE)
+    step = rows[
+        (rows["fault"] == 1)
+        & (rows["tag"] == "xmeas_1")
+        & (rows["quantity"] == sh.LEVEL)
+        & (rows["adjustment"] == sh.RAW)
+    ]
+    assert (step["clears"] == 1).all()
+    level_truth = step["truth"] * step["scale"]
+    assert ((level_truth - 3.0).abs() < 0.2).all()
+    fault_free = rows[(rows["fault"] == 0) & (rows["quantity"] == sh.LEVEL)]
+    assert (fault_free["truth"].fillna(0) == 0).all()
+    spread = rows[(rows["fault"] == 0) & (rows["quantity"] == sh.SPREAD)]
+    assert spread["truth"].notna().all() and (spread["truth"] != 0).any()
+    adjusted = rows[rows["adjustment"] == sh.ADJUSTED]
+    assert set(adjusted["reason"]) == {sh.TOO_MANY_COVARIATES}
+    section = info["beds"][rs.BED_TEP]
+    assert section["adjusted_refusals"] == {sh.TOO_MANY_COVARIATES: len(adjusted)}
+    assert section["truth_runs"] == [1, 8] and section["scored_runs"] == [9, TEP_RUNS]
+
+
+def test_tep_rerun_writes_an_identical_table(tep_bed):
+    _, first, second, _ = tep_bed
+    assert filecmp.cmp(first / rs.TEP_CSV, second / rs.TEP_CSV, shallow=False)
