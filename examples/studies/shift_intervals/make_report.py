@@ -1646,8 +1646,9 @@ width, and adjusted `hac` still claims a shift on
 - The turbine placebo and injected beds have {pitch_pairs['n_splits']} week pairs, and
   adjacent pairs share weather, so their coverage MCSE understates the uncertainty.
 - R4 was chosen after the 3W result. Its confirmation rests on TEP, a simulation.
-- `block_bootstrap` uses 200 resamples, as `compare` does, and its percentile endpoints
-  carry that resampling noise.
+- `block_bootstrap` uses {run['parameters']['bootstrap_replicates']} resamples, as
+  `compare` did at {code_label(synthetic)}, the code this study ran. Its percentile
+  endpoints carry that resampling noise.
 
 ## Files
 

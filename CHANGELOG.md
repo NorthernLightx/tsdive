@@ -3,6 +3,16 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
+## Unreleased
+
+### Fixed
+
+- `compare` pair intervals resample both periods with 1000 replicates
+  instead of the after period with 200, so they are wider and fewer pairs
+  clear.
+- `scripts/convert_tep.py` labels the first faulty sample 21 (training)
+  and 161 (testing) instead of 20 and 160.
+
 ## 0.3.0 - 2026-09-03
 
 ### Added

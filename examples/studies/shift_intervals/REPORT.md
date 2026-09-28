@@ -644,7 +644,7 @@ Adjustment narrows the interval on synthetic series by sqrt(1 - rho^2) when the 
 - The onset-aligned 3W cache holds 2 windows after the onset, so that bed compares 180 minute medians against 120.
 - The turbine placebo and injected beds have 44 week pairs, and adjacent pairs share weather, so their coverage MCSE understates the uncertainty.
 - R4 was chosen after the 3W result. Its confirmation rests on TEP, a simulation.
-- `block_bootstrap` uses 200 resamples, as `compare` does, and its percentile endpoints carry that resampling noise.
+- `block_bootstrap` uses 200 resamples, as `compare` did at tsdive 0.3.0 @ `12653ee5`, the code this study ran. Its percentile endpoints carry that resampling noise.
 
 ## Files
 

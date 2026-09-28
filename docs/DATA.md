@@ -405,8 +405,9 @@ Verified on 2026-08-28; testing files verified on 2026-09-28.
   `docs/SCHEMA.md` documents), `mol%` (a composition basis, not a bare
   percent), `kscmh` (a reference-condition flow, like `Nm3/h`) and `kW`
   (a plain table gap).
-- Ground truth is per row: `LABEL_fault` is a `role=MODE` archive holding
-  `"0"` before the onset sample and the fault number after it.
+- Ground truth is per row: `LABEL_fault` is a `role=MODE` archive. It holds
+  `"0"` on every sample before the first faulty sample, and the fault
+  number from sample 21 (training) or 161 (testing) to the end of the run.
 
 Findings from the executed profile study are in
 [examples/studies/tep_profile/REPORT.md](../examples/studies/tep_profile/REPORT.md).

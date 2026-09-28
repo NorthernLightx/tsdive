@@ -1,8 +1,9 @@
 # Benchmarks
 
-Every row of the table below is computed from the SYNTHETIC validation
-backbone (seed=42, 4 loops, 48 h @ 60 s; four fault archetypes, one per
-loop, injected during day 2). Real-data sections come after the table -
+Every row of the table below is computed from SYNTHETIC data, either the
+validation backbone (seed=42, 4 loops, 48 h @ 60 s; four fault archetypes,
+one per loop, injected during day 2) or seeded noise where the dataset
+column says so. Real-data sections come after the table -
 there are three, one per study - are written by their own study runner,
 and are carried through this generator untouched: everything from the
 first `## REAL` heading onward is preserved verbatim. See docs/DATA.md.
