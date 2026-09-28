@@ -8,6 +8,7 @@ the group is not installed.
 
 from __future__ import annotations
 
+import argparse
 import ast
 import importlib
 import importlib.util
@@ -28,7 +29,6 @@ ROOT = Path(__file__).resolve().parents[1]
 HOOKS = ROOT / "scripts" / "mkdocs_hooks.py"
 MODULES = ("tsdive", "tsdive.eval", "tsdive.switchback")
 DIRECTIVE = re.compile(r"^::: (\S+)$", re.MULTILINE)
-SECTION = re.compile(r"^## (.+?)\n\n```text\n(.*?)\n```$", re.MULTILINE | re.DOTALL)
 TARGET = re.compile(r"\]\(([^)\s]+)\)")
 ROW = re.compile(r"^\| \[`([\w.]+)`\]\(([^)]+)\) \| (.+) \|$", re.MULTILINE)
 ROLE = re.compile(r":(func|class|meth|attr|mod|data|exc|obj):`")
@@ -79,17 +79,38 @@ def _runtime(path: str) -> object:
         return getattr(importlib.import_module(module), name)
 
 
-def test_cli_page_holds_every_command(hooks: ModuleType) -> None:
-    commands = _compared_strings("main")
-    subcommands = [f"switchback {s}" for s in _compared_strings("cmd_switchback")]
-    assert {"profile", "switchback", "run"} <= set(commands)
-    assert subcommands == ["switchback plan", "switchback analyze"]
-    sections = dict(SECTION.findall(hooks.cli_markdown()))
-    assert sections["tsdive"] == cli.MAIN_DOC.strip()
-    assert sections["switchback"] == cli.SWITCHBACK_DOC.strip()
-    for command in [c for c in commands if c != "switchback"] + subcommands:
-        assert command in sections, f"no CLI reference section for {command!r}"
-        assert sections[command].startswith(f"usage: tsdive {command} ")
+@pytest.fixture(scope="module")
+def cli_pages(hooks: ModuleType) -> dict[str, str]:
+    """The CLI index and command pages, examples run once for the module."""
+    return hooks.cli_markdown()
+
+
+def test_every_command_has_a_page_with_options_and_an_example(
+    hooks: ModuleType, cli_pages: dict[str, str]
+) -> None:
+    dispatched = [c for c in _compared_strings("main") if c != "switchback"]
+    commands = dispatched + [f"switchback {s}" for s in _compared_strings("cmd_switchback")]
+    assert {"profile", "run", "switchback plan", "switchback analyze"} <= set(commands)
+    assert set(commands) == set(hooks.cli_commands())
+    index = cli_pages[hooks.CLI_INDEX]
+    assert f"```text\n{cli.MAIN_DOC.strip()}\n```" in index
+    for command in commands:
+        page = hooks.cli_page(command)
+        link = posixpath.relpath(page, posixpath.dirname(hooks.CLI_INDEX))
+        assert f"[`tsdive {command}`]({link})" in index
+        text = cli_pages[page]
+        assert f"```text\nusage: tsdive {command} " in text, f"{page} has no usage line"
+        for action in hooks.cli_parser(command)._actions:
+            if not isinstance(action, argparse._HelpAction):
+                name = action.option_strings[0] if action.option_strings else action.dest
+                assert f"| `{name}" in text, f"{page} has no options row for {name}"
+                assert action.help, f"tsdive {command} {name} has no help text"
+        example = re.search(r"## Example\n.*?```console\n(.*?)\n```", text, re.DOTALL)
+        assert example, f"{page} has no example"
+        lines = example.group(1).splitlines()
+        assert lines[0].startswith(f"$ tsdive {command}"), f"{page} runs {lines[0]}"
+        ran = next(i for i, line in enumerate(lines) if not line.endswith("\\"))
+        assert lines[ran + 1 :], f"{page} shows no output"
 
 
 def test_api_index_links_every_export_to_its_own_page(hooks: ModuleType) -> None:

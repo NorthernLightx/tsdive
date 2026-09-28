@@ -4,7 +4,8 @@
 from README.md, the CLI reference from the command parsers, the API
 reference (an index, one page per group and one page per public object)
 from ``__all__``, and the changelog and benchmarks pages from the root
-markdown files. None of them is committed. A relative link whose
+markdown files. The CLI pages carry example runs on the demo archives,
+executed in-process at build time. None of them is committed. A relative link whose
 target lies outside ``docs/`` is rewritten to the file on GitHub, so the
 pages under ``docs/`` keep working both on GitHub and on the site.
 
@@ -14,15 +15,24 @@ generators run without the ``docs`` dependency group.
 
 from __future__ import annotations
 
+import argparse
 import ast
 import contextlib
 import functools
+import glob
+import importlib.util
 import inspect
 import io
+import json
 import logging
 import os
 import posixpath
 import re
+import shlex
+import shutil
+import sys
+import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -41,7 +51,8 @@ TREE_URL = f"{REPO_URL}/tree/main/"
 ROOT_PAGES = {"CHANGELOG.md": "changelog.md", "BENCHMARKS.md": "benchmarks.md"}
 
 USAGE_PAGE = "usage.md"
-CLI_PAGE = "reference/cli.md"
+CLI_DIR = "reference/cli"
+CLI_INDEX = "reference/cli.md"
 API_DIR = "reference/api"
 API_INDEX = f"{API_DIR}/index.md"
 
@@ -271,63 +282,342 @@ def index_markdown(markdown: str) -> Rewrite:
 
 # ------------------------------------------------------------------ CLI
 
+# Column where MAIN_DOC prints a command's summary.
+SUMMARY_COL = 42
+# Lines of example output a command page shows before the cut.
+EXAMPLE_LINES = 30
+# Pages whose ``$ tsdive`` console lines are the examples, in this order.
+EXAMPLE_SOURCES = ("README.md", "docs/SWITCHBACK.md")
+# Commands the pages above show without a ``$`` prompt: argv, and the
+# sentence that says what the example prepared.
+EXTRA_EXAMPLES = {
+    "ingest": (
+        ["ingest", "fic101.csv", "--out", "archive/plant1/FIC101.PV.parquet", "--meta",
+         "fic101.json"],
+        "The example exports the FIC-101 demo archive to `fic101.csv` and its metadata "
+        "to `fic101.json` first, then ingests them again.",
+    ),
+    "report-html": (
+        ["report-html", "data/demo/fic101_demo.parquet", "data/demo/tic101_demo.parquet",
+         "-o", "report.html"],
+        "The command writes `report.html`; the block shows the lines it prints.",
+    ),
+}
+# Guides that walk a command on real output, beside the README usage page.
+GUIDES = {"switchback plan": "SWITCHBACK.md", "switchback analyze": "SWITCHBACK.md"}
+# Scripts that write the archives the examples read.
+DATA_SCRIPTS = ("scripts/make_demo_archive.py", "examples/switchback/make_trial.py")
 
-def cli_commands() -> list[str]:
-    """The commands ``tsdive --help`` lists, in its order, subcommands spelled out."""
+
+def cli_entries() -> dict[str, str]:
+    """Command -> summary, for every command ``tsdive --help`` lists, in its order.
+
+    A command listed twice (``ingest``, once with ``--wide``) joins its
+    summaries with a semicolon.
+    """
     from tsdive.cli import MAIN_DOC
 
     block = MAIN_DOC.split("\ncommands", 1)[1].split("\n\n", 1)[0]
-    found: list[str] = []
-    for line in block.splitlines():
+    chunks: dict[str, list[list[str]]] = {}
+    current: list[str] = []
+    for line in block.splitlines()[1:]:
         m = re.match(r"^  ([a-z][a-z-]*)(?: ([a-z]+)(?= |$))?", line)
         if m:
-            name = " ".join(g for g in m.groups() if g)
-            if name not in found:
-                found.append(name)
-    return found
+            current = []
+            chunks.setdefault(" ".join(g for g in m.groups() if g), []).append(current)
+            if line[SUMMARY_COL - 2 : SUMMARY_COL] == "  " and len(line) > SUMMARY_COL:
+                current.append(line[SUMMARY_COL:].strip())
+        elif line.startswith(" " * SUMMARY_COL):
+            current.append(line.strip())
+    entries = {
+        name: "; ".join(" ".join(chunk) for chunk in parts if chunk)
+        for name, parts in chunks.items()
+    }
+    empty = [name for name, text in entries.items() if not text]
+    if empty:
+        raise ValueError(f"MAIN_DOC gives no summary for {empty}")
+    return entries
 
 
-def cli_help(argv: list[str]) -> str:
-    """What ``tsdive <argv> --help`` prints, captured in-process at 80 columns."""
-    from tsdive.cli import main
+def cli_commands() -> list[str]:
+    """The commands ``tsdive --help`` lists, in its order, subcommands spelled out."""
+    return list(cli_entries())
 
+
+def cli_page(command: str) -> str:
+    """The page path of ``command``: ``switchback plan`` is ``switchback-plan``."""
+    return f"{CLI_DIR}/{command.replace(' ', '-')}.md"
+
+
+def _cli_attr(prefix: str, command: str) -> Any:
+    from tsdive import cli
+
+    return getattr(cli, prefix + command.replace(" ", "_").replace("-", "_"), None)
+
+
+def cli_parser(command: str) -> argparse.ArgumentParser:
+    """The argparse parser of ``command``, from its ``_parser_<command>`` builder."""
+    build = _cli_attr("_parser_", command)
+    if build is None:
+        raise ValueError(f"tsdive.cli has no parser builder for {command!r}")
+    return build()
+
+
+def cli_description(command: str) -> str:
+    """The docstring of the function that runs ``command``."""
+    for prefix in ("run_", "cmd_"):
+        handler = _cli_attr(prefix, command)
+        if handler is not None and handler.__doc__:
+            return inspect.getdoc(handler) or ""
+    raise ValueError(f"tsdive.cli has no documented handler for {command!r}")
+
+
+@contextlib.contextmanager
+def _plain_terminal() -> Iterator[None]:
+    """80 columns and no colour, the terminal the pages show."""
     saved = {k: os.environ.get(k) for k in ("COLUMNS", "NO_COLOR")}
     os.environ.update(COLUMNS="80", NO_COLOR="1")
-    buffer = io.StringIO()
     try:
-        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
-            try:
-                code = main([*argv, "--help"])
-            except SystemExit as e:
-                code = e.code
+        yield
     finally:
         for k, v in saved.items():
             if v is None:
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+
+
+def _run_cli(argv: list[str]) -> tuple[int | str | None, str]:
+    """Exit code and combined output of ``tsdive <argv>``, run in-process."""
+    from tsdive.cli import main
+
+    buffer = io.StringIO()
+    with (
+        _plain_terminal(),
+        contextlib.redirect_stdout(buffer),
+        contextlib.redirect_stderr(buffer),
+    ):
+        try:
+            code: int | str | None = main(argv)
+        except SystemExit as e:
+            code = e.code
+    return code, buffer.getvalue().rstrip()
+
+
+def cli_help(argv: list[str]) -> str:
+    """What ``tsdive <argv> --help`` prints, captured in-process at 80 columns."""
+    code, text = _run_cli([*argv, "--help"])
     if code not in (0, None):
         raise RuntimeError(f"tsdive {' '.join(argv)} --help exited {code}")
-    return buffer.getvalue().rstrip()
+    return text
 
 
-def cli_markdown() -> str:
-    """One section per command holding its ``--help`` output."""
-    from tsdive import __version__
+def _cell(text: str) -> str:
+    return " ".join(text.split()).replace("|", "\\|")
 
+
+def options_table(parser: argparse.ArgumentParser) -> str:
+    """One row per argument of ``parser``: name, value, default, description."""
+    formatter = parser._get_formatter()
+    rows = ["| Argument | Value | Default | Description |", "|---|---|---|---|"]
+    for action in parser._actions:
+        if isinstance(action, argparse._HelpAction):
+            continue
+        takes_value = action.nargs != 0
+        if action.option_strings:
+            name = ", ".join(f"`{s}`" for s in action.option_strings)
+            value = (action.metavar or action.dest.upper()) if takes_value else ""
+        else:
+            many = " ..." if action.nargs in ("+", "*") else ""
+            name = f"`{action.metavar or action.dest}{many}`"
+            value = ""
+        if action.choices is not None:
+            value = "{" + ",".join(map(str, action.choices)) + "}"
+        if value and action.nargs in ("+", "*"):
+            value = f"{value} ..."
+        optional_positional = action.nargs in ("?", "*")
+        required = action.required or not (action.option_strings or optional_positional)
+        if required:
+            default = "required"
+        elif takes_value and action.default not in (None, argparse.SUPPRESS):
+            default = f"`{action.default}`"
+        else:
+            default = ""
+        help_text = formatter._expand_help(action) if action.help else ""
+        rows.append(
+            f"| {name} | {f'`{value}`' if value else ''} | {default} | {_cell(help_text)} |"
+        )
+    return "\n".join(rows) + "\n"
+
+
+def _console_lines(markdown: str) -> list[str]:
+    """Each ``$ tsdive`` command of the console blocks in ``markdown``, continuations joined."""
+    found: list[str] = []
+    current: list[str] = []
+    for line, outside in _outside_fences(markdown):
+        if outside:
+            continue
+        text = line.rstrip("\n")
+        if current:
+            current.append(text)
+        elif text.startswith("$ tsdive "):
+            current = [text]
+        if current and not text.endswith("\\"):
+            found.append("\n".join(current))
+            current = []
+    return found
+
+
+def documented_invocations() -> dict[str, tuple[list[str], str]]:
+    """Command -> (argv, console text) of its first ``$ tsdive`` line in the example sources."""
+    found: dict[str, tuple[list[str], str]] = {}
+    for source in EXAMPLE_SOURCES:
+        for text in _console_lines(_read(source)):
+            argv = shlex.split(text.replace("\\\n", " "))[2:]
+            command = " ".join(argv[:2]) if argv[0] == "switchback" else argv[0]
+            found.setdefault(command, (argv, text))
+    return found
+
+
+def _wrap_console(argv: list[str]) -> str:
+    """``$ tsdive <argv>`` on lines of at most 78 characters, continued with ``\\``."""
+    lines, line = [], "$ tsdive"
+    for word in (shlex.quote(a) for a in argv):
+        if len(line) + len(word) + 3 > 78 and word.startswith("-"):
+            lines.append(line + " \\")
+            line = "   "
+        line += " " + word
+    return "\n".join([*lines, line])
+
+
+def _prepare_examples(work: Path) -> None:
+    """Write into ``work`` every file the example commands read."""
+    import pandas as pd
+
+    from tsdive.store.tagstore import meta_from_parquet, meta_to_dict
+
+    for script in DATA_SCRIPTS:
+        path = ROOT / script
+        spec = importlib.util.spec_from_file_location(f"docs_data_{path.stem}", path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        # The dataclass decorator looks its module up in sys.modules.
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        with contextlib.redirect_stdout(io.StringIO()):
+            module.main()
+    plans = work / "examples" / "plans"
+    plans.mkdir(parents=True)
+    shutil.copy(ROOT / "examples" / "plans" / "demo.toml", plans / "demo.toml")
+    demo = work / "data" / "demo" / "fic101_demo.parquet"
+    pd.read_parquet(demo).to_csv(work / "fic101.csv", index=False)
+    meta = meta_to_dict(meta_from_parquet(demo))
+    (work / "fic101.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+
+
+def cli_examples() -> dict[str, tuple[str, str]]:
+    """Command -> (console text with its output, note on what it read), run on the demo data.
+
+    Every command runs in-process, in the order ``tsdive --help`` lists
+    them, in a temporary directory holding the files the README and the
+    guides assume. An exit code other than 0 stops the build.
+    """
+    documented = documented_invocations()
+    examples: dict[str, tuple[str, str]] = {}
+    before = Path.cwd()
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        work = Path(tmp).resolve()
+        os.chdir(work)
+        try:
+            _prepare_examples(work)
+            for command in cli_commands():
+                if command in documented:
+                    argv, text = documented[command]
+                    note = ""
+                elif command in EXTRA_EXAMPLES:
+                    argv, note = EXTRA_EXAMPLES[command]
+                    text = _wrap_console(argv)
+                else:
+                    raise ValueError(f"no example invocation for tsdive {command}")
+                expanded = [
+                    p.replace(os.sep, "/")
+                    for a in argv
+                    for p in (sorted(glob.glob(a)) if "*" in a else [a])
+                ]
+                code, output = _run_cli(expanded)
+                if code not in (0, None):
+                    raise RuntimeError(f"tsdive {command} example exited {code}:\n{output}")
+                output = output.replace(str(work) + os.sep, "").replace(str(work), ".")
+                lines = output.splitlines()
+                if len(lines) > EXAMPLE_LINES:
+                    cut = len(lines) - EXAMPLE_LINES
+                    lines = [*lines[:EXAMPLE_LINES], f"[{cut} more lines not shown]"]
+                examples[command] = ("\n".join([text, *lines]), note)
+        finally:
+            os.chdir(before)
+    return examples
+
+
+def _cli_index(entries: dict[str, str]) -> str:
+    rows = ["| Command | Summary |", "|---|---|"]
+    for command, text in entries.items():
+        link = posixpath.relpath(cli_page(command), posixpath.dirname(CLI_INDEX))
+        rows.append(f"| [`tsdive {command}`]({link}) | {_cell(text)} |")
+    return "\n".join(
+        [
+            "# CLI reference\n",
+            "Every command, with the summary `tsdive --help` prints. Each command links to "
+            "its usage line, its options and an example run on the demo archives.\n",
+            "The examples run in a directory where `python scripts/make_demo_archive.py` and "
+            "`python examples/switchback/make_trial.py` wrote those archives, with the "
+            "repository's `examples/plans/demo.toml`.\n",
+            "\n".join(rows) + "\n",
+            "## tsdive --help\n",
+            f"```text\n{cli_help([])}\n```\n",
+        ]
+    )
+
+
+def _cli_command_page(command: str, example: tuple[str, str], usage_sections: set[str]) -> str:
+    here = cli_page(command)
+    usage = cli_help(command.split()).split("\n\n", 1)[0]
     parts = [
-        "# CLI reference\n",
-        f"Each section holds what `tsdive <command> --help` prints in tsdive {__version__}.\n",
+        f"---\ntitle: tsdive {command}\n---\n",
+        f"[CLI reference]({posixpath.relpath(CLI_INDEX, posixpath.dirname(here))})\n",
+        f"# tsdive {command}\n",
+        cli_description(command) + "\n",
     ]
-    sections: list[tuple[str, list[str]]] = [("tsdive", [])]
-    for name in cli_commands():
-        words = name.split()
-        if len(words) > 1 and (words[0], words[:1]) not in sections:
-            sections.append((words[0], words[:1]))
-        sections.append((name, words))
-    for title, argv in sections:
-        parts.append(f"## {title}\n\n```text\n{cli_help(argv)}\n```\n")
+    if command in usage_sections:
+        link = posixpath.relpath(USAGE_PAGE, posixpath.dirname(here))
+        parts.append(f"The [usage walkthrough]({link}#{command}) has a section on it.\n")
+    elif command in GUIDES:
+        link = posixpath.relpath(GUIDES[command], posixpath.dirname(here))
+        parts.append(f"The [guide]({link}) walks a trial with it.\n")
+    text, note = example
+    parts += [
+        "## Usage\n",
+        f"```text\n{usage}\n```\n",
+        "## Options\n",
+        options_table(cli_parser(command)),
+        "## Example\n",
+    ]
+    if note:
+        parts.append(note + "\n")
+    parts.append(f"```console\n{text}\n```\n")
     return "\n".join(parts)
+
+
+def cli_markdown() -> dict[str, str]:
+    """Page path -> markdown of the CLI index and one page per command."""
+    entries = cli_entries()
+    examples = cli_examples()
+    usage_sections = {
+        line[4:].strip() for line in readme_section("Use").splitlines() if line.startswith("### ")
+    }
+    pages = {CLI_INDEX: _cli_index(entries)}
+    for command in entries:
+        pages[cli_page(command)] = _cli_command_page(command, examples[command], usage_sections)
+    return pages
 
 
 # ------------------------------------------------------------------ API
@@ -580,9 +870,10 @@ def root_page(source: str) -> Rewrite:
 @functools.cache
 def generated_paths() -> frozenset[str]:
     """Every page path the build generates, from the sources alone."""
+    commands = {CLI_INDEX, *(cli_page(c) for c in cli_commands())}
     groups = {f"{API_DIR}/{_slug(g)}.md" for g in GROUP_PAGES}
     objects = {e.page for e in api_entries()}
-    return frozenset({USAGE_PAGE, CLI_PAGE, *ROOT_PAGES.values(), API_INDEX, *groups, *objects})
+    return frozenset({USAGE_PAGE, *ROOT_PAGES.values(), *commands, API_INDEX, *groups, *objects})
 
 
 @dataclass(frozen=True)
@@ -599,7 +890,8 @@ def generated_pages() -> dict[str, Generated]:
     pages = {USAGE_PAGE: Generated(usage_markdown(), "README.md")}
     for source, page in ROOT_PAGES.items():
         pages[page] = Generated(root_page(source), source)
-    pages[CLI_PAGE] = Generated(Rewrite(cli_markdown()), "src/tsdive/cli.py")
+    for page, text in cli_markdown().items():
+        pages[page] = Generated(Rewrite(text), "src/tsdive/cli.py", in_nav=page == CLI_INDEX)
     for page, (text, in_nav) in api_markdown().items():
         pages[page] = Generated(Rewrite(text), in_nav=in_nav)
     return pages
