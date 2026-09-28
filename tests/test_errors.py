@@ -9,6 +9,7 @@ import pytest
 
 import tsdive.errors as errors_mod
 from tsdive.errors import (
+    DesignTooSmall,
     GroupLeakage,
     IncomparableSamplingError,
     IncomparableUnitsError,
@@ -18,6 +19,7 @@ from tsdive.errors import (
     NonMonotonicIndex,
     PopulationTooSparse,
     RegimeTooSparse,
+    ScheduleMismatch,
     SchemaError,
     TSDiveError,
     UnresolvedUnitError,
@@ -185,6 +187,24 @@ def _provoke_group_leakage():
     ).leakage_check()
 
 
+def _provoke_design_too_small():
+    from tsdive.switchback.design import make_design
+
+    make_design(4, 0)
+
+
+def _provoke_schedule_mismatch():
+    from dataclasses import replace
+
+    from tsdive.switchback.plan import make_plan, verify_plan
+
+    start = pd.Timestamp("2024-03-04 00:00:00+00:00")
+    plan = make_plan(start, start + pd.Timedelta(8, unit="h"), 3600, 0, 1)
+    first = plan.blocks[0]
+    flipped = replace(first, setting="A" if first.setting == "B" else "B")
+    verify_plan(replace(plan, blocks=(flipped, *plan.blocks[1:])))
+
+
 def _provoke_narrator_unavailable(monkeypatch=None):
     import os
 
@@ -209,6 +229,8 @@ PROVOKERS = {
     MspcAlignmentError: _provoke_mspc_alignment,
     GroupLeakage: _provoke_group_leakage,
     PopulationTooSparse: _provoke_population_too_sparse,
+    DesignTooSmall: _provoke_design_too_small,
+    ScheduleMismatch: _provoke_schedule_mismatch,
 }
 
 
@@ -224,6 +246,8 @@ PROVOKERS = {
         MspcAlignmentError,
         GroupLeakage,
         PopulationTooSparse,
+        DesignTooSmall,
+        ScheduleMismatch,
     ],
 )
 def test_refusal_is_provoked(refusal):
