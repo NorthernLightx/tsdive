@@ -198,6 +198,9 @@ META_KEYS = (
     "quality_assumed",
 )
 IDENTITY_KEYS = ("source_id", "point_id")
+# A template's notes on its own keys: an object of strings that the
+# reader checks for shape and otherwise skips. No archive carries it.
+COMMENT_KEY = "_comments"
 _TEXT_KEYS = ("name", "unit_raw", "unit_canonical", "asset", "loop_id")
 
 
@@ -233,8 +236,13 @@ def _check_meta_dict(d: object, label: str) -> None:
     if not isinstance(d, dict):
         raise SchemaError(f"{label}: expected a JSON object of tag metadata")
     for key in d:
-        if key not in META_KEYS:
-            raise _unknown_key(label, str(key), META_KEYS)
+        if key not in META_KEYS and key != COMMENT_KEY:
+            raise _unknown_key(label, str(key), (*META_KEYS, COMMENT_KEY))
+    notes = d.get(COMMENT_KEY)
+    if COMMENT_KEY in d and not (
+        isinstance(notes, dict) and all(isinstance(v, str) for v in notes.values())
+    ):
+        raise SchemaError(f"{label}: {COMMENT_KEY} must be an object of strings")
     if "identity" not in d:
         raise SchemaError(f"{label}: missing required key 'identity'")
     ident = d["identity"]

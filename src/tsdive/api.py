@@ -42,6 +42,7 @@ from tsdive.store.sampling_contract import (
     SamplingContract,
 )
 from tsdive.store.tagstore import (
+    COMMENT_KEY,
     DataPhysics,
     SingleFileStore,
     Window,
@@ -934,6 +935,103 @@ def init_meta(
         )
         written.append(targets[tag])
     return written
+
+
+# What each key of a single-tag template means, written into the template
+# under COMMENT_KEY so the file explains itself.
+_KEY_NOTES = {
+    "identity": "source_id names the historian or collector, point_id the tag in it; "
+    "both required, never renamed",
+    "name": "display name; required",
+    "unit_raw": "unit exactly as the historian writes it; null leaves the archive "
+    "without a unit",
+    "unit_canonical": "leave null; tsdive resolves unit_raw itself",
+    "eng_range_zero": "bottom of the engineering range; with eng_range_span it enables "
+    "the clipping check",
+    "eng_range_span": "width of the engineering range, greater than 0",
+    "sample_rate_s": "declared scan rate in seconds; compare and mspc align on it",
+    "asset": "unit or equipment the tag belongs to",
+    "loop_id": "control loop id",
+    "role": "PV, SP, OP or MODE; MODE for a tag whose values are string states",
+    "quality_codes": "each raw quality code mapped to GOOD, UNCERTAIN or BAD; a null "
+    "entry raises SchemaError until it names a severity",
+    "quality_assumed": "leave null; ingest sets it when the quality is assumed",
+}
+
+
+def init_tag_meta(
+    source: str | Path,
+    *,
+    out: str | Path,
+    timestamp_col: str = "timestamp",
+    value_col: str = "value",
+    quality_col: str = "quality",
+    overwrite: bool = False,
+) -> Path:
+    """Write a metadata template for a single-tag export and return its path.
+
+    The template holds every key of ``tsdive.meta`` in schema order, and
+    a ``_comments`` object saying what each key means and which columns
+    of the export were found. ``identity``, ``name`` and ``unit_raw`` are
+    left ``null`` for the caller: nothing about the tag is read off the
+    data. When ``quality_col`` exists, ``quality_codes`` lists each raw
+    code found in it, mapped to a severity only where the code spells
+    ``GOOD``, ``UNCERTAIN`` or ``BAD`` itself; every other code stays
+    ``null``. [`read_meta_json`][tsdive.read_meta_json] refuses the file
+    until the identity, the name and every code are filled.
+
+    Raises:
+        SchemaError: unreadable input, or a missing timestamp or value
+            column.
+        FileExistsError: ``out`` exists and ``overwrite`` is False.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import tsdive
+        >>> pd.DataFrame({"ts": ["2024-03-01T00:00:00Z", "2024-03-01T00:01:00Z"],
+        ...               "v": [61.0, 62.0], "q": ["Good", "Questionable"]}
+        ...              ).to_csv("fic101.csv", index=False)
+        >>> path = tsdive.init_tag_meta("fic101.csv", out="fic101.json", timestamp_col="ts",
+        ...                             value_col="v", quality_col="q")
+        >>> import json
+        >>> template = json.loads(path.read_text(encoding="utf-8"))
+        >>> template["identity"], template["unit_raw"], template["quality_codes"]
+        ({'source_id': None, 'point_id': None}, None, {'Good': 'GOOD', 'Questionable': None})
+        >>> template["_comments"]["columns"]
+        "timestamp 'ts', value 'v', quality 'q'; the export has ts, v, q"
+    """
+    src = Path(source)
+    frame = _read_source(src)
+    columns = [str(c) for c in frame.columns]
+    for role, column in (("timestamp", timestamp_col), ("value", value_col)):
+        if column not in columns:
+            raise SchemaError(
+                f"{src.name}: no {role} column {column!r}; columns are {', '.join(columns)}"
+            )
+    target = Path(out)
+    if target.exists() and not overwrite:
+        raise FileExistsError(f"{target} already exists; pass {_overwrite_option()} to replace it")
+    has_quality = quality_col in columns
+    found = f"timestamp {timestamp_col!r}, value {value_col!r}"
+    if has_quality:
+        found += f", quality {quality_col!r}"
+    else:
+        found += (
+            f", no quality column {quality_col!r} (name it, or state the quality at "
+            "ingest)"
+        )
+    notes = {**_KEY_NOTES, "columns": f"{found}; the export has {', '.join(columns)}"}
+    payload: dict[str, object] = {
+        COMMENT_KEY: notes,
+        "identity": {"source_id": None, "point_id": None},
+        "name": None,
+        **dict.fromkeys(_META_TEMPLATE_KEYS),
+    }
+    if has_quality:
+        payload["quality_codes"] = _quality_code_template(frame[quality_col])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+    return target
 
 
 @dataclass(frozen=True)

@@ -866,3 +866,62 @@ def test_python_messages_name_keywords_where_the_cli_names_flags(tmp_path, capsy
         tsdive.ingest(naive, out=tmp_path / "n.parquet",
                       meta=tsdive.read_meta_json(_meta_file(tmp_path)), timestamp_col="ts",
                       value_col="v", quality_col="q")
+
+
+def test_a_single_tag_template_leaves_the_tag_to_the_reader(tmp_path, capsys):
+    src = tmp_path / "pi.csv"
+    pd.DataFrame(
+        {
+            "ts": AWARE,
+            "v": [50.0, 51.0, 52.0],
+            "q": ["Good", "Questionable", "Good"],
+            "note": ["", "", ""],
+        }
+    ).to_csv(src, index=False)
+    meta_path = tmp_path / "meta" / "fic.json"
+    argv = [str(src), "--init-meta", str(meta_path), "--timestamp-col", "ts", "--value-col",
+            "v", "--quality-col", "q"]
+    assert cmd_ingest(argv) == 0
+    assert capsys.readouterr().out.strip() == f"wrote     {meta_path.as_posix()}"
+    template = json.loads(meta_path.read_text(encoding="utf-8"))
+    assert list(template) == ["_comments", *TEMPLATE_KEYS]
+    assert template["identity"] == {"source_id": None, "point_id": None}
+    assert (template["name"], template["unit_raw"]) == (None, None)
+    assert template["quality_codes"] == {"Good": "GOOD", "Questionable": None}
+    assert template["_comments"]["columns"] == (
+        "timestamp 'ts', value 'v', quality 'q'; the export has ts, v, q, note"
+    )
+    assert set(template["_comments"]) == {*TEMPLATE_KEYS, "columns"}
+    with pytest.raises(SchemaError, match=r"identity\.source_id must be a non-empty string"):
+        tsdive.read_meta_json(meta_path)
+
+    assert cmd_ingest(argv) == 2
+    assert "already exists; pass --overwrite" in capsys.readouterr().err
+    assert cmd_ingest([*argv, "--overwrite"]) == 0
+    capsys.readouterr()
+
+    template.update(
+        identity={"source_id": "plant1", "point_id": "FIC101.PV"},
+        name="FIC-101 flow",
+        unit_raw="m3/h",
+        quality_codes={"Good": "GOOD", "Questionable": "UNCERTAIN"},
+    )
+    meta_path.write_text(json.dumps(template), encoding="utf-8")
+    out = tmp_path / "fic.parquet"
+    assert cmd_ingest([str(src), "--out", str(out), "--meta", str(meta_path), "--timestamp-col",
+                       "ts", "--value-col", "v", "--quality-col", "q"]) == 0
+    assert meta_from_parquet(out).unit_raw == "m3/h"
+
+
+def test_a_single_tag_template_takes_no_ingest_flags(tmp_path, capsys):
+    src = _csv(tmp_path, stamps=AWARE)
+    with pytest.raises(SystemExit) as info:
+        cmd_ingest([str(src), "--init-meta", str(tmp_path / "m.json"), "--out", "x.parquet"])
+    assert info.value.code == 2
+    assert "--out does not apply with --init-meta" in capsys.readouterr().err
+
+
+def test_a_misspelt_comment_key_is_refused(tmp_path):
+    path = _meta_file(tmp_path, _comment={"unit_raw": "m3/h"})
+    with pytest.raises(SchemaError, match="unknown key '_comment'; did you mean '_comments'"):
+        tsdive.read_meta_json(path)

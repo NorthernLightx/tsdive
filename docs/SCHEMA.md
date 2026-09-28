@@ -282,6 +282,16 @@ leave the archive without its unit. Only the three named columns are carried
 over; anything else in the export is left behind, so the archive holds
 exactly what its schema promises.
 
+`tsdive ingest export.csv --init-meta meta.json` writes that file as a
+template and stops. It takes `--timestamp-col`, `--value-col` and
+`--quality-col` like the ingest itself, leaves `identity`, `name` and
+`unit_raw` null for you to fill, and lists each raw code of the quality
+column under `quality_codes`. A `_comments` object says what each key
+means and which columns the export has; the reader checks it is an
+object of strings and skips it, so you can keep it. The template raises
+`SchemaError` until the identity, the name and every quality code are
+filled. An existing file is replaced only with `--overwrite`.
+
 Timestamps that already carry an offset are converted to UTC and `--tz`
 is ignored. Naive timestamps need `--tz <IANA zone>`: they are localised
 to it and then converted. Without `--tz` the ingest raises `SchemaError`,

@@ -70,7 +70,14 @@ API_GROUPS = [
 # Every name in tsdive.__all__ goes under one group. A name missing here,
 # or listed here and not exported, stops the build with the names.
 TOP_LEVEL_GROUPS: dict[str, list[str]] = {
-    "Reading and ingest": ["ingest", "ingest_wide", "init_meta", "read_meta_json", "write_tag"],
+    "Reading and ingest": [
+        "ingest",
+        "ingest_wide",
+        "init_meta",
+        "init_tag_meta",
+        "read_meta_json",
+        "write_tag",
+    ],
     "Analyses": [
         "profile",
         "Profile",

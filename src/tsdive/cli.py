@@ -44,6 +44,7 @@ from tsdive.api import (
     ingest,
     ingest_wide,
     init_meta,
+    init_tag_meta,
     parse_window,
     profile,
     read_meta_json,
@@ -80,7 +81,9 @@ MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time se
 
 commands, in the order an archive walks them:
   ingest <csv|parquet> --out ARCHIVE --meta META.json
-                                          build an archive from an export
+                                          build an archive from an export;
+                                          --init-meta META.json writes the
+                                          metadata template first
   ingest <csv|parquet> --wide --out DIR --meta-dir DIR
                                           one archive per column of a wide export
   profile <parquet> [--window START/END]  data physics and statistics for a window
@@ -873,6 +876,14 @@ def _parser_ingest() -> argparse.ArgumentParser:
         default=None,
         help="quality column of a single-tag export (default quality)",
     )
+    parser.add_argument(
+        "--init-meta",
+        default=None,
+        metavar="FILE|DIR",
+        help="write a metadata template to FILE and stop, then fill it in and ingest "
+        "with --meta FILE; with --wide, write a <tag>.json template per tag column "
+        "into DIR, then ingest with --meta-dir DIR",
+    )
     wide = parser.add_argument_group("wide exports, one column per tag")
     wide.add_argument(
         "--wide",
@@ -897,13 +908,6 @@ def _parser_ingest() -> argparse.ArgumentParser:
         default=None,
         metavar="S",
         help="each tag's quality column is <tag><S>",
-    )
-    wide.add_argument(
-        "--init-meta",
-        default=None,
-        metavar="DIR",
-        help="write a <tag>.json metadata template per tag column into DIR and stop; "
-        "fill them in, then ingest with --meta-dir DIR",
     )
     wide.add_argument(
         "--source-id",
@@ -974,9 +978,14 @@ def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespac
             if args.meta_dir is None:
                 parser.error("--wide requires --meta-dir")
     else:
-        for flag, value in (*wide_only, ("--init-meta", args.init_meta), *init_only):
+        for flag, value in (*wide_only, *init_only):
             if value is not None:
                 parser.error(f"{flag} requires --wide")
+        if args.init_meta is not None:
+            for flag, value in (*ingest_only, ("--meta", args.meta)):
+                if value is not None:
+                    parser.error(f"{flag} does not apply with --init-meta")
+            return
         if args.out is None:
             parser.error("the following arguments are required: --out")
         if args.meta is None:
@@ -994,6 +1003,17 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
 
 def _ingest(args: argparse.Namespace) -> int:
     try:
+        if args.init_meta is not None and not args.wide:
+            template = init_tag_meta(
+                args.source,
+                out=args.init_meta,
+                timestamp_col=args.timestamp_col,
+                value_col=args.value_col or "value",
+                quality_col=args.quality_col or "quality",
+                overwrite=args.overwrite,
+            )
+            _print_lines([label_line("wrote", template.as_posix())], args)
+            return OK
         if args.init_meta is not None:
             templates = init_meta(
                 args.source,
