@@ -257,6 +257,37 @@ def test_index_carries_the_readme_introduction(hooks: ModuleType) -> None:
 
 # The user guide: each page must exist and say something.
 REQUIRED_PAGES = [
+    *(
+        f"guide/concepts/{name}.md"
+        for name in (
+            "windows-and-time",
+            "archives-and-metadata",
+            "sampling-contract",
+            "quality-and-severity",
+            "coverage-and-gaps",
+            "clipping-and-censoring",
+            "baselines",
+            "spc-rules",
+            "mspc",
+            "compare",
+            "refusals",
+        )
+    ),
+    *(
+        f"guide/output/{name}.md"
+        for name in ("profile", "screen", "spc", "mspc", "compare", "switchback")
+    ),
+    *(
+        f"guide/howto/{name}.md"
+        for name in (
+            "historian-export",
+            "baseline-window",
+            "many-tags",
+            "python",
+            "mcp",
+            "switchback-trial",
+        )
+    ),
     "reference/errors.md",
     "reference/glossary.md",
 ]
@@ -301,6 +332,6 @@ def test_every_guide_block_parses(hooks: ModuleType) -> None:
         for _, block in hooks.guide_blocks(text):
             if block.runs:
                 assert hooks.guide_commands(block.body), f"{page} has an empty tsdive block"
-                assert set(block.options) <= {"exit", "lines"}, f"{page}: {block.options}"
+                assert set(block.options) <= {"exit", "lines", "tail"}, f"{page}: {block.options}"
             else:
                 assert set(block.options) <= {"file", "show", "lines"}, f"{page}: {block.options}"

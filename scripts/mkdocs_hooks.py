@@ -926,7 +926,8 @@ def api_markdown() -> dict[str, tuple[str, bool]]:
 # commands the build runs on the demo data, in page order, in one working
 # directory per page: the rendered page shows each command and its real
 # output. ``exit=N`` states the exit status every command in the block
-# must return (0 when absent) and ``lines=N`` cuts the output. A block
+# must return (0 when absent). ``lines=N`` keeps the first N lines of
+# the output and ``tail=N`` the last N, each with a marked cut. A block
 # with ``file=NAME`` writes its text to NAME in that directory before the
 # next command runs; a block with ``show=NAME`` shows the file as it is
 # then.
@@ -999,7 +1000,11 @@ def _render_block(block: GuideBlock, work: Path, page: str) -> str:
                 raise RuntimeError(
                     f"{page}: `{command}` exited {code}, the page expects {expected}:\n{output}"
                 )
-            shown += [f"$ {command}", *_cut(output.splitlines(), keep)]
+            lines = output.splitlines()
+            if "tail" in block.options:
+                shown += [f"$ {command}", *_cut_head(lines, int(block.options["tail"]))]
+            else:
+                shown += [f"$ {command}", *_cut(lines, keep)]
         return "```console\n" + "\n".join(shown) + "\n```"
     if "file" in block.options:
         name = block.options["file"]
@@ -1011,6 +1016,13 @@ def _render_block(block: GuideBlock, work: Path, page: str) -> str:
     text = (work / name).read_text(encoding="utf-8").rstrip("\n")
     keep = int(block.options.get("lines", str(GUIDE_LINES)))
     return f'```{block.lang} title="{name}"\n' + "\n".join(_cut(text.splitlines(), keep)) + "\n```"
+
+
+def _cut_head(lines: list[str], keep: int) -> list[str]:
+    """The last ``keep`` lines, after a marked cut when there were more."""
+    if len(lines) <= keep:
+        return lines
+    return [f"[{len(lines) - keep} lines above not shown]", *lines[-keep:]]
 
 
 def run_guide_blocks(markdown: str, page: str) -> str:
