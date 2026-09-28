@@ -1,13 +1,13 @@
 """Randomized switchback schedules of two settings, and their randomization analysis.
 
-:mod:`tsdive.switchback.design` draws a balanced schedule of K blocks and
-the reference assignments; :mod:`tsdive.switchback.inference` computes
+``tsdive.switchback.design`` draws a balanced schedule of K blocks and
+the reference assignments; ``tsdive.switchback.inference`` computes
 the B - A difference on the kept samples, its randomization p-value and
-the interval that inverts the test; :mod:`tsdive.switchback.plan` holds
+the interval that inverts the test; ``tsdive.switchback.plan`` holds
 the schedule as a plan with a digest, checks it, and reads its power off
-a history window; :mod:`tsdive.switchback.archive` reads the target and
+a history window; ``tsdive.switchback.archive`` reads the target and
 covariates through the store and runs the analysis, and
-:mod:`tsdive.switchback.render` writes both as text and JSON. The package
+``tsdive.switchback.render`` writes both as text and JSON. The package
 imports numpy and pandas and nothing heavier.
 """
 

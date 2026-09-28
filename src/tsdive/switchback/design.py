@@ -40,7 +40,13 @@ DESIGN_TOO_SMALL = "design_too_small"
 
 
 def schedule_blocks(span: float, length: float) -> int:
-    """K = floor(span / length), less one when it is odd."""
+    """K = floor(span / length), less one when it is odd.
+
+    Examples:
+        >>> from tsdive.switchback import schedule_blocks
+        >>> schedule_blocks(24 * 3600, 3600), schedule_blocks(7 * 3600, 3600)
+        (24, 6)
+    """
     k = math.floor(span / length)
     return k - (k % 2)
 
@@ -50,6 +56,14 @@ def design_size(k: int) -> tuple[int, bool, float]:
 
     An assignment and its complement give the same |T|, so an enumerated
     design reaches 2 / C(K, K/2) at best; a sampled one reaches 1 / 1001.
+
+    Examples:
+        >>> from tsdive.switchback import design_size
+        >>> design_size(6)
+        (20, True, 0.1)
+        >>> n, enumerated, min_p = design_size(24)
+        >>> n, enumerated, round(min_p, 6)
+        (2704156, False, 0.000999)
     """
     if k < 2:
         return 0, True, 1.0
@@ -112,6 +126,16 @@ def make_design(k: int, seed: int | Sequence[int]) -> Design:
     Raises:
         DesignTooSmall: fewer than 20 balanced assignments, or a smallest
             attainable two-sided p above 0.05.
+
+    Examples:
+        >>> from tsdive.switchback import make_design
+        >>> design = make_design(24, seed=7)
+        >>> design.k, design.enumerated, int(design.observed.sum()), design.matrix.shape
+        (24, False, 12, (1000, 24))
+        >>> make_design(4, seed=7)
+        Traceback (most recent call last):
+        ...
+        tsdive.errors.DesignTooSmall: 4 blocks give 6 balanced assignments, fewer than 20; ...
     """
     if design_refusal(k):
         n, _, min_p = design_size(k)
@@ -154,6 +178,14 @@ def cut_blocks(times: np.ndarray, span: float, length: float) -> Blocks:
     ``times`` are measured from the schedule start in the unit of
     ``length``. A time before 0 or at or after K * ``length`` is outside
     the schedule.
+
+    Examples:
+        >>> import numpy as np
+        >>> from tsdive.switchback import cut_blocks
+        >>> times = np.array([0.0, 30.0, 60.0, 150.0, 250.0])
+        >>> blocks = cut_blocks(times, span=240.0, length=60.0)
+        >>> blocks.k, blocks.block.tolist(), blocks.offset.tolist()
+        (4, [0, 0, 1, 2, -1], [0.0, 30.0, 0.0, 30.0, 10.0])
     """
     k = schedule_blocks(span, length)
     t = np.asarray(times, dtype=float)
@@ -164,6 +196,15 @@ def cut_blocks(times: np.ndarray, span: float, length: float) -> Blocks:
 
 
 def setting(blocks: Blocks, observed: np.ndarray) -> np.ndarray:
-    """Per-sample setting: 1 in B blocks, 0 in A blocks and outside the schedule."""
+    """Per-sample setting: 1 in B blocks, 0 in A blocks and outside the schedule.
+
+    Examples:
+        >>> import numpy as np
+        >>> from tsdive.switchback import cut_blocks, setting
+        >>> times = np.array([0.0, 30.0, 60.0, 150.0, 250.0])
+        >>> blocks = cut_blocks(times, span=240.0, length=60.0)
+        >>> setting(blocks, np.array([0, 1, 1, 0])).tolist()
+        [0.0, 0.0, 1.0, 1.0, 0.0]
+    """
     inside = blocks.block >= 0
     return np.where(inside, observed[np.where(inside, blocks.block, 0)], 0).astype(float)

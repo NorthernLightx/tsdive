@@ -26,6 +26,15 @@ class RankingMetrics:
     refusal: str | None
 
     def to_dict(self) -> dict:
+        """The row a study publishes: every metric rounded to four decimals.
+
+        Examples:
+            >>> from tsdive.eval import ranking_metrics
+            >>> row = ranking_metrics([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8]).to_dict()
+            >>> row["roc_auc"], row["pr_auc"], row["n_pos"], row["refusal"]
+            (0.75, 0.8333, 2, None)
+        """
+
         def rounded(value: float | None) -> float | None:
             return None if value is None else round(float(value), 4)
 
@@ -73,6 +82,14 @@ def ranking_metrics(y, scores, *, recall_floor: float = 0.5) -> RankingMetrics:
     ``precision_at_recall`` is the largest precision on the curve at any
     recall of at least ``recall_floor``. A fold with one class present
     returns the refusal and ``None`` for every metric.
+
+    Examples:
+        >>> from tsdive.eval import ranking_metrics
+        >>> m = ranking_metrics([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+        >>> m.roc_auc, round(m.pr_auc, 4), m.precision_at_recall
+        (0.75, 0.8333, 1.0)
+        >>> ranking_metrics([1, 1], [0.2, 0.3]).refusal
+        'fold under test carries one class only; no ranking metric exists'
     """
     y = np.asarray(y).astype(bool)
     scores = np.asarray(scores, dtype=float)

@@ -267,7 +267,12 @@ def _parser_screen() -> argparse.ArgumentParser:
     parser.add_argument(
         "--window", required=True, help="ISO 8601 START/END in UTC to screen"
     )
-    parser.add_argument("--method", default="mad", choices=["mad", "moving-range"])
+    parser.add_argument(
+        "--method",
+        default="mad",
+        choices=["mad", "moving-range"],
+        help="scale of the baseline: MAD, or the mean moving range; ignored with --mode",
+    )
     parser.add_argument(
         "--k", type=_positive_float, default=3.0, help="flag beyond k*scale from center"
     )
@@ -278,7 +283,10 @@ def _parser_screen() -> argparse.ArgumentParser:
         help="MODE archive; compute one baseline per regime instead of one for the window",
     )
     parser.add_argument(
-        "--basis", default="TIME_WEIGHTED", choices=[b.value for b in CalculationBasis]
+        "--basis",
+        default="TIME_WEIGHTED",
+        choices=[b.value for b in CalculationBasis],
+        help="calculation basis declared on the read",
     )
     parser.add_argument(
         "--stepped", action="store_true", help="stepped interpolation between samples"
@@ -337,7 +345,10 @@ def _parser_segment() -> argparse.ArgumentParser:
         help="samples a segment must hold, at least",
     )
     parser.add_argument(
-        "--basis", default="TIME_WEIGHTED", choices=[b.value for b in CalculationBasis]
+        "--basis",
+        default="TIME_WEIGHTED",
+        choices=[b.value for b in CalculationBasis],
+        help="calculation basis declared on the read",
     )
     parser.add_argument(
         "--stepped", action="store_true", help="stepped interpolation between samples"
@@ -413,7 +424,10 @@ def _parser_spc() -> argparse.ArgumentParser:
         "--window", required=True, help="ISO 8601 START/END in UTC to chart"
     )
     parser.add_argument(
-        "--basis", default="TIME_WEIGHTED", choices=[b.value for b in CalculationBasis]
+        "--basis",
+        default="TIME_WEIGHTED",
+        choices=[b.value for b in CalculationBasis],
+        help="calculation basis declared on the read",
     )
     parser.add_argument(
         "--stepped", action="store_true", help="stepped interpolation between samples"
@@ -705,7 +719,10 @@ def _parser_profile() -> argparse.ArgumentParser:
         "is profiled",
     )
     parser.add_argument(
-        "--basis", default="TIME_WEIGHTED", choices=[b.value for b in CalculationBasis]
+        "--basis",
+        default="TIME_WEIGHTED",
+        choices=[b.value for b in CalculationBasis],
+        help="calculation basis declared on the read",
     )
     parser.add_argument(
         "--stepped", action="store_true", help="stepped interpolation between samples"
@@ -898,7 +915,9 @@ def _parser_ingest() -> argparse.ArgumentParser:
     parser.add_argument(
         "--meta", default=None, help="JSON file of tag metadata (the tsdive.meta object)"
     )
-    parser.add_argument("--timestamp-col", default="timestamp")
+    parser.add_argument(
+        "--timestamp-col", default="timestamp", help="timestamp column of the export"
+    )
     parser.add_argument(
         "--value-col", default=None, help="value column of a single-tag export (default value)"
     )
@@ -1087,12 +1106,7 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
         return 2
 
 
-def cmd_report_html(argv: Sequence[str] | None = None) -> int:
-    """Render a static HTML evidence snapshot from demo archives."""
-    from tsdive.narrate import EvidenceLedger
-    from tsdive.ui.static_report import render_static_report, write_static_report
-    from tsdive.ui.svg import window_figure
-
+def _parser_report_html() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tsdive report-html")
     parser.add_argument("parquet", nargs="+", help="archive(s) to profile into the report")
     parser.add_argument(
@@ -1101,9 +1115,19 @@ def cmd_report_html(argv: Sequence[str] | None = None) -> int:
         help="ISO 8601 START/END in UTC applied to every archive; omitted, the span "
         "covering every readable archive's extent",
     )
-    parser.add_argument("-o", "--out", default="tsdive-report.html")
-    _add_output_flags(parser, json_flag=False)
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "-o", "--out", default="tsdive-report.html", help="path of the HTML file to write"
+    )
+    return _add_output_flags(parser, json_flag=False)
+
+
+def cmd_report_html(argv: Sequence[str] | None = None) -> int:
+    """Render one static HTML page that profiles each archive over one window."""
+    from tsdive.narrate import EvidenceLedger
+    from tsdive.ui.static_report import render_static_report, write_static_report
+    from tsdive.ui.svg import window_figure
+
+    args = _parser_report_html().parse_args(argv)
 
     try:
         start, end = (

@@ -19,5 +19,10 @@ def clock_control(record_position: Mapping[Any, int] | pd.Series) -> dict[Any, f
     ``record_position`` maps a window key to its position in its record,
     as a ``Mapping`` or a ``pandas.Series`` indexed by key. The result
     maps each key to ``float(position)`` in the same order.
+
+    Examples:
+        >>> from tsdive.eval import clock_control
+        >>> clock_control({"window-a": 0, "window-b": 3})
+        {'window-a': 0.0, 'window-b': 3.0}
     """
     return {key: float(position) for key, position in record_position.items()}

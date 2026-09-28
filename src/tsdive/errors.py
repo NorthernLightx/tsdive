@@ -85,7 +85,7 @@ class PopulationTooSparse(TSDiveError):
 class GroupLeakage(TSDiveError):
     """A holdout group was found on both sides of a split.
 
-    Raised by :meth:`~tsdive.data.splits.GroupSplit.leakage_check`. A
+    Raised by [`GroupSplit.leakage_check`][tsdive.eval.GroupSplit.leakage_check]. A
     number computed across a leaked group measures memorisation of that
     group's signature, so the split is refused rather than reported.
     """

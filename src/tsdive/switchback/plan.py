@@ -109,9 +109,10 @@ class SwitchbackPlan:
     """A balanced random schedule of settings A and B over one window.
 
     ``start`` and ``end`` are the requested window; the schedule runs from
-    ``start`` to :attr:`schedule_end`, K whole blocks. ``min_p`` is the
-    smallest two-sided p-value the design can reach. Build one with
-    :func:`make_plan` or :func:`tsdive.api.switchback_plan`.
+    ``start`` to [`schedule_end`][tsdive.SwitchbackPlan.schedule_end], K
+    whole blocks. ``min_p`` is the smallest two-sided p-value the design can
+    reach. Build one with [`make_plan`][tsdive.switchback.make_plan] or
+    [`tsdive.switchback_plan`][tsdive.switchback_plan].
     """
 
     start: pd.Timestamp
@@ -145,13 +146,24 @@ class SwitchbackPlan:
         return self.n_assignments if self.enumerated else PERMUTATIONS + 1
 
     def render(self) -> str:
-        """The text ``tsdive switchback plan`` prints, without its ``wrote`` line."""
+        """The text ``tsdive switchback plan`` prints, without its ``wrote`` line.
+
+        Examples:
+            >>> import tsdive
+            >>> plan = tsdive.switchback_plan("2024-06-03T00:00:00Z", "2024-06-04T00:00:00Z",
+            ...                               block="PT1H", washout="PT15M", seed=7)
+            >>> print(plan.render().splitlines()[0])
+            switchback plan   24 blocks of 1 h   A 12   B 12   digest 66da65ede04f
+        """
         from tsdive.switchback.render import plan_lines
 
         return "\n".join(plan_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The plan document: what :meth:`write_json` writes, ready for ``json.dumps``."""
+        """The plan document: what [`write_json`][tsdive.SwitchbackPlan.write_json] writes.
+
+        The document is ready for ``json.dumps``.
+        """
         return plan_to_dict(self)
 
     def write_json(self, path: str | Path, *, overwrite: bool = False) -> Path:
@@ -169,7 +181,9 @@ class SwitchbackPlan:
 
     @classmethod
     def read_json(cls, path: str | Path) -> SwitchbackPlan:
-        """Read a plan document. The schedule is checked by :func:`verify_plan`, not here.
+        """Read a plan document without checking its schedule.
+
+        [`verify_plan`][tsdive.switchback.verify_plan] checks the schedule.
 
         Raises:
             ValueError: the file is not a plan document of this version.
@@ -205,7 +219,17 @@ def canonical_schedule(
 
 
 def plan_digest(plan: SwitchbackPlan) -> str:
-    """SHA-256 hex digest of the plan's canonical schedule."""
+    """SHA-256 hex digest of the plan's canonical schedule.
+
+    Examples:
+        >>> import pandas as pd
+        >>> from tsdive.switchback import make_plan, plan_digest
+        >>> plan = make_plan(pd.Timestamp("2024-06-03T00:00:00Z"),
+        ...                  pd.Timestamp("2024-06-04T00:00:00Z"),
+        ...                  block_s=3600, washout_s=900, seed=7)
+        >>> plan_digest(plan)[:12], plan_digest(plan) == plan.digest
+        ('66da65ede04f', True)
+    """
     text = canonical_schedule(
         plan.start, plan.end, plan.block_s, plan.washout_s, plan.seed, plan.blocks
     )
@@ -249,6 +273,15 @@ def make_plan(
             negative seed.
         DesignTooSmall: the window holds too few blocks for a
             randomization test at the 5% level.
+
+    Examples:
+        >>> import pandas as pd
+        >>> from tsdive.switchback import make_plan
+        >>> plan = make_plan(pd.Timestamp("2024-06-03T00:00:00Z"),
+        ...                  pd.Timestamp("2024-06-04T00:00:00Z"),
+        ...                  block_s=3600, washout_s=900, seed=7)
+        >>> plan.k, plan.blocks[0].setting, plan.blocks[0].washout_end.isoformat()
+        (24, 'A', '2024-06-03T00:15:00+00:00')
     """
     for name, stamp in (("start", start), ("end", end)):
         if stamp.tz is None:
@@ -296,6 +329,21 @@ def verify_plan(plan: SwitchbackPlan) -> Design:
         ScheduleMismatch: any check fails.
         DesignTooSmall: the plan's block count is too small for a
             randomization test.
+
+    Examples:
+        >>> import dataclasses
+        >>> import pandas as pd
+        >>> from tsdive.switchback import make_plan, verify_plan
+        >>> plan = make_plan(pd.Timestamp("2024-06-03T00:00:00Z"),
+        ...                  pd.Timestamp("2024-06-04T00:00:00Z"),
+        ...                  block_s=3600, washout_s=900, seed=7)
+        >>> design = verify_plan(plan)
+        >>> design.k, bool((design.observed == plan.observed).all())
+        (24, True)
+        >>> verify_plan(dataclasses.replace(plan, seed=8))
+        Traceback (most recent call last):
+        ...
+        tsdive.errors.ScheduleMismatch: ...
     """
     actual = plan_digest(plan)
     if actual != plan.digest:

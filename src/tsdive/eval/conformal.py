@@ -48,6 +48,12 @@ def conformal_p_values(
     which is the property ``power_martingale`` and ``mixture_martingale``
     need. Raises ``ValueError`` when ``calibration`` is empty or either
     input holds a non-finite value.
+
+    Examples:
+        >>> from tsdive.eval import conformal_p_values
+        >>> p = conformal_p_values([1.0, 2.0, 3.0, 4.0], [2.5, 5.0, 6.0])
+        >>> p.round(3).tolist()
+        [0.6, 0.167, 0.143]
     """
     cal = _finite_array(calibration, "calibration")
     obs = _finite_array(stream, "stream")
@@ -78,6 +84,11 @@ def power_martingale(p_values: Iterable[float], epsilon: float) -> np.ndarray:
     must lie in ``(0, 1]``; ``epsilon == 1`` gives zeros. Raises
     ``ValueError`` for ``epsilon`` outside that interval or a p-value
     outside ``(0, 1]``.
+
+    Examples:
+        >>> from tsdive.eval import power_martingale
+        >>> power_martingale([0.5, 0.2, 0.1], epsilon=0.5).round(3).tolist()
+        [-0.347, -0.235, 0.223]
     """
     eps = float(epsilon)
     if not (0.0 < eps <= 1.0) or not math.isfinite(eps):
@@ -95,6 +106,11 @@ def mixture_martingale(
     ``np.logaddexp.reduce``. A mixture of martingales is a martingale, so
     ``martingale_alarm`` keeps its bound. Raises ``ValueError`` when
     ``epsilons`` is empty or any epsilon lies outside ``(0, 1]``.
+
+    Examples:
+        >>> from tsdive.eval import mixture_martingale
+        >>> mixture_martingale([0.5, 0.2, 0.1]).round(3).tolist()
+        [-0.427, -0.385, -0.058]
     """
     eps = [float(e) for e in epsilons]
     if not eps:
@@ -114,6 +130,13 @@ def martingale_alarm(log_values: Iterable[float], delta: float) -> int | None:
     exchangeability; any fitted centre and scale that produce the scores
     must come from a fit set disjoint from the calibration and stream.
     ``delta`` must lie in ``(0, 1)``, else ``ValueError``.
+
+    Examples:
+        >>> from tsdive.eval import martingale_alarm
+        >>> martingale_alarm([0.0, 1.5, 3.2], delta=0.05)  # log(1 / 0.05) is 2.996
+        2
+        >>> martingale_alarm([0.0, 1.5], delta=0.05) is None
+        True
     """
     d = float(delta)
     if not (0.0 < d < 1.0) or not math.isfinite(d):

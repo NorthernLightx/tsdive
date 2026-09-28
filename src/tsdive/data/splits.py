@@ -114,21 +114,25 @@ class GroupSplit:
     group_sizes: dict[str, int]
 
     def groups(self, fold: int) -> tuple[str, ...]:
+        """The group keys held out in ``fold``."""
         return self.folds[fold]
 
     def test_indices(self, items: pd.DataFrame, fold: int) -> list[int]:
+        """Row positions of ``items`` whose group is held out in ``fold``."""
         held = set(self.folds[fold])
         return [
             i for i, g in enumerate(items[self.group_col].astype(str)) if g in held
         ]
 
     def train_indices(self, items: pd.DataFrame, fold: int) -> list[int]:
+        """Row positions of ``items`` whose group is not held out in ``fold``."""
         held = set(self.folds[fold])
         return [
             i for i, g in enumerate(items[self.group_col].astype(str)) if g not in held
         ]
 
     def strata_present(self, fold: int) -> set[str]:
+        """The strata with at least one item in ``fold``."""
         return {s for s, n in self.strata_counts[fold].items() if n > 0}
 
     def leakage_check(self) -> None:
@@ -186,8 +190,22 @@ def group_holdout(
     A group is never divided: a well contributing 500 instances lands in
     exactly one fold, and the fold it lands in is 500 instances larger
     than its siblings. That imbalance is the shape of the data, and
-    :attr:`GroupSplit.fold_sizes` reports it rather than hiding it behind
-    a row-level cut.
+    [`GroupSplit.fold_sizes`][tsdive.eval.GroupSplit.fold_sizes] reports it rather than
+    hiding it behind a row-level cut.
+
+    Examples:
+        >>> import pandas as pd
+        >>> from tsdive.eval import group_holdout
+        >>> items = pd.DataFrame({"asset": ["A", "A", "B", "C", "C", "C"],
+        ...                       "fault": ["x", "y", "x", "y", "x", "x"]})
+        >>> split = group_holdout(items, group_col="asset", stratum_col="fault",
+        ...                       n_folds=2, seed=0)
+        >>> split.groups(0), split.groups(1), split.fold_sizes
+        (('C',), ('A', 'B'), (3, 3))
+        >>> split.test_indices(items, 0), split.train_indices(items, 0)
+        ([3, 4, 5], [0, 1, 2])
+        >>> sorted(split.strata_present(0))
+        ['x', 'y']
     """
     for col in (group_col, stratum_col):
         if col not in items.columns:

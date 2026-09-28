@@ -188,10 +188,28 @@ def write_tag(
     changing part of it.
 
     ``frame`` must carry ``timestamp`` (UTC-aware), ``value`` and
-    ``quality``; :func:`validate_schema` refuses anything else, so a
+    ``quality``; ``validate_schema`` refuses anything else, so a
     quality-free archive cannot be created by accident. ``meta`` is
     embedded under the ``tsdive.meta`` key, which is what makes the
-    file readable by :class:`TagStore` at all.
+    file readable by [`TagStore`][tsdive.TagStore] at all.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import tsdive
+        >>> frame = pd.DataFrame({
+        ...     "timestamp": pd.date_range("2024-03-30 20:00", periods=3, freq="min", tz="UTC"),
+        ...     "value": [62.0, 62.1, 62.3],
+        ...     "quality": ["GOOD", "GOOD", "GOOD"],
+        ... })
+        >>> meta = tsdive.TagMeta(identity=tsdive.TagIdentity("plant1", "FI102.PV"),
+        ...                       name="FI-102 flow", sample_rate_s=60.0)
+        >>> path = tsdive.write_tag("archive/plant1/FI102.PV.parquet", frame, meta)
+        >>> path.as_posix()
+        'archive/plant1/FI102.PV.parquet'
+        >>> tsdive.write_tag(path, frame, meta)
+        Traceback (most recent call last):
+        ...
+        FileExistsError: ...
     """
     validate_schema(frame)
     out = Path(path)
@@ -232,9 +250,27 @@ class TagStore:
         self.root = Path(root)
 
     def archive_path(self, identity: TagIdentity) -> Path:
+        """The path ``root/<source_id>/<point_id>.parquet`` of ``identity``, existing or not.
+
+        Examples:
+            >>> import tsdive
+            >>> store = tsdive.TagStore("data")
+            >>> store.archive_path(tsdive.TagIdentity("demo", "fic101_demo")).as_posix()
+            'data/demo/fic101_demo.parquet'
+        """
         return self.root / identity.source_id / f"{identity.point_id}.parquet"
 
     def list_tags(self) -> list[TagIdentity]:
+        """One identity per ``root/<source_id>/<point_id>.parquet`` file, sorted.
+
+        The identity is read off the path, not off the file's ``tsdive.meta``.
+
+        Examples:
+            >>> import tsdive
+            >>> store = tsdive.TagStore("data")
+            >>> [str(tag) for tag in store.list_tags()][:2]
+            ['demo:fic101_demo', 'demo:tic101_demo']
+        """
         found: list[TagIdentity] = []
         for source_dir in sorted(self.root.iterdir()) if self.root.exists() else []:
             if not source_dir.is_dir():
@@ -266,7 +302,7 @@ class TagStore:
         one ``unknown`` gap spanning the window - never a fake 1.0.
 
         A window whose timestamps go backwards is refused with
-        :class:`~tsdive.errors.NonMonotonicIndex` before any physics is
+        [`NonMonotonicIndex`][tsdive.NonMonotonicIndex] before any physics is
         computed. Gaps and coverage over a re-sorted index would describe
         an ordering the historian never produced.
         """
@@ -454,7 +490,16 @@ class SingleFileStore(TagStore):
         super().__init__(self.path.parent)
 
     def archive_path(self, identity: TagIdentity) -> Path:
+        """The store's one file, whatever ``identity`` names."""
         return self.path
 
     def list_tags(self) -> list[TagIdentity]:
+        """The identity the file's ``tsdive.meta`` declares, as a one-item list.
+
+        Examples:
+            >>> import tsdive
+            >>> store = tsdive.SingleFileStore("data/demo/fic101_demo.parquet")
+            >>> [str(tag) for tag in store.list_tags()]
+            ['demo:FIC101.PV']
+        """
         return [meta_from_parquet(self.path).identity]

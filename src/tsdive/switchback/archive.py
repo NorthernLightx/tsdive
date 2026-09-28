@@ -280,7 +280,20 @@ class SwitchbackAnalysis:
         return pd.DataFrame(rows)
 
     def render(self) -> str:
-        """The text ``tsdive switchback analyze`` prints."""
+        """The text ``tsdive switchback analyze`` prints.
+
+        Examples:
+            >>> import tsdive
+            >>> plan = tsdive.switchback_plan("2024-06-03T00:00:00Z", "2024-06-04T00:00:00Z",
+            ...                               block="PT1H", washout="PT15M", seed=7)
+            >>> archives = ["data/switchback_demo/ti201.parquet",
+            ...             "data/switchback_demo/fi200.parquet",
+            ...             "data/switchback_demo/tt001.parquet"]
+            >>> result = tsdive.switchback_analyze(archives, plan, target="TI201.PV",
+            ...                                    covariates=["FI200.PV", "TT001.PV"])
+            >>> print(result.render().splitlines()[0])
+            demo:TI201.PV   B - A +0.6024 degrees Celsius   p 0.154
+        """
         from tsdive.switchback.render import analysis_lines
 
         return "\n".join(analysis_lines(self))

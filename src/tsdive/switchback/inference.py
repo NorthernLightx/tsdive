@@ -400,10 +400,26 @@ def analyze(
 ) -> Analysis:
     """The B - A coefficient of ``y`` on [1, z] or [1, z, X], its p-value and interval.
 
-    Refusals, in the order they are checked: those of :func:`make_frame`,
+    Refusals, in the order they are checked: those of ``make_frame``,
     then a block with no kept sample (``empty_block``), then an observed
     assignment in the span of the covariates (``collinear``). The tie
     tolerance is scaled by 1.4826 MAD of the kept target samples.
+
+    Examples:
+        Setting B adds 0.5 to a noisy target sampled once a minute:
+
+        >>> import numpy as np
+        >>> from tsdive.switchback import analyze, cut_blocks, make_design, setting
+        >>> design = make_design(24, seed=7)
+        >>> times = np.arange(24 * 60, dtype=float)
+        >>> blocks = cut_blocks(times, span=times.size, length=60.0)
+        >>> noise = np.random.default_rng(0).normal(0.0, 0.2, times.size)
+        >>> y = 0.5 * setting(blocks, design.observed) + noise
+        >>> result = analyze(y, None, blocks, washout=10.0, design=design)
+        >>> round(result.estimate, 2), round(result.lo, 2), round(result.hi, 2)
+        (0.49, 0.46, 0.52)
+        >>> round(result.p_value, 4), result.n_kept, result.reason
+        (0.001, 1200, '')
     """
     counts = np.bincount(
         blocks.block[kept_mask(y, x, blocks, washout)], minlength=blocks.k
@@ -442,6 +458,13 @@ def lag_response(u: np.ndarray, times: np.ndarray, tau: float) -> np.ndarray:
     1 - exp(-dt / tau) of the way to the sample's setting; the first sample
     follows a gap of one time unit. ``tau`` 0 returns ``u``. Runs of equal
     setting are solved in closed form, so the loop runs once per switch.
+
+    Examples:
+        >>> import numpy as np
+        >>> from tsdive.switchback import lag_response
+        >>> u = np.array([0.0, 1.0, 1.0, 1.0])
+        >>> lag_response(u, np.array([0.0, 1.0, 2.0, 3.0]), tau=1.0).round(3).tolist()
+        [0.0, 0.632, 0.865, 0.95]
     """
     u = np.asarray(u, dtype=float)
     if tau == 0 or u.size == 0:
