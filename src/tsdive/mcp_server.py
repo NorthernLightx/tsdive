@@ -1,6 +1,6 @@
 """A read-only MCP server over the tsdive analyses.
 
-Five tools wrap the functions behind ``tsdive <command> --json``, so a
+Six tools wrap the functions behind ``tsdive <command> --json``, so a
 caller over MCP and a caller over the CLI read the same fields. Each tool
 builds the command line the CLI parser already validates, so option
 names, choices and defaults are declared once, in :mod:`tsdive.cli`.
@@ -39,11 +39,13 @@ from tsdive.cli import (
     _parser_screen,
     _parser_segment,
     _parser_spc,
+    _parser_switchback_analyze,
     json_compare,
     json_profile,
     json_screen,
     json_segment,
     json_spc,
+    json_switchback_analyze,
 )
 from tsdive.errors import TSDiveError
 from tsdive.ui.jsonout import to_jsonable
@@ -64,7 +66,8 @@ Returns one JSON object, discriminated on result_kind:
       tsdive.errors class: SchemaError, InsufficientQuality,
       IncomparableSamplingError, NonMonotonicIndex, UnresolvedUnitError,
       IncomparableUnitsError, RegimeTooSparse, PopulationTooSparse,
-      GroupLeakage, MspcAlignmentError or NarratorUnavailable.
+      GroupLeakage, MspcAlignmentError, DesignTooSmall, ScheduleMismatch
+      or NarratorUnavailable.
 
 A refusal comes back with isError false, so the call succeeds. A
 malformed window, a rejected option or an unreadable path raises a tool
@@ -75,7 +78,8 @@ tsdive profiles process time series held in single-tag parquet archives
 and reports what the store did to a window. Every tool is read-only and
 takes local archive paths plus ISO 8601 UTC windows written START/END
 like 2024-03-01T00:00:00Z/2024-03-01T01:00:00Z, START/PT1H, PT1H/END,
-or a date for one whole UTC day.
+or a date for one whole UTC day. switchback_analyze takes the path of a
+plan file written by tsdive switchback plan in place of windows.
 
 Read result_kind on every answer. A refusal names the check that has no
 answer on this data and why. It is the result, so report it instead of
@@ -317,7 +321,44 @@ def compare(
     return _answer(json_compare, _parser_compare(), [*argv, "--", *archives])
 
 
-TOOLS: tuple[Callable[..., dict[str, Any]], ...] = (profile, segment, screen, spc, compare)
+def switchback_analyze(
+    archives: list[str],
+    plan: str,
+    target: str,
+    covariates: list[str] | None = None,
+) -> dict[str, Any]:
+    """Report the difference between settings A and B on one tag under a switchback plan.
+
+    The plan file is checked against its digest, block times, balance and
+    seed first; an edited or unbalanced plan returns a ScheduleMismatch
+    refusal. The estimate is B minus A in the target's unit, with its
+    randomization p-value and 95% interval, plus an estimate adjusted on
+    the covariates when any are named.
+
+    Args:
+        archives: single-tag parquet archives holding the target and every
+            covariate.
+        plan: plan file written by tsdive switchback plan.
+        target: the tag, as source:point or a point id one archive carries.
+        covariates: tags for the adjusted estimate, declared before the
+            analysis.
+    """
+    argv = ["--plan", plan, "--target", target]
+    for name in covariates or ():
+        argv += ["--covariate", name]
+    return _answer(
+        json_switchback_analyze, _parser_switchback_analyze(), [*argv, "--", *archives]
+    )
+
+
+TOOLS: tuple[Callable[..., dict[str, Any]], ...] = (
+    profile,
+    segment,
+    screen,
+    spc,
+    compare,
+    switchback_analyze,
+)
 
 
 def _description(fn: Callable[..., Any]) -> str:
@@ -347,7 +388,7 @@ def _carrying_the_message(
 
 
 def build_server() -> Any:
-    """An MCPServer carrying the five tsdive tools, all marked read-only.
+    """An MCPServer carrying the six tsdive tools, all marked read-only.
 
     Raises:
         ImportError: the mcp extra is not installed.

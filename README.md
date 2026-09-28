@@ -300,9 +300,9 @@ s.to_dict()["n_flagged"]         # 29; s.render() is the text tsdive screen prin
 
 ### MCP
 
-`tsdive-mcp` serves `profile`, `segment`, `screen`, `spc` and `compare` to
-an MCP client over stdio, with the same arguments and fields as `--json`.
-Tools and result shapes are in [docs/MCP.md](docs/MCP.md).
+`tsdive-mcp` serves `profile`, `segment`, `screen`, `spc`, `compare` and
+`switchback_analyze` to an MCP client over stdio, with the same arguments
+and fields as `--json`. Tools and result shapes are in [docs/MCP.md](docs/MCP.md).
 
 ## What it checks
 

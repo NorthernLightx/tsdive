@@ -27,7 +27,7 @@ SATURATED = "2024-03-31T02:00:00Z/2024-03-31T02:30:00Z"
 BASELINE = "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z"
 WINDOW = "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z"
 
-TOOL_NAMES = {"profile", "segment", "screen", "spc", "compare"}
+TOOL_NAMES = {"profile", "segment", "screen", "spc", "compare", "switchback_analyze"}
 
 
 def _load(name: str) -> ModuleType:
@@ -66,7 +66,7 @@ def call(server: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     return dict(result.structured_content)
 
 
-def test_server_exposes_the_five_tools(server: Any) -> None:
+def test_server_exposes_the_six_tools(server: Any) -> None:
     tools = asyncio.run(server.list_tools())
     assert {t.name for t in tools} == TOOL_NAMES
 
@@ -135,6 +135,53 @@ def test_compare_takes_several_archives(server: Any, demo: tuple[str, str]) -> N
     )
     assert payload["result_kind"] == "evidence"
     assert {t["tag"] for t in payload["tags"]} == {"demo:FIC101.PV", "demo:TIC101.PV"}
+
+
+@pytest.fixture()
+def trial(tmp_path: Path) -> tuple[list[str], str]:
+    """The switchback demo trial's archives and its plan file."""
+    import tsdive
+    from tsdive.store.tagstore import write_tag
+
+    spec = importlib.util.spec_from_file_location(
+        "make_trial", SCRIPTS.parent / "examples" / "switchback" / "make_trial.py"
+    )
+    assert spec is not None and spec.loader is not None
+    builders = importlib.util.module_from_spec(spec)
+    sys.modules["make_trial"] = builders
+    spec.loader.exec_module(builders)
+    paths = [
+        str(write_tag(tmp_path / f"{name}.parquet", frame, meta, overwrite=True))
+        for name, (frame, meta) in builders.build().items()
+    ]
+    plan = tsdive.switchback_plan(*builders.TRIAL, builders.BLOCK, builders.WASHOUT, builders.SEED)
+    return paths, str(plan.write_json(tmp_path / "plan.json"))
+
+
+def test_switchback_analyze_returns_the_cli_fields(server: Any, trial) -> None:
+    archives, plan = trial
+    payload = call(
+        server,
+        "switchback_analyze",
+        {"archives": archives, "plan": plan, "target": "TI201.PV", "covariates": ["FI200.PV"]},
+    )
+    assert payload["result_kind"] == "evidence"
+    assert payload["tag"] == "demo:TI201.PV"
+    assert payload["plan"]["verified"] is True
+    assert payload["adjusted"]["covariates"] == ["demo:FI200.PV"]
+    assert payload["unused"] == ["demo:TT001.PV"]
+
+
+def test_an_edited_plan_comes_back_as_a_schedule_mismatch(trial) -> None:
+    import json
+
+    archives, plan = trial
+    doc = json.loads(Path(plan).read_text(encoding="utf-8"))
+    doc["washout_s"] = 0
+    Path(plan).write_text(json.dumps(doc), encoding="utf-8")
+    payload = mcp_server.switchback_analyze(archives=archives, plan=plan, target="TI201.PV")
+    assert payload["result_kind"] == "refusal"
+    assert payload["error_type"] == "ScheduleMismatch"
 
 
 def test_a_censored_baseline_comes_back_as_a_refusal(

@@ -18,6 +18,7 @@ change any interface, and the entries say which ones moved.
   `--history` and `--history-window` for a power readout, repeatable
   `--covariate`, and `--json`. A `tsdive run` plan can list `switchback`
   as a step.
+- `tsdive-mcp` serves `switchback_analyze` as a sixth tool.
 - `docs/SWITCHBACK.md` and `examples/switchback/make_trial.py`, a
   synthetic trial for its transcripts.
 - Two benchmark rows: the switchback claim rate at a zero shift and its
