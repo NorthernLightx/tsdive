@@ -342,9 +342,9 @@ def null_digital_state_values(
     one is worse. This holds on every role, ``MODE`` included.
 
     What survives these guards must be numeric. A leftover string on a
-    measurement tag is a schema error naming the tag and the first
-    offending value, because nulling it would delete data the caller never
-    said was unusable. ``role=MODE`` is the one legal string-valued path: a
+    measurement tag is a schema error naming the tag and every offending
+    string with its row count, because nulling it would delete data the
+    caller never said was unusable. ``role=MODE`` is the one legal string-valued path: a
     mode tag's value *is* a state label ("R1"), so it is left verbatim
     and no numeric physics is computed from it.
     """
@@ -383,22 +383,63 @@ def null_digital_state_values(
     # anything it could not read is re-checked one row at a time. Normally
     # that is zero rows: this is the refusal path, not the fast path.
     unread = np.flatnonzero(np.isnan(coerced) & values.notna().to_numpy())
+    strings: dict[str, int] = {}
     for pos in unread:
         v = values.iloc[int(pos)]
         parsed = _to_float_or_none(v)
         if parsed is None:
-            where = f"tag {tag}: " if tag is not None else ""
-            example = json.dumps({str(v): "BAD"})
-            raise SchemaError(
-                f"{where}value {v!r} is not numeric and no digital state or "
-                "quality_codes entry explains it; if it is a historian state such as "
-                f"a PI digital state, map it in the tag's quality_codes, for example "
-                f"{example}, and declare role=MODE only for a tag whose values are "
-                "string states"
-            )
-        coerced[int(pos)] = parsed
+            strings[str(v)] = strings.get(str(v), 0) + 1
+        else:
+            coerced[int(pos)] = parsed
+    if strings:
+        raise SchemaError(_unexplained_strings(strings, tag))
     out["value"] = pd.array(coerced, dtype="Float64")
     return out
+
+
+def _unexplained_strings(strings: dict[str, int], tag: object) -> str:
+    """The refusal for value-column strings that no state or code explains, one per string."""
+    where = f"tag {tag}: " if tag is not None else ""
+    listed = [f"{s!r} ({n} row{'' if n == 1 else 's'})" for s, n in strings.items()]
+    example = json.dumps(dict.fromkeys(strings, "BAD"))
+    if len(listed) == 1:
+        return (
+            f"{where}value {listed[0]} is not numeric and no digital state or "
+            "quality_codes entry explains it; if it is a historian state such as "
+            "a PI digital state, map it in the tag's quality_codes, for example "
+            f"{example}, and declare role=MODE only for a tag whose values are "
+            "string states"
+        )
+    return (
+        f"{where}values {', '.join(listed[:-1])} and {listed[-1]} are not numeric and no "
+        "digital state or quality_codes entry explains them; if they are historian "
+        "states such as PI digital states, map each in the tag's quality_codes, for "
+        f"example {example}, and declare role=MODE only for a tag whose values are "
+        "string states"
+    )
+
+
+def value_strings(values: pd.Series) -> list[str]:
+    """The distinct strings of a value column that do not read as numbers, in row order.
+
+    Empty when no value reads as a number: such a column holds the states
+    of a ``role=MODE`` tag, not a measurement with digital states in it.
+
+    Examples:
+        >>> import pandas as pd
+        >>> from tsdive.store.quality import value_strings
+        >>> value_strings(pd.Series(["40.1", "Shutdown", "40.3", "I/O Timeout", "Shutdown"]))
+        ['Shutdown', 'I/O Timeout']
+        >>> value_strings(pd.Series(["R1", "R2"]))
+        []
+    """
+    present = values[values.notna()]
+    numeric = pd.to_numeric(present, errors="coerce").notna().to_numpy()
+    unread = pd.unique(present[~numeric])
+    found = [str(v) for v in unread if _to_float_or_none(v) is None]
+    if not numeric.any() and len(found) == len(unread):
+        return []
+    return found
 
 
 def is_unmapped(raw: object, codes: QualityCodes = None) -> bool:

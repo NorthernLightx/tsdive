@@ -85,7 +85,8 @@ tsdive archive, a missing quality column at ingest, naive timestamps
 without `--tz`, a date that reads day first and month first, a metadata
 key tsdive does not define, a `quality_codes` entry that names no
 severity, or a string value on a tag that is not `role: MODE` and that
-`quality_codes` does not name.
+`quality_codes` does not name. A single-tag ingest raises it for an
+export of several tags, one column naming the tag of each row.
 
 ```csv file=export.csv
 timestamp,value,quality
@@ -153,9 +154,10 @@ What to do: read every archive under one `--basis`.
 
 ### NonMonotonicIndex
 
-Raised when timestamps go backwards. tsdive does not sort them, because
-gaps over a re-sorted index would describe an order the historian never
-had. The error carries the offending positions.
+Raised when timestamps go backwards, by `ingest` before it writes the
+archive and by every read of an archive. tsdive does not sort them,
+because gaps over a re-sorted index would describe an order the
+historian never had. The error carries the offending positions.
 
 ```pycon
 >>> import pandas as pd
@@ -176,8 +178,7 @@ had. The error carries the offending positions.
 ```
 
 What to do: fix the export. A backwards step in a CSV usually comes
-from dates read in the wrong order, day first or month first, or from a
-DST fall-back hour written in local time without an offset.
+from dates read in the wrong order, day first or month first.
 
 ### UnresolvedUnitError
 
@@ -235,6 +236,36 @@ tsdive screen data/demo/fic101_demo.parquet --mode modes.parquet \
 
 What to do: choose a baseline that covers every regime the window
 visits, or screen without `--mode`.
+
+### ZeroSpreadBaseline
+
+Raised by `screen`, `spc` and `screen --mode` when the GOOD values of the
+baseline do not spread, so its MAD or moving-range scale is 0. Limits of
+zero width would flag every sample that differs from the baseline's
+center. `mspc` raises it for a tag whose standard deviation over the
+baseline is 0, and `compare` prints it as the reason of its joint
+table. A tag that sits on one value of a coarse lattice for most of the
+baseline is the usual cause. The message names the tag, the baseline
+window, the count of distinct values and the most common value with its
+share.
+
+```pycon
+>>> import pandas as pd
+>>> from tsdive.baselines import mad_baseline
+>>> history = pd.DataFrame({
+...     "timestamp": pd.date_range("2024-03-01", periods=120, freq="min", tz="UTC"),
+...     "value": [20.0] * 119 + [20.5], "quality": ["GOOD"] * 120})
+>>> mad_baseline(history)
+Traceback (most recent call last):
+    ...
+tsdive.errors.ZeroSpreadBaseline: the MAD scale is 0, because the 120 GOOD
+baseline samples hold 2 distinct values and 20 makes up 99% of them; choose a
+baseline window where the tag moves
+
+```
+
+What to do: choose a baseline window where the tag moves. `tsdive
+profile` over a candidate window prints its `distinct` count.
 
 ### PopulationTooSparse
 

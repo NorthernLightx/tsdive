@@ -45,13 +45,14 @@ Every tag is listed, ranked by the size of its level shift.
 
 ## Joint structure
 
-- `components 1 of 2   explained 0.9839 -> 0.2643 on after`: the PCA
+- `components 1 of 2   explained 0.9767 -> 0.5129 on after`: the PCA
   fitted on the before period keeps one component, which carries 98% of
-  the before variance and 26% of the after variance.
-- `rows 121   T2 breaches 22   SPE breaches 108`: after rows, and those
+  the before variance and 51% of the after variance.
+- `rows 121   T2 breaches 70   SPE breaches 108`: after rows, and those
   above the before period's T2 and SPE limits.
-- `SPE contributors   TIC101.PV 79%   FIC101.PV 21%`: the temperature
-  carries four fifths of the broken structure.
+- `SPE contributors   TIC101.PV 50%   FIC101.PV 50%`: with two tags and
+  one component the residual falls on both tags equally, so the shares
+  name neither. The tag table names the temperature.
 
 ## What the demo says
 

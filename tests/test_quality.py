@@ -254,7 +254,7 @@ def test_an_undeclared_value_state_names_the_quality_codes_route_first():
     with pytest.raises(SchemaError) as info:
         null_digital_state_values(frame, tag="plant1:FI2201.PV", codes={"Good": "GOOD"})
     message = str(info.value)
-    assert message.startswith("tag plant1:FI2201.PV: value 'I/O Timeout' is not numeric")
+    assert message.startswith("tag plant1:FI2201.PV: value 'I/O Timeout' (1 row) is not numeric")
     assert message.index('{"I/O Timeout": "BAD"}') < message.index("role=MODE only for a tag")
 
 

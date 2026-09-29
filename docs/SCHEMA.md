@@ -124,8 +124,9 @@ it is a `StrEnum`, so those operators compare alphabetically.
 
 After digital-state rows are nulled, what is left in `value` must be
 numeric. A leftover string on a measurement tag raises `SchemaError`
-naming the tag and the first offending value: nulling it would delete
-data nobody said was unusable, and coercing it would invent a number.
+naming the tag and every offending string with its row count: nulling
+it would delete data nobody said was unusable, and coercing it would
+invent a number.
 
 Some historians write a state in the value column instead of a number:
 PI writes `I/O Timeout`, `Shutdown` or `Pt Created`. Map each such state
@@ -287,17 +288,22 @@ exactly what its schema promises.
 template and stops. It takes `--timestamp-col`, `--value-col` and
 `--quality-col` like the ingest itself, leaves `identity`, `name` and
 `unit_raw` null for you to fill, and lists each raw code of the quality
-column under `quality_codes`. A `_comments` object says what each key
-means and which columns the export has; the reader checks it is an
-object of strings and skips it, so you can keep it. The template raises
+column under `quality_codes`. A value column that holds numbers and
+strings adds each string to `quality_codes` with no severity. A
+`_comments` object says what each key means and which columns the
+export has; the reader checks it is an object of strings and skips it,
+so you can keep it. The template raises
 `SchemaError` until the identity, the name and every quality code are
 filled. An existing file is replaced only with `--overwrite`.
 
 Timestamps that already carry an offset are converted to UTC and `--tz`
 is ignored. Naive timestamps need `--tz <IANA zone>`: they are localised
 to it and then converted. Without `--tz` the ingest raises `SchemaError`,
-because an export with no offset does not name an instant. Local times that a DST transition makes ambiguous or
-nonexistent are refused too, naming the zone.
+because an export with no offset does not name an instant. Ingest places
+the hour the clocks repeat in autumn by row order: its first pass takes
+the summer offset and its second the winter one. A repeated hour that
+the export holds once or out of time order raises `SchemaError`, and so
+does a spring time the clocks skip.
 
 A numeric date such as `01/02/2026` reads as 1 February day first and 2
 January month first. A column holding one raises `SchemaError` until you

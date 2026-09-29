@@ -95,7 +95,7 @@ prints the same object on stdout for a refusal and exits with status 3. `error_t
 class from `tsdive.errors`: `SchemaError`, `InsufficientQuality`,
 `IncomparableSamplingError`, `NonMonotonicIndex`,
 `UnresolvedUnitError`, `IncomparableUnitsError`, `RegimeTooSparse`,
-`PopulationTooSparse`, `GroupLeakage`, `MspcAlignmentError`,
+`ZeroSpreadBaseline`, `PopulationTooSparse`, `GroupLeakage`, `MspcAlignmentError`,
 `DesignTooSmall`, `ScheduleMismatch` or `NarratorUnavailable`. `docs/SCOPE.md` states which check raises which
 class.
 

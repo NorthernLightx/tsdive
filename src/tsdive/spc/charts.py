@@ -15,6 +15,8 @@ from typing import cast
 import numpy as np
 import pandas as pd
 
+from tsdive.errors import ZeroSpreadBaseline
+
 # Shewhart constants for subgroup size n (ASTM-style tables):
 XBAR_A2 = {
     2: 1.880,
@@ -52,6 +54,17 @@ class RuleHit:
 
 
 def individuals_limits(center: float, sigma: float) -> ControlLimits:
+    """Individuals chart limits at ``center`` plus and minus 3 ``sigma``.
+
+    A ``sigma`` of 0 raises ``ZeroSpreadBaseline``: both limits would sit
+    on the center, and every sample off it would breach them.
+    """
+    if sigma == 0:
+        raise ZeroSpreadBaseline(
+            f"sigma is 0, so both limits sit on the center {center:g} and every sample "
+            "off it would breach them; compute sigma from a baseline window where the "
+            "tag moves"
+        )
     return ControlLimits(
         center=center, ucl=center + 3 * sigma, lcl=center - 3 * sigma, basis="individuals 3-sigma"
     )

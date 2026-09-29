@@ -189,6 +189,32 @@ def test_mspc_agrees_with_the_cli(demo_archives, capsys):
     assert len(a.frame) == len(a.test.index) == 121
 
 
+def test_mspc_breaches_do_not_depend_on_the_units_of_a_tag(demo_archives, tmp_path):
+    """TIC-101 stored in thousandths of a degree breaches T2 and SPE at the same rows."""
+    from dataclasses import replace
+
+    import numpy as np
+
+    from tsdive.store.tagstore import meta_from_parquet
+
+    flow, temp = demo_archives
+    meta = meta_from_parquet(temp)
+    assert meta.eng_range is not None
+    milli = replace(
+        meta, eng_range=EngRange(meta.eng_range.zero * 1000.0, meta.eng_range.span * 1000.0)
+    )
+    frame = pd.read_parquet(temp)
+    frame["value"] = frame["value"] * 1000.0
+    scaled = tsdive.write_tag(tmp_path / "TIC101.PV.parquet", frame, milli)
+
+    plain = tsdive.mspc([flow, temp], DEMO_BEFORE, DEMO_AFTER)
+    thousand = tsdive.mspc([flow, scaled], DEMO_BEFORE, DEMO_AFTER)
+    assert thousand.found.t2_breaches == plain.found.t2_breaches
+    assert thousand.found.spe_breaches == plain.found.spe_breaches
+    np.testing.assert_allclose(thousand.found.t2, plain.found.t2, rtol=1e-9)
+    np.testing.assert_allclose(thousand.found.spe, plain.found.spe, rtol=1e-9)
+
+
 def test_compare_agrees_with_the_cli(demo_archives, capsys):
     flow, temp = demo_archives
     a = tsdive.compare([flow, temp], DEMO_BEFORE, DEMO_AFTER)

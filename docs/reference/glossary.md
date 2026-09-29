@@ -156,7 +156,7 @@ as `ledger.json`, `ledger.txt` and `report.html`.
 
 `explained` in `mspc` and `compare`: the share of the baseline's
 variance the kept PCA components carry. For the two demo tags it is
-0.9839 from 20:00 to 23:00 and 0.2643 from 04:00 to 06:00, after the
+0.9767 from 20:00 to 23:00 and 0.5129 from 04:00 to 06:00, after the
 temperature stops tracking the flow.
 
 ## Finding {#finding}

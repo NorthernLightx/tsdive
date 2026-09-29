@@ -3,6 +3,74 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
+## 0.7.0 - 2026-09-29
+
+### Added
+
+- `tsdive ingest --tag-col COL` reads a long export, one row per tag and
+  timestamp with the tag in `COL`, and writes one archive per tag into
+  `--out`. Metadata comes from `--meta-dir`, `--init-meta DIR` writes one
+  template per tag, `--tags` picks a subset, and every check runs before
+  the first archive is written. `tsdive.ingest_long` and
+  `tsdive.init_long_meta` are the Python forms.
+- `tsdive ingest --sep`, `--decimal` and `--encoding`, and the `sep`,
+  `decimal` and `encoding` keywords of every ingest and template
+  function, read a CSV with another column separator, decimal mark or
+  text encoding, such as the `;`-separated, comma-decimal cp1252 file of
+  a German Excel. Given for a parquet file, they are a usage error (exit
+  2).
+- `ZeroSpreadBaseline`, a refusal for a baseline whose GOOD values do not
+  spread. The message names the tag, the baseline window, the count of
+  distinct values and the most common value with its share.
+- A metadata template lists each string of a value column that holds
+  numbers and strings, such as a PI digital state, under
+  `quality_codes` with no severity.
+
+### Changed
+
+- The sdist lists the paths it holds: source, tests, docs, examples,
+  scripts and the top-level project files. A local build leaves out
+  files that one clone excludes from git in `.git/info/exclude`.
+- Ingest parses a timestamp column in one pass. It parses one row at a
+  time only a column whose rows carry different UTC offsets, and the rows
+  the one pass cannot read. A 129,600-row export of one-minute samples
+  ingests in 1.9 s instead of 99.6 s, and every archive the test suite
+  writes is byte-identical.
+- The `SchemaError` for strings in the value column lists every string
+  with its row count, and its example maps each of them.
+- `mad_baseline`, `moving_range_baseline` and `regime_baselines` take
+  `label`, the tag and window their refusal names.
+- `mspc` and the joint table of `compare` divide each tag by its
+  baseline standard deviation before the PCA, so a tag's unit no longer
+  sets its weight. On the demo `mspc` reports 70 T2 breaches of 121
+  rows instead of 22 (SPE stays at 108), explained variance 0.9767
+  instead of 0.9839, and limits T2 3.759 and SPE 0.2859 instead of 4.052
+  and 0.03662. `compare` keeps 0.5129 of the after variance instead of
+  0.2643, and its two SPE contributors carry 50% each instead of 79% and
+  21%. `PcaModel` carries the `scale` it applies.
+
+### Fixed
+
+- A single-tag ingest of an export that holds several tags raises
+  `SchemaError` (exit 3) naming the tag column and `--tag-col`, instead
+  of writing one archive that mixes every tag. The refusal applies when
+  timestamps repeat or run backwards and a column the ingest leaves
+  behind splits the rows into overlapping series, each in time order.
+- Ingest raises `NonMonotonicIndex` (exit 3) for rows whose timestamps
+  run backwards, instead of writing an archive every read refuses.
+- Ingest places the hour the clocks repeat in autumn by row order, first
+  pass at the summer offset, instead of refusing every export in local
+  time that crosses the change. A time in that hour the export holds
+  once, rows of it out of time order, and a spring time the clocks skip
+  raise `SchemaError` with a message for each case.
+- `screen`, `spc` and `screen --mode` raise `ZeroSpreadBaseline` (exit
+  3) for a baseline whose MAD or moving-range scale is 0, instead of
+  limits of zero width that flag every sample off the center. `mspc`
+  raises it for a tag whose baseline standard deviation is 0, and
+  `individuals_limits` for a sigma of 0. In `compare`, the tag table
+  prints `no spread before` as the flagged reason, and the joint table
+  is refused with the error as its reason.
+
 ## 0.6.0 - 2026-09-29
 
 ### Added

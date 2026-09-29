@@ -77,6 +77,24 @@ path = "src/tsdive/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/tsdive"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/examples",
+    "/scripts",
+    "/conftest.py",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/BENCHMARKS.md",
+    "/Makefile",
+    "/mkdocs.yml",
+    "/pyproject.toml",
+    "/uv.lock",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

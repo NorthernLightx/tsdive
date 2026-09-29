@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -173,6 +174,7 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
         score_isolation,
         train_isolation,
     )
+    from tsdive.errors import ZeroSpreadBaseline
     from tsdive.features import extract
     from tsdive.mspc import align_windows, detect, fit_pca
     from tsdive.spc import apply_rules, individuals_limits
@@ -224,6 +226,22 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
     ff3 = f"{clean3.n_flagged / max(clean3.n_screened, 1) * 100:.1f}%"
     rows.append(
         ("3", "MAD false-flag rate (clean day)", ff3, "backbone seed=42 loop0", "provisional")
+    )
+    # A tag on a 0.5 lattice: 119 of 120 baseline samples read 20.0.
+    lattice = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(DAY1[0], periods=120, freq="min"),
+            "value": [20.5 if i == 37 else 20.0 for i in range(120)],
+            "quality": ["GOOD"] * 120,
+        }
+    )
+    try:
+        mad_baseline(lattice)
+        zero3 = "not refused"
+    except ZeroSpreadBaseline:
+        zero3 = "ZeroSpreadBaseline"
+    rows.append(
+        ("3", "MAD baseline, 119 of 120 samples on one value", zero3, "0.5 lattice", "")
     )
 
     mode_ident = next(t for t in store.list_tags() if t.point_id == "FIC000.MODE")
@@ -440,8 +458,10 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
         store.read_window(i, DAY2[0].to_pydatetime(), DAY2[1].to_pydatetime(), _contract())
         for i in pv_ids
     ]
-    model6 = fit_pca(align_windows(w_train, rate_s=60, min_coverage=0.9))
-    det6 = detect(model6, align_windows(w_mon, rate_s=60, min_coverage=0.9))
+    a_train6 = align_windows(w_train, rate_s=60, min_coverage=0.9)
+    a_mon6 = align_windows(w_mon, rate_s=60, min_coverage=0.9)
+    model6 = fit_pca(a_train6)
+    det6 = detect(model6, a_mon6)
     burst = truth.iloc[3]  # variance_burst on loop3
     fs6, fe6 = pd.Timestamp(burst["start"]), pd.Timestamp(burst["end"])
     breach_ts = det6.t2_breaches
@@ -472,6 +492,23 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
             str(len(breach_ts)),
             "backbone seed=42 4xPV",
             "includes drift/spike loops",
+        )
+    )
+
+    def thousandths(aligned):
+        matrix = aligned.matrix.copy()
+        matrix[:, 0] *= 1000.0
+        return replace(aligned, matrix=matrix)
+
+    det6k = detect(fit_pca(thousandths(a_train6)), thousandths(a_mon6))
+    same6 = det6k.t2_breaches == breach_ts and det6k.spe_breaches == det6.spe_breaches
+    rows.append(
+        (
+            "6",
+            "T2 and SPE breaches with one PV in thousandths",
+            "unchanged" if same6 else "CHANGED",
+            "backbone seed=42 4xPV",
+            "",
         )
     )
 

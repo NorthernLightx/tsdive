@@ -119,6 +119,18 @@ def test_a_flat_before_period_refuses_the_level_shift_and_the_spread(archive_fac
     assert row.spread_ratio is None
     assert row.level_shift_reason == "no spread before"
     assert row.spread_reason == "no spread before"
+    assert row.flagged_fraction is None
+    assert row.flagged_reason == "no spread before"
+
+
+def test_a_flat_before_period_refuses_the_joint_table(archive_factory):
+    flat = _tag(archive_factory, "FIC101.PV", [50.0] * SPLIT + _noisy(4)[SPLIT:])
+    other = _tag(archive_factory, "TIC101.PV", _noisy(5))
+    joint = compare([str(flat), str(other)], BEFORE, AFTER).joint
+    assert joint.reason is not None
+    assert joint.reason.startswith(
+        "ZeroSpreadBaseline: plant1:FIC101.PV: the standard deviation is 0, because the"
+    )
 
 
 def test_the_flagged_share_screens_the_after_period_on_the_before_baseline(

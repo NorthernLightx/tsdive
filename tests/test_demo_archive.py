@@ -56,4 +56,4 @@ def test_the_demo_burst_lands_in_spe_and_in_part_of_t2(tmp_path, capsys):
     # What build_tic101's comment claims: SPE carries most of the burst
     # and T2 is not quiet through it.
     assert "SPE breaches  108" in out
-    assert "T2 breaches  22" in out
+    assert "T2 breaches  70" in out

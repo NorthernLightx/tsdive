@@ -52,7 +52,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import tsdive  # noqa: E402
 from tsdive.baselines import mad_baseline  # noqa: E402
-from tsdive.errors import InsufficientQuality  # noqa: E402
+from tsdive.errors import InsufficientQuality, ZeroSpreadBaseline  # noqa: E402
 from tsdive.eval import (  # noqa: E402
     conformal_p_values,
     fires,
@@ -271,7 +271,7 @@ def fit_variables(
         except InsufficientQuality as e:
             unusable[variable] = f"InsufficientQuality: {e}"
             continue
-        if baseline.scale <= 0:
+        except ZeroSpreadBaseline:
             unusable[variable] = "MAD over the fit windows is zero, so no robust z exists"
             continue
         fits[variable] = (float(baseline.center), float(baseline.scale))

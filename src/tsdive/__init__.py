@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 from tsdive.analyses import (
     CompareAnalysis,
@@ -19,7 +19,9 @@ from tsdive.analyses import (
 from tsdive.api import (
     Profile,
     ingest,
+    ingest_long,
     ingest_wide,
+    init_long_meta,
     init_meta,
     init_tag_meta,
     profile,
@@ -41,6 +43,7 @@ from tsdive.errors import (
     SchemaError,
     TSDiveError,
     UnresolvedUnitError,
+    ZeroSpreadBaseline,
 )
 from tsdive.store.identity import EngRange, Role, TagIdentity, TagMeta
 from tsdive.store.sampling_contract import (
@@ -93,10 +96,13 @@ __all__ = [
     "TagStore",
     "UnresolvedUnitError",
     "Window",
+    "ZeroSpreadBaseline",
     "__version__",
     "compare",
     "ingest",
+    "ingest_long",
     "ingest_wide",
+    "init_long_meta",
     "init_meta",
     "init_tag_meta",
     "mspc",

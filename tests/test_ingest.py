@@ -9,7 +9,7 @@ import pytest
 
 import tsdive
 from tsdive.cli import cmd_ingest, cmd_profile
-from tsdive.errors import SchemaError
+from tsdive.errors import NonMonotonicIndex, SchemaError
 from tsdive.store.tagstore import meta_from_parquet, safe_filename
 
 META = {
@@ -310,8 +310,8 @@ def test_a_row_off_the_stated_format_names_value_and_format(tmp_path):
 
 
 def test_unparseable_timestamp_names_the_offending_value(tmp_path):
-    src = _csv(tmp_path, stamps=["2024-03-01T00:00:00Z", "not a time"])
-    with pytest.raises(SchemaError, match="is not a timestamp tsdive can parse"):
+    src = _csv(tmp_path, stamps=["2024-03-01T00:00:00Z", "not a time", "never"])
+    with pytest.raises(SchemaError, match="'not a time' is not a timestamp tsdive can parse"):
         tsdive.ingest(
             src,
             out=tmp_path / "garbage.parquet",
@@ -320,6 +320,22 @@ def test_unparseable_timestamp_names_the_offending_value(tmp_path):
             value_col="v",
             quality_col="q",
         )
+
+
+def test_one_parse_reads_a_uniform_column_and_other_layouts_row_by_row():
+    from tsdive.api import _parse_timestamps
+
+    minutes = pd.date_range("2024-03-01", periods=1000, freq="min")
+    uniform = pd.Series(minutes.strftime("%d/%m/%Y %H:%M"))
+    parsed = _parse_timestamps(uniform, "ts", dayfirst=True)
+    assert str(parsed.dtype) == "datetime64[ns]"
+    assert parsed.iloc[-1] == pd.Timestamp("2024-03-01 16:39")
+
+    # The first row fixes the inferred format; the rows that miss it parse one by one.
+    mixed = pd.Series(["2024-03-01", "2024-03-01 00:01:00", "2024-03-01T00:02:00"])
+    assert list(_parse_timestamps(mixed, "ts")) == list(
+        pd.date_range("2024-03-01", periods=3, freq="min")
+    )
 
 
 def test_missing_quality_column_is_refused(tmp_path, capsys):
@@ -511,6 +527,114 @@ def test_ingest_refuses_an_unsupported_input(tmp_path):
         )
 
 
+# A German-locale Excel CSV: ';' between columns, ',' as the decimal mark,
+# cp1252 text with a degree sign in the header, and one PI digital state.
+GERMAN_ROWS = [
+    "Zeitstempel;Wert \N{DEGREE SIGN}C;Status",
+    "28.10.2026 06:00:00;40,06;Good",
+    "28.10.2026 06:05:00;40,11;Good",
+    "28.10.2026 06:10:00;Shutdown;Bad",
+    "28.10.2026 06:15:00;40,02;Good",
+]
+GERMAN_ARGS = [
+    "--timestamp-col", "Zeitstempel", "--value-col", "Wert \N{DEGREE SIGN}C",
+    "--quality-col", "Status", "--tz", "Europe/Berlin", "--dayfirst",
+]
+
+
+def _german_csv(tmp_path):
+    path = tmp_path / "de.csv"
+    path.write_bytes(("\r\n".join(GERMAN_ROWS) + "\r\n").encode("cp1252"))
+    return path
+
+
+def test_sep_decimal_and_encoding_read_a_german_excel_export(tmp_path, capsys):
+    out = tmp_path / "de.parquet"
+    meta = _meta_file(tmp_path, quality_codes={"Good": "GOOD", "Bad": "BAD", "Shutdown": "BAD"})
+    rc = cmd_ingest(
+        [str(_german_csv(tmp_path)), "--out", str(out), "--meta", str(meta), *GERMAN_ARGS,
+         "--sep", ";", "--decimal", ",", "--encoding", "cp1252"]
+    )
+    assert rc == 0, capsys.readouterr().err
+    stored = pd.read_parquet(out)
+    assert list(stored["value"]) == ["40.06", "40.11", "Shutdown", "40.02"]
+    assert tsdive.profile(out).stats.features.max == 40.11
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (
+            [],
+            "[SchemaError] de.csv: byte 0xb0 at offset 17 is not utf-8; pass --encoding NAME",
+        ),
+        (
+            ["--encoding", "cp1252"],
+            "[SchemaError] de.csv: the header reads as one column 'Zeitstempel;Wert "
+            "\N{DEGREE SIGN}C;Status'; the export separates its columns with ';', so pass "
+            "--sep ';'",
+        ),
+    ],
+    ids=["encoding", "sep"],
+)
+def test_a_csv_read_with_the_wrong_format_names_the_flag(tmp_path, capsys, extra, message):
+    out = tmp_path / "de.parquet"
+    rc = cmd_ingest(
+        [str(_german_csv(tmp_path)), "--out", str(out), "--meta", str(_meta_file(tmp_path)),
+         *GERMAN_ARGS, *extra]
+    )
+    assert rc == 3
+    assert message in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_csv_options_reach_wide_long_and_template_reads(tmp_path):
+    options = {"sep": ";", "decimal": ",", "encoding": "cp1252"}
+    wide = tmp_path / "wide.csv"
+    wide.write_bytes("ts;FIC101.PV;TIC201.PV\r\n2024-03-01T00:00:00Z;1,5;2,5\r\n".encode("cp1252"))
+    (path,) = tsdive.init_meta(wide, out_dir=tmp_path / "wmeta", source_id="plant1",
+                               timestamp_col="ts", tags=["FIC101.PV"], **options)
+    written = tsdive.ingest_wide(wide, out_dir=tmp_path / "wide", meta_dir=path.parent,
+                                 timestamp_col="ts", tags=["FIC101.PV"],
+                                 assume_quality="GOOD", **options)
+    assert list(pd.read_parquet(written[0])["value"]) == [1.5]
+
+    long = tmp_path / "long.csv"
+    long.write_bytes(
+        "tag;ts;v\r\nA;2024-03-01T00:00:00Z;1,5\r\nB;2024-03-01T00:00:00Z;2,5\r\n".encode("cp1252")
+    )
+    meta_dir = tmp_path / "lmeta"
+    tsdive.init_long_meta(long, out_dir=meta_dir, source_id="plant1", tag_col="tag",
+                          timestamp_col="ts", value_col="v", **options)
+    written = tsdive.ingest_long(long, out_dir=tmp_path / "long", meta_dir=meta_dir,
+                                 tag_col="tag", timestamp_col="ts", value_col="v",
+                                 assume_quality="GOOD", **options)
+    assert [list(pd.read_parquet(p)["value"]) for p in written] == [[1.5], [2.5]]
+
+    template = tsdive.init_tag_meta(_german_csv(tmp_path), out=tmp_path / "de.json",
+                                    timestamp_col="Zeitstempel",
+                                    value_col="Wert \N{DEGREE SIGN}C", quality_col="Status",
+                                    **options)
+    codes = json.loads(template.read_text(encoding="utf-8"))["quality_codes"]
+    assert codes == {"Bad": "BAD", "Good": "GOOD", "Shutdown": None}
+
+
+def test_python_callers_see_the_keyword_and_parquet_takes_no_csv_option(tmp_path):
+    meta = tsdive.read_meta_json(_meta_file(tmp_path))
+    with pytest.raises(SchemaError, match=r"so pass sep=';'$"):
+        tsdive.ingest(_german_csv(tmp_path), out=tmp_path / "x.parquet", meta=meta,
+                      encoding="cp1252")
+    with pytest.raises(ValueError, match=r"fic101\.parquet: sep applies to CSV input"):
+        tsdive.ingest(_parquet_export(tmp_path), out=tmp_path / "y.parquet", meta=meta, sep=";")
+
+
+def _parquet_export(tmp_path):
+    path = tmp_path / "fic101.parquet"
+    pd.DataFrame({"timestamp": AWARE, "value": [1.0, 2.0, 3.0], "quality": ["GOOD"] * 3}
+                 ).to_parquet(path)
+    return path
+
+
 def test_ingest_does_not_overwrite_an_archive(tmp_path):
     src = _csv(tmp_path, stamps=AWARE)
     meta = tsdive.read_meta_json(_meta_file(tmp_path))
@@ -570,6 +694,66 @@ def test_a_pi_digital_state_in_the_value_column_ingests_once_declared(tmp_path, 
     assert p.stats.features.max == 52.0
 
 
+def _three_state_export(tmp_path):
+    path = tmp_path / "states.csv"
+    pd.DataFrame(
+        {
+            "ts": [f"2024-03-01T00:0{k}:00Z" for k in range(6)],
+            "v": ["50.0", "Shutdown", "I/O Timeout", "I/O Timeout", "Comm Fail", "52.0"],
+        }
+    ).to_csv(path, index=False)
+    return path
+
+
+def test_every_undeclared_state_is_named_in_one_refusal(tmp_path):
+    with pytest.raises(SchemaError) as info:
+        tsdive.ingest(_three_state_export(tmp_path), out=tmp_path / "s.parquet",
+                      meta=tsdive.read_meta_json(_meta_file(tmp_path)), timestamp_col="ts",
+                      value_col="v", assume_quality="GOOD")
+    assert str(info.value).startswith(
+        "tag plant1:FIC101.PV: values 'Shutdown' (1 row), 'I/O Timeout' (2 rows) and "
+        "'Comm Fail' (1 row) are not numeric"
+    )
+    assert '{"Shutdown": "BAD", "I/O Timeout": "BAD", "Comm Fail": "BAD"}' in str(info.value)
+
+
+def test_the_template_lists_every_state_and_ingest_waits_for_their_severity(tmp_path):
+    template = tsdive.init_tag_meta(_three_state_export(tmp_path), out=tmp_path / "t.json",
+                                    timestamp_col="ts", value_col="v")
+    payload = json.loads(template.read_text(encoding="utf-8"))
+    assert payload["quality_codes"] == {"Shutdown": None, "I/O Timeout": None, "Comm Fail": None}
+
+    payload.pop("_comments")
+    payload.update(identity=META["identity"], name=META["name"])
+    template.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(SchemaError, match="quality_codes"):
+        tsdive.read_meta_json(template)
+
+    payload["quality_codes"] = dict.fromkeys(payload["quality_codes"], "BAD")
+    template.write_text(json.dumps(payload), encoding="utf-8")
+    out = tsdive.ingest(_three_state_export(tmp_path), out=tmp_path / "s.parquet",
+                        meta=tsdive.read_meta_json(template), timestamp_col="ts",
+                        value_col="v", assume_quality="GOOD")
+    counts = {k.value: n for k, n in tsdive.profile(out).physics.severity_counts.items()}
+    assert counts == {"GOOD": 2, "UNCERTAIN": 0, "BAD": 4}
+
+
+def test_a_template_adds_value_states_after_the_quality_codes(tmp_path):
+    template = tsdive.init_tag_meta(_pi_export(tmp_path), out=tmp_path / "t.json",
+                                    timestamp_col="ts", value_col="v", quality_col="q")
+    codes = json.loads(template.read_text(encoding="utf-8"))["quality_codes"]
+    assert codes == {"Bad": "BAD", "Good": "GOOD", "I/O Timeout": None}
+
+
+def test_a_column_of_string_states_adds_nothing_to_the_template(tmp_path):
+    """A MODE tag's values are all states, so none of them is listed as a quality code."""
+    path = tmp_path / "mode.csv"
+    pd.DataFrame({"ts": AWARE, "v": ["R0", "R1", "R1"]}).to_csv(path, index=False)
+    template = tsdive.init_tag_meta(path, out=tmp_path / "t.json", timestamp_col="ts",
+                                    value_col="v")
+    assert json.loads(template.read_text(encoding="utf-8"))["quality_codes"] is None
+
+
 def test_mode_tag_string_states_ingest_cleanly(tmp_path):
     path = tmp_path / "mode.csv"
     pd.DataFrame({"ts": AWARE, "v": ["R0", "R1", "R1"], "q": ["GOOD"] * 3}).to_csv(
@@ -586,6 +770,127 @@ def test_mode_tag_string_states_ingest_cleanly(tmp_path):
         quality_col="q",
     )
     assert list(tsdive.profile(out).frame["value"]) == ["R0", "R1", "R1"]
+
+
+# ------------------------------------------------- several tags in one export
+
+LONG_TAGS = {"PI101.PV": 3.5, "FI102.PV": 40.0, "TI103.PV": 181.0}
+LONG_INSTANTS = pd.date_range("2026-03-01", periods=288, freq="5min", tz="UTC")
+
+
+def _long_csv(tmp_path, *, sort_by="Timestamp", name="long.csv"):
+    """Three tags x 288 rows at 5 min in one Tag/Timestamp/Value/Status export."""
+    rows = [
+        {"Tag": tag, "Timestamp": t.isoformat(), "Value": level + 0.01 * k, "Status": "Good"}
+        for tag, level in LONG_TAGS.items()
+        for k, t in enumerate(LONG_INSTANTS)
+    ]
+    path = tmp_path / name
+    pd.DataFrame(rows).sort_values(sort_by, kind="stable").to_csv(path, index=False)
+    return path
+
+
+@pytest.mark.parametrize("sort_by", ["Timestamp", "Tag"], ids=["time-sorted", "tag-sorted"])
+def test_a_merged_multi_tag_export_is_refused(tmp_path, capsys, sort_by):
+    out = tmp_path / "merged.parquet"
+    rc = cmd_ingest(
+        [
+            str(_long_csv(tmp_path, sort_by=sort_by)),
+            "--out",
+            str(out),
+            "--meta",
+            str(_meta_file(tmp_path)),
+            "--timestamp-col",
+            "Timestamp",
+            "--value-col",
+            "Value",
+            "--assume-quality",
+            "GOOD",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert "[SchemaError] long.csv: 864 rows share a timestamp" in err
+    assert "column 'Tag' splits the rows into 3 overlapping series" in err
+    assert "pass --tag-col Tag to write one archive per tag" in err
+    assert not out.exists()
+
+
+def test_a_merged_export_on_offset_clocks_is_refused_naming_ingest_long(tmp_path):
+    """Tags sampled at different instants never share a timestamp but still run backwards."""
+    frame = pd.DataFrame(
+        {
+            "Tag": ["A"] * 3 + ["B"] * 3,
+            "Timestamp": [
+                "2026-03-01T00:00:00Z",
+                "2026-03-01T00:01:00Z",
+                "2026-03-01T00:02:00Z",
+                "2026-03-01T00:00:30Z",
+                "2026-03-01T00:01:30Z",
+                "2026-03-01T00:02:30Z",
+            ],
+            "Value": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+        }
+    )
+    frame.to_csv(tmp_path / "offset.csv", index=False)
+    with pytest.raises(
+        SchemaError,
+        match=r"the timestamps run backwards at data row 4, and column 'Tag' splits the rows "
+        r"into 2 overlapping series.*call ingest_long with tag_col='Tag'",
+    ):
+        tsdive.ingest(
+            tmp_path / "offset.csv",
+            out=tmp_path / "offset.parquet",
+            meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+            timestamp_col="Timestamp",
+            value_col="Value",
+            assume_quality="GOOD",
+        )
+    assert not (tmp_path / "offset.parquet").exists()
+
+
+def test_a_repeated_timestamp_in_a_single_tag_export_still_ingests(tmp_path):
+    """Two events at one instant: a row id and a batch column do not read as tag columns."""
+    stamps = [
+        "2024-03-01T00:00:00Z",
+        "2024-03-01T00:01:00Z",
+        "2024-03-01T00:01:00Z",
+        "2024-03-01T00:02:00Z",
+    ]
+    pd.DataFrame(
+        {
+            "ts": stamps,
+            "v": [50.0, 51.0, 51.5, 52.0],
+            "q": ["GOOD"] * 4,
+            "row": [1, 2, 3, 4],
+            "batch": ["B1", "B1", "B2", "B2"],
+        }
+    ).to_csv(tmp_path / "events.csv", index=False)
+    out = tsdive.ingest(
+        tmp_path / "events.csv",
+        out=tmp_path / "events.parquet",
+        meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+        timestamp_col="ts",
+        value_col="v",
+        quality_col="q",
+    )
+    assert list(pd.read_parquet(out)["value"]) == [50.0, 51.0, 51.5, 52.0]
+
+
+def test_a_backwards_export_is_refused_before_writing(tmp_path):
+    src = _csv(tmp_path, stamps=[AWARE[0], AWARE[2], AWARE[1]])
+    stamp = r"data row 3 \(2024-03-01T00:01:00\+00:00\)"
+    with pytest.raises(NonMonotonicIndex, match=stamp) as info:
+        tsdive.ingest(
+            src,
+            out=tmp_path / "back.parquet",
+            meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+            timestamp_col="ts",
+            value_col="v",
+            quality_col="q",
+        )
+    assert info.value.offending_positions == [2]
+    assert not (tmp_path / "back.parquet").exists()
 
 
 # ---------------------------------------------------------------- wide exports
@@ -654,6 +959,104 @@ def test_wide_export_writes_one_archive_per_column_across_dst(tmp_path):
     assert "DST (Europe/London) 2024-03-31 01:00:00Z  +0h -> +1h" in p.render()
     assert sum(p.physics.severity_counts.values()) == len(WIDE_INSTANTS)
     assert p.physics.unmapped_quality_codes == []
+
+
+# 48 h at 5 min across the 2026-10-25 01:00Z fall back in Berlin: written as
+# naive wall clock, 02:00..02:55 appears twice and the column has 577 rows.
+AUTUMN_INSTANTS = pd.date_range(
+    pd.Timestamp("2026-10-24 00:00", tz="Europe/Berlin").tz_convert("UTC"),
+    periods=577,
+    freq="5min",
+)
+
+
+def _autumn_csv(tmp_path, local=None, name="autumn.csv"):
+    if local is None:
+        local = list(AUTUMN_INSTANTS.tz_convert("Europe/Berlin").strftime("%Y-%m-%d %H:%M:%S"))
+    path = tmp_path / name
+    pd.DataFrame({"ts": local, "FIC101.PV": [50.0 + 0.01 * k for k in range(len(local))]}).to_csv(
+        path, index=False
+    )
+    return path
+
+
+def _ingest_autumn(tmp_path, src):
+    return tsdive.ingest_wide(
+        src,
+        out_dir=tmp_path / "archive",
+        meta_dir=_wide_meta_dir(tmp_path, tags=("FIC101.PV",)),
+        timestamp_col="ts",
+        tz="Europe/Berlin",
+        assume_quality="GOOD",
+    )
+
+
+def test_the_repeated_autumn_hour_is_placed_by_row_order(tmp_path):
+    (written,) = _ingest_autumn(tmp_path, _autumn_csv(tmp_path))
+    stamps = pd.read_parquet(written)["timestamp"]
+    assert list(stamps) == list(AUTUMN_INSTANTS)
+    assert set(stamps.diff().dt.total_seconds().iloc[1:]) == {300.0}
+
+
+def _autumn_local():
+    return list(AUTUMN_INSTANTS.tz_convert("Europe/Berlin").strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def _one_sample_in_the_hour():
+    local = _autumn_local()
+    i = local.index("2026-10-25 02:00:00")
+    return [*local[:i], "2026-10-25 02:30:00", *local[i + 24 :]]
+
+
+def _a_repeated_row_in_the_hour():
+    local = _autumn_local()
+    i = local.index("2026-10-25 02:10:00")
+    return [*local[: i + 1], local[i], *local[i + 1 :]]
+
+
+def _the_hour_sorted_by_wall_clock():
+    local = _autumn_local()
+    i = local.index("2026-10-25 02:00:00")
+    first, second = local[i : i + 12], local[i + 12 : i + 24]
+    paired = [t for pair in zip(first, second, strict=True) for t in pair]
+    return [*local[:i], *paired, *local[i + 24 :]]
+
+
+def _a_skipped_spring_hour():
+    return list(pd.date_range("2026-03-29 01:00", "2026-03-29 03:00", freq="5min").astype(str))
+
+
+@pytest.mark.parametrize(
+    ("stamps", "message"),
+    [
+        (
+            _one_sample_in_the_hour,
+            r"ts: 2026-10-25 02:30:00 falls in the hour Europe/Berlin repeats when the clocks "
+            r"go back, and the export holds that hour once",
+        ),
+        (
+            _a_repeated_row_in_the_hour,
+            r"ts: the rows of the hour Europe/Berlin repeats when the clocks go back, from "
+            r"2026-10-25 02:00:00, are out of time order or repeat",
+        ),
+        (
+            _the_hour_sorted_by_wall_clock,
+            r"ts: the rows of the hour Europe/Berlin repeats when the clocks go back, from "
+            r"2026-10-25 02:00:00, are out of time order or repeat",
+        ),
+        (
+            _a_skipped_spring_hour,
+            r"ts: 2026-03-29 02:00:00 does not exist in Europe/Berlin, because the clocks "
+            r"skip it when they go forward",
+        ),
+    ],
+    ids=["one-sample", "repeated-row", "wall-clock-order", "spring"],
+)
+def test_local_times_the_row_order_cannot_place_are_refused(tmp_path, stamps, message):
+    tail = ".*; export the stretch around the change with UTC offsets$"
+    with pytest.raises(SchemaError, match=message + tail):
+        _ingest_autumn(tmp_path, _autumn_csv(tmp_path, stamps()))
+    assert not (tmp_path / "archive").exists()
 
 
 def test_wide_ingest_takes_the_date_order_flags(tmp_path, capsys):
@@ -741,6 +1144,22 @@ def test_wide_naive_stamps_without_tz_are_refused(tmp_path):
     assert not (tmp_path / "archive").exists()
 
 
+def test_wide_backwards_rows_are_refused_before_any_archive(tmp_path):
+    src = _wide_csv(tmp_path)
+    frame = pd.read_csv(src)
+    frame.iloc[::-1].to_csv(src, index=False)
+    with pytest.raises(NonMonotonicIndex, match=r"wide\.csv: the timestamp of data row 2"):
+        tsdive.ingest_wide(
+            src,
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path),
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
 def test_wide_unsafe_tag_name_lands_as_a_safe_filename(tmp_path):
     tags = ("FIC101/PV:1",)
     assert safe_filename(tags[0]) == "FIC101_PV_1"
@@ -768,6 +1187,174 @@ def test_wide_tags_colliding_after_safe_filename_are_refused(tmp_path):
             tz="Europe/London",
         )
     assert not (tmp_path / "archive").exists()
+
+
+# --------------------------------------- long exports, one row per tag and time
+
+LONG_ARGS = ["--timestamp-col", "Timestamp", "--value-col", "Value", "--quality-col", "Status"]
+
+
+def test_tag_col_templates_then_archives_one_per_tag(tmp_path, capsys):
+    src = _long_csv(tmp_path)
+    meta_dir = tmp_path / "meta"
+    rc = cmd_ingest(
+        [str(src), "--tag-col", "Tag", *LONG_ARGS, "--init-meta", str(meta_dir),
+         "--source-id", "plant1"]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"wrote     {(meta_dir / 'PI101.PV.json').as_posix()}",
+        f"wrote     {(meta_dir / 'FI102.PV.json').as_posix()}",
+        f"wrote     {(meta_dir / 'TI103.PV.json').as_posix()}",
+    ]
+    template = json.loads((meta_dir / "FI102.PV.json").read_text(encoding="utf-8"))
+    assert template["identity"] == {"source_id": "plant1", "point_id": "FI102.PV"}
+    assert template["quality_codes"] == {"Good": "GOOD"}
+
+    out_dir = tmp_path / "archive"
+    rc = cmd_ingest(
+        [str(src), "--tag-col", "Tag", *LONG_ARGS, "--out", str(out_dir), "--meta-dir",
+         str(meta_dir)]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"wrote     {(out_dir / 'PI101.PV.parquet').as_posix()}",
+        f"wrote     {(out_dir / 'FI102.PV.parquet').as_posix()}",
+        f"wrote     {(out_dir / 'TI103.PV.parquet').as_posix()}",
+    ]
+    for tag, level in LONG_TAGS.items():
+        frame = pd.read_parquet(out_dir / f"{tag}.parquet")
+        assert list(frame["timestamp"]) == list(LONG_INSTANTS)
+        assert frame["value"].iloc[0] == level
+        assert meta_from_parquet(out_dir / f"{tag}.parquet").identity.point_id == tag
+
+
+def test_tag_sorted_and_time_sorted_exports_give_the_same_archives(tmp_path):
+    meta_dir = _wide_meta_dir(tmp_path, tags=tuple(LONG_TAGS), codes={"Good": "GOOD"})
+    frames = {}
+    for sort_by in ("Timestamp", "Tag"):
+        written = tsdive.ingest_long(
+            _long_csv(tmp_path, sort_by=sort_by, name=f"{sort_by}.csv"),
+            out_dir=tmp_path / sort_by,
+            meta_dir=meta_dir,
+            tag_col="Tag",
+            timestamp_col="Timestamp",
+            value_col="Value",
+            quality_col="Status",
+        )
+        frames[sort_by] = {p.name: pd.read_parquet(p) for p in written}
+    assert sorted(frames["Tag"]) == sorted(frames["Timestamp"])
+    for name, frame in frames["Tag"].items():
+        pd.testing.assert_frame_equal(frame, frames["Timestamp"][name])
+
+
+def test_tag_col_writes_nothing_when_one_tag_has_no_metadata(tmp_path):
+    with pytest.raises(SchemaError, match=r"tag 'TI103\.PV': no metadata file .*init_long_meta"):
+        tsdive.ingest_long(
+            _long_csv(tmp_path),
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path, tags=("PI101.PV", "FI102.PV")),
+            tag_col="Tag",
+            timestamp_col="Timestamp",
+            value_col="Value",
+            assume_quality="GOOD",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
+def test_tag_col_takes_a_subset_and_refuses_an_absent_tag(tmp_path):
+    kwargs = {
+        "out_dir": tmp_path / "archive",
+        "meta_dir": _wide_meta_dir(tmp_path, tags=tuple(LONG_TAGS)),
+        "tag_col": "Tag",
+        "timestamp_col": "Timestamp",
+        "value_col": "Value",
+        "assume_quality": "GOOD",
+    }
+    src = _long_csv(tmp_path)
+    written = tsdive.ingest_long(src, tags=["TI103.PV"], **kwargs)
+    assert [p.name for p in written] == ["TI103.PV.parquet"]
+    with pytest.raises(
+        SchemaError,
+        match=r"column 'Tag' holds no tag 'TI104\.PV' named in tags; it holds PI101\.PV, "
+        r"FI102\.PV, TI103\.PV",
+    ):
+        tsdive.ingest_long(src, tags=["TI104.PV"], overwrite=True, **kwargs)
+
+
+def test_tag_col_refuses_rows_without_a_tag(tmp_path):
+    src = _long_csv(tmp_path)
+    frame = pd.read_csv(src)
+    frame.loc[[3, 7], "Tag"] = None
+    frame.to_csv(src, index=False)
+    with pytest.raises(SchemaError, match="2 rows have no tag in column 'Tag'"):
+        tsdive.init_long_meta(src, out_dir=tmp_path / "meta", source_id="plant1", tag_col="Tag",
+                              timestamp_col="Timestamp", value_col="Value")
+
+
+def test_tag_col_types_each_tags_values_on_their_own(tmp_path):
+    """One tag's digital state leaves the other tags' archives numeric."""
+    src = _long_csv(tmp_path)
+    frame = pd.read_csv(src)
+    frame["Value"] = frame["Value"].astype(object)
+    frame.loc[frame.index[frame["Tag"] == "PI101.PV"][5], "Value"] = "Shutdown"
+    frame.to_csv(src, index=False)
+    meta_dir = _wide_meta_dir(tmp_path, tags=tuple(LONG_TAGS), codes={"Shutdown": "BAD"})
+    written = tsdive.ingest_long(
+        src,
+        out_dir=tmp_path / "archive",
+        meta_dir=meta_dir,
+        tag_col="Tag",
+        timestamp_col="Timestamp",
+        value_col="Value",
+        assume_quality="GOOD",
+    )
+    dtypes = {p.stem: str(pd.read_parquet(p)["value"].dtype) for p in written}
+    assert dtypes == {"PI101.PV": "object", "FI102.PV": "float64", "TI103.PV": "float64"}
+
+    templates = tsdive.init_long_meta(src, out_dir=tmp_path / "templates", source_id="plant1",
+                                      tag_col="Tag", timestamp_col="Timestamp",
+                                      value_col="Value")
+    codes = {p.stem: json.loads(p.read_text(encoding="utf-8"))["quality_codes"]
+             for p in templates}
+    assert codes == {"PI101.PV": {"Shutdown": None}, "FI102.PV": None, "TI103.PV": None}
+
+
+def test_tag_col_refuses_a_tag_that_runs_backwards_naming_the_file_row(tmp_path):
+    src = _long_csv(tmp_path, sort_by="Tag")
+    frame = pd.read_csv(src)
+    frame.iloc[[300, 301]] = frame.iloc[[301, 300]].to_numpy()
+    frame.to_csv(src, index=False)
+    with pytest.raises(NonMonotonicIndex, match=r"long\.csv, tag 'PI101\.PV': the timestamp "
+                       r"of data row 302 "):
+        tsdive.ingest_long(
+            src,
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path, tags=tuple(LONG_TAGS)),
+            tag_col="Tag",
+            timestamp_col="Timestamp",
+            value_col="Value",
+            assume_quality="GOOD",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--wide"], "--tag-col does not apply with --wide"),
+        (["--quality-suffix", "_q"], "--quality-suffix requires --wide"),
+        (["--meta", "m.json"], "--meta does not apply with --tag-col; use --meta-dir"),
+        ([], "--tag-col requires --meta-dir"),
+    ],
+)
+def test_tag_col_flags_that_belong_to_another_form_are_usage_errors(
+    tmp_path, capsys, extra, message
+):
+    with pytest.raises(SystemExit) as info:
+        cmd_ingest(["long.csv", "--tag-col", "Tag", "--out", str(tmp_path / "x"), *extra])
+    assert info.value.code == 2
+    assert message in capsys.readouterr().err
 
 
 # ---------------------------------------------------------- metadata templates

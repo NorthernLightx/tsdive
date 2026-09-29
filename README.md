@@ -74,8 +74,8 @@ Flatline
   NOT ASSESSED (window censored; saturated != frozen)
 ```
 
-Omit `--window` to profile the whole archive. Statistics cover GOOD rows
-only. The transmitter sat at full scale for half an hour.
+Omit `--window` to profile the whole archive. The transmitter sat at
+full scale for half an hour.
 
 ### segment
 
@@ -158,16 +158,16 @@ $ tsdive mspc \
     data/demo/fic101_demo.parquet data/demo/tic101_demo.parquet \
     --baseline "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z" \
     --window "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z"
-demo:FIC101.PV, demo:TIC101.PV  T2 breaches 22   SPE breaches 108   of 121 rows
+demo:FIC101.PV, demo:TIC101.PV  T2 breaches 70   SPE breaches 108   of 121 rows
 
 baseline  2024-03-30 20:00:00Z -> 23:00:00Z   rows 181   coverage 1.000
 window    2024-03-31 04:00:00Z -> 06:00:00Z   rows 121   coverage 1.000
-model     rate 60 s (declared)   components 1 of 2   explained 0.9839
-limits    T2 4.052   SPE 0.03662   (empirical q0.99)
+model     rate 60 s (declared)   components 1 of 2   explained 0.9767
+limits    T2 3.759   SPE 0.2859   (empirical q0.99)
 contributors  not ranked (2 tags; top-3 would list every one)
 
-T2 breaches  22
-  2024-03-31 04:10:00Z
+T2 breaches  70
+  2024-03-31 04:00:00Z
 
 SPE breaches  108
   2024-03-31 04:00:00Z
@@ -179,7 +179,7 @@ residual.
 ### compare
 
 Reports what changed between two periods, over every tag of a unit. The
-tables say that a tag changed and a pair decoupled; they do not say why.
+tables do not say why.
 
 ```console
 $ tsdive compare \
@@ -202,16 +202,16 @@ Pairs that decoupled  (Pearson on first differences, 95% block bootstrap)
   FIC101.PV ~ TIC101.PV    0.69    0.17   -0.53  [-0.76, -0.26]
 
 Joint structure  (PCA fitted on before, 2 of 2 tags aligned)
-  components 1 of 2   explained 0.9839 -> 0.2643 on after
-  rows 121   T2 breaches 22   SPE breaches 108
-  SPE contributors   TIC101.PV 79%   FIC101.PV 21%
+  components 1 of 2   explained 0.9767 -> 0.5129 on after
+  rows 121   T2 breaches 70   SPE breaches 108
+  SPE contributors   TIC101.PV 50%   FIC101.PV 50%
 ```
 
 The temperature's spread is 6 times the before period's, 62% of its samples
 fall outside its before-period baseline, and its coupling to the flow drops
 from 0.69 to 0.17 with an interval excluding 0. The PCA model fitted on the
-before period keeps 26% of the after period's variance, and 79% of the
-residual sits on the temperature. `--top N` sets how many rows each table
+before period keeps 51% of the after period's variance. With two tags the
+residual splits evenly between them. `--top N` sets how many rows each table
 prints; `--json` carries every column and pair.
 
 ### run
@@ -318,6 +318,7 @@ Every read runs these checks.
 | values pinned at the engineering range | `Range`: `clipped`, `censored` | `InsufficientQuality`: censored window used as a baseline |
 | unit spelling resolves through one alias table | `units <raw> -> <canonical>` or `unresolved (null)` | `UnresolvedUnitError`; `IncomparableUnitsError`: reference-condition unit with no declared state |
 | statistics use GOOD rows only | `Values  GOOD n=...` | `InsufficientQuality`: no GOOD sample |
+| baseline values spread | `scale`, `sigma` | `ZeroSpreadBaseline`: scale 0 |
 
 ## How it compares
 

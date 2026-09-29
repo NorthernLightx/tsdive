@@ -56,10 +56,13 @@ Two more facts decide how an export's dates read:
   `--timestamp-format` with a
   [strptime format](https://docs.python.org/3/library/datetime.html#format-codes)
   such as `%d/%m/%Y %H:%M`.
-- In autumn a local hour repeats when the clocks go back, and in spring
-  one hour does not exist. A naive export that crosses such a change
-  cannot be placed in UTC, and ingest refuses it. Export that stretch
-  with UTC offsets.
+- In autumn a local hour repeats when the clocks go back. Ingest places
+  its first pass at the summer offset and its second at the winter one,
+  by row order. An export that holds the hour once, or out of time
+  order, raises `SchemaError`.
+- In spring one local hour does not exist, and a time in it raises
+  `SchemaError`. Export the stretch around either change with UTC
+  offsets.
 
 ## DST inside a window
 

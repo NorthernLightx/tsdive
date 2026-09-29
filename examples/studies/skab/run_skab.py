@@ -47,7 +47,7 @@ import pandas as pd
 import tsdive
 from tsdive import analyses, api
 from tsdive.baselines.provisional import mad_baseline
-from tsdive.errors import TSDiveError
+from tsdive.errors import TSDiveError, ZeroSpreadBaseline
 from tsdive.eval import (
     clock_control,
     conformal_p_values,
@@ -411,6 +411,9 @@ def score_univariate(
         try:
             first = analyses.screen(path, baseline, read_spec(first_start, first_end), k=k_mad)
             first_spc = analyses.spc(path, baseline, read_spec(first_start, first_end))
+        except ZeroSpreadBaseline:
+            unusable(tag, "baseline MAD scale is zero")
+            continue
         except (TSDiveError, ValueError) as e:
             unusable(tag, f"{type(e).__name__}: {e}")
             continue
@@ -985,6 +988,9 @@ def conformal_record(
         values = values[np.isfinite(values)]
         try:
             base = mad_baseline(quality_frame(values))
+        except ZeroSpreadBaseline:
+            unusable[tag] = "MAD over the fit windows is zero"
+            continue
         except TSDiveError as e:
             unusable[tag] = f"{type(e).__name__}: {e}"
             continue

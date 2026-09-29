@@ -80,6 +80,9 @@ samples, else the screen raises
 - It holds at least 30 GOOD samples.
 - It holds no clipped sample. See
   [clipping and censoring](clipping-and-censoring.md).
+- Its GOOD values spread. A baseline whose MAD or moving-range scale is
+  0 raises
+  [`ZeroSpreadBaseline`](../../reference/errors.md#zerospreadbaseline).
 - It does not overlap the window.
 
 A baseline that breaks the first two raises

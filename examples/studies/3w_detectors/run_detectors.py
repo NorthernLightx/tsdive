@@ -52,9 +52,12 @@ change what the numbers mean:
   inside a single minute.
 - **MSPC columns are autoscaled on training statistics.** The six
   variables are pressures in Pa and a temperature in degC, spanning seven
-  orders of magnitude. ``fit_pca`` mean-centres but does not scale, so an
-  unscaled fit would be a model of ``P-ANULAR`` alone. Each column is
-  divided by its training standard deviation before the matrix is built.
+  orders of magnitude, so an unscaled fit would be a model of
+  ``P-ANULAR`` alone. Each column is divided by its training standard
+  deviation before the matrix is built. ``fit_pca`` then divides each
+  column by its own training standard deviation (ddof 1), a factor the
+  same for every column that moves, so T2 and every breach stay as the
+  study's scaling sets them.
 
     uv run python examples/studies/3w_detectors/run_detectors.py
 """
@@ -76,6 +79,7 @@ sys.path.insert(0, str(Path(__file__).parents[3] / "src"))
 
 import tsdive
 from tsdive.baselines import (
+    RegimeBaseline,
     mad_baseline,
     match_population,
     match_regime,
@@ -95,6 +99,7 @@ from tsdive.errors import (
     MspcAlignmentError,
     PopulationTooSparse,
     RegimeTooSparse,
+    ZeroSpreadBaseline,
 )
 from tsdive.eval import clock_control, fires, ranking_metrics, worst_baseline_threshold
 from tsdive.mspc.pca import AlignedMatrix, PcaModel, detect, fit_pca
@@ -298,7 +303,7 @@ def own_history_baselines(
         except InsufficientQuality as e:
             degenerate[pair] = f"{variable}: InsufficientQuality: {e}"
             continue
-        if baseline.scale <= 0:
+        except ZeroSpreadBaseline:
             degenerate[pair] = (
                 f"{variable}: the tag's own first-{layout.k}-window MAD is zero, "
                 "so no robust z exists"
@@ -459,7 +464,7 @@ def score_mad(train: pd.DataFrame, test: pd.DataFrame) -> ToolScores:
         except InsufficientQuality as e:
             degenerate[str(variable)] = f"InsufficientQuality: {e}"
             continue
-        if base.scale <= 0:
+        except ZeroSpreadBaseline:
             degenerate[str(variable)] = "MAD scale is zero across the training folds"
             continue
         baselines[str(variable)] = base
@@ -488,6 +493,34 @@ def score_mad(train: pd.DataFrame, test: pd.DataFrame) -> ToolScores:
     return out
 
 
+def _regime_bases(subset: pd.DataFrame, min_samples: int) -> dict[str, RegimeBaseline]:
+    """``regime_baselines`` one regime at a time, keeping a regime with no spread.
+
+    ``regime_baselines`` raises ``ZeroSpreadBaseline`` for a regime whose
+    training medians share one value. Such a regime keeps a zero-scale
+    baseline here, and the scoring loop refuses its rows as "regime scale
+    is zero".
+    """
+    frame = _quality_frame(subset["median"], subset["window_start"])
+    modes = subset["state_mode"].astype(str).reset_index(drop=True)
+    bases: dict[str, RegimeBaseline] = {}
+    for regime in sorted(set(modes)):
+        mask = (modes == regime).to_numpy()
+        part = frame[mask].reset_index(drop=True)
+        try:
+            bases.update(
+                regime_baselines(
+                    part, modes[mask].reset_index(drop=True), min_samples=min_samples
+                )
+            )
+        except ZeroSpreadBaseline:
+            values = part["value"].to_numpy(dtype=float)
+            bases[regime] = RegimeBaseline(
+                regime=regime, center=float(np.median(values)), scale=0.0, n_good=len(values)
+            )
+    return bases
+
+
 def score_regime(train: pd.DataFrame, test: pd.DataFrame, *, min_samples: int = 20) -> ToolScores:
     """The MAD screen conditioned on the window's modal state."""
     out = ToolScores.empty()
@@ -503,11 +536,7 @@ def score_regime(train: pd.DataFrame, test: pd.DataFrame, *, min_samples: int = 
         if subset.empty:
             continue
         try:
-            per_variable[str(variable)] = regime_baselines(
-                _quality_frame(subset["median"], subset["window_start"]),
-                subset["state_mode"].astype(str).reset_index(drop=True),
-                min_samples=min_samples,
-            )
+            per_variable[str(variable)] = _regime_bases(subset, min_samples)
         except (RegimeTooSparse, InsufficientQuality):  # pragma: no cover - defensive
             continue
 
@@ -614,7 +643,7 @@ def score_spc(
             base = mad_baseline(_quality_frame(pd.Series(values), pd.Series(stamps)))
         except InsufficientQuality:  # pragma: no cover - guarded by the length check
             continue
-        if base.scale <= 0:
+        except ZeroSpreadBaseline:
             continue
         limits[str(variable)] = individuals_limits(base.center, base.scale)
 
@@ -685,9 +714,11 @@ def score_mspc(
     """PCA T2 and SPE over the sub-group grid.
 
     ``autoscale`` divides each column by its training standard deviation.
-    It is off when the caller has already z-scored the grid per instance:
-    scaling twice would put a second, cross-well scale on top of the
-    per-tag one and undo the point of the design.
+    It is off when the caller has already z-scored the grid per instance.
+    ``fit_pca`` still divides each column by its pooled training standard
+    deviation, so a z-scored grid carries that cross-well scale on top of
+    the per-tag one. A training column that does not move raises
+    ``ZeroSpreadBaseline`` in ``fit_pca``, and the caller refuses the fold.
     """
     t2_out, spe_out = ToolScores.empty(), ToolScores.empty()
     step_s = window_s / len(subgroup_cols)
@@ -702,8 +733,8 @@ def score_mspc(
         raise MspcAlignmentError("no training window carries every common variable")
     stacked = np.vstack(blocks)
     # Autoscale on training statistics: seven orders of magnitude between
-    # a pressure in Pa and a temperature in degC, and fit_pca centres but
-    # does not scale.
+    # a pressure in Pa and a temperature in degC. fit_pca scales again by
+    # the ddof-1 standard deviation, the same factor on every moving column.
     if autoscale:
         scale = stacked.std(axis=0)
         scale = np.where(scale > 0, scale, 1.0)
@@ -1136,7 +1167,7 @@ def run_aligned(args) -> int:
                 window_s,
                 autoscale=False,
             )
-        except MspcAlignmentError as e:
+        except (MspcAlignmentError, ZeroSpreadBaseline) as e:
             refused = ToolScores(
                 scores={}, refusals={int(k): str(e) for k in sorted(test_keys)}
             )
@@ -1485,7 +1516,7 @@ def main(argv: list[str] | None = None) -> int:
             t2, spe, mspc_info = score_mspc(
                 g_train, g_test, variables, subgroup_cols, window_s
             )
-        except MspcAlignmentError as e:
+        except (MspcAlignmentError, ZeroSpreadBaseline) as e:
             refused = ToolScores(
                 scores={}, refusals={int(k): str(e) for k in sorted(test_keys)}
             )
@@ -1594,7 +1625,7 @@ def main(argv: list[str] | None = None) -> int:
                 window_s,
                 autoscale=False,
             )
-        except MspcAlignmentError as e:  # pragma: no cover - defensive
+        except (MspcAlignmentError, ZeroSpreadBaseline) as e:  # pragma: no cover
             refused = ToolScores(scores={}, refusals={int(k): str(e) for k in fold_keys})
             t2, spe, info = refused, refused, {"refusal": str(e)}
         answers["mspc_t2"], answers["mspc_spe"] = t2, spe

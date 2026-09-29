@@ -38,6 +38,10 @@ claim below has a provoking test in `tests/`.
 - A censored baseline, or statistics over a window with no GOOD sample,
   raises `InsufficientQuality`. A baseline that overlaps the window it
   screens raises `ValueError` in `screen`, `spc` and `mspc`.
+- A baseline whose GOOD values do not spread, so its MAD or
+  moving-range scale is 0, raises `ZeroSpreadBaseline` in `screen` and
+  `spc`, and per regime in `screen --mode`. `mspc` raises it for a tag
+  whose baseline standard deviation is 0.
 - A regime with too few GOOD samples raises `RegimeTooSparse`, and an
   (asset, variable) pair with too few training windows raises
   `PopulationTooSparse`.
