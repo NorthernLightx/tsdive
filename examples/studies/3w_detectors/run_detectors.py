@@ -742,8 +742,16 @@ def score_mspc(
         scale = np.ones(stacked.shape[1])
     start0 = pd.Timestamp("2000-01-01T00:00:00+00:00")
     model: PcaModel = fit_pca(_aligned(stacked / scale, variables, start0, step_s))
+    # A model that keeps every component leaves no residual subspace: SPE is
+    # 0 up to rounding, so ranking it would rank rounding error.
+    no_residual = model.components.shape[0] == len(variables)
+    spe_reason = (
+        f"the PCA keeps all {len(variables)} components, so SPE is 0 up to rounding "
+        "and scores nothing"
+    )
 
     n_test_refused = 0
+    largest_spe = 0.0
     for key, rows in test_grid.groupby("window_key", sort=True):
         try:
             block = _window_matrix(rows, variables, subgroup_cols)
@@ -755,7 +763,11 @@ def score_mspc(
         start = pd.Timestamp(rows.iloc[0]["window_start"])
         found = detect(model, _aligned(block / scale, variables, start, step_s))
         t2_out.record(int(key), float(np.mean(found.t2)))
-        spe_out.record(int(key), float(np.mean(found.spe)))
+        largest_spe = max(largest_spe, float(np.max(found.spe)))
+        if no_residual:
+            spe_out.refuse(int(key), spe_reason)
+        else:
+            spe_out.record(int(key), float(np.mean(found.spe)))
     return (
         t2_out,
         spe_out,
@@ -765,6 +777,8 @@ def score_mspc(
             "n_test_windows_refused": n_test_refused,
             "n_components": int(model.components.shape[0]),
             "explained_variance": [round(v, 6) for v in model.explained_variance],
+            "spe_refused_all_components_kept": bool(no_residual),
+            "largest_test_spe": float(f"{largest_spe:.6g}"),
         },
     )
 
@@ -1202,9 +1216,14 @@ def run_aligned(args) -> int:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    per_instance = pd.concat(
-        [aligned_per_instance(windows, answers[t], t) for t in ALIGNED_TOOLS],
-        ignore_index=True,
+    # One frame from every tool's records: a tool refused on every window has
+    # all-NA columns, and concatenating such a frame is deprecated in pandas.
+    per_instance = pd.DataFrame(
+        [
+            row
+            for t in ALIGNED_TOOLS
+            for row in aligned_per_instance(windows, answers[t], t).to_dict("records")
+        ]
     )
     per_instance.to_csv(
         out_dir / "aligned_per_instance.csv", index=False, lineterminator="\n"
