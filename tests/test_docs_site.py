@@ -15,6 +15,7 @@ import importlib.util
 import inspect
 import posixpath
 import re
+import shlex
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -32,6 +33,7 @@ DIRECTIVE = re.compile(r"^::: (\S+)$", re.MULTILINE)
 TARGET = re.compile(r"\]\(([^)\s]+)\)")
 ROW = re.compile(r"^\| \[`([\w.]+)`\]\(([^)]+)\) \| (.+) \|$", re.MULTILINE)
 ROLE = re.compile(r":(func|class|meth|attr|mod|data|exc|obj):`")
+CONSOLE = re.compile(r"^```console\n(.*?)^```$", re.MULTILINE | re.DOTALL)
 
 pytestmark = pytest.mark.docs
 
@@ -337,3 +339,52 @@ def test_every_guide_block_parses(hooks: ModuleType) -> None:
                 assert set(block.options) <= {"exit", "lines", "tail"}, f"{page}: {block.options}"
             else:
                 assert set(block.options) <= {"file", "show", "lines"}, f"{page}: {block.options}"
+
+
+def test_no_docs_page_types_a_tsdive_transcript(hooks: ModuleType) -> None:
+    for page, text in _static_pages().items():
+        for line, outside in hooks._outside_fences(text):
+            assert outside or not line.lstrip().startswith("$ tsdive"), (
+                f"docs/{page} types {line.strip()!r}; run it in a ```tsdive block instead"
+            )
+
+
+def _readme_transcripts() -> list[tuple[str, list[str]]]:
+    """Each ``$ tsdive`` command of the README console blocks, with the lines shown under it."""
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    found: list[tuple[str, list[str]]] = []
+    for body in CONSOLE.findall(readme):
+        lines = iter(body.splitlines())
+        line = next(lines, None)
+        while line is not None:
+            if not line.startswith("$ tsdive "):
+                line = next(lines, None)
+                continue
+            command = [line]
+            while command[-1].endswith("\\"):
+                command.append(next(lines))
+            shown: list[str] = []
+            line = next(lines, None)
+            while line is not None and not line.startswith("$ "):
+                shown.append(line)
+                line = next(lines, None)
+            found.append(("\n".join(command), shown))
+    return found
+
+
+def test_every_readme_transcript_line_is_in_the_real_output(hooks: ModuleType) -> None:
+    """The README transcripts are trimmed, so each shown line is looked up in order."""
+    transcripts = _readme_transcripts()
+    assert [shlex.split(c)[2] for c, _ in transcripts] == [
+        "profile", "segment", "screen", "spc", "mspc", "compare", "run",
+    ]
+    with hooks.demo_workdir() as work:
+        for command, shown in transcripts:
+            code, output = hooks.run_in(work, shlex.split(command.replace("\\\n", " "))[2:])
+            assert code in (0, None), f"README `{command}` exited {code}:\n{output}"
+            printed = iter(line.rstrip() for line in output.splitlines())
+            for want in (line.rstrip() for line in shown if line.strip()):
+                assert any(line == want for line in printed), (
+                    f"README `{command.splitlines()[0]}` shows {want!r}, "
+                    "which the command does not print in that order"
+                )

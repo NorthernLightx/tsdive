@@ -107,84 +107,16 @@ Without a clone, `tsdive demo data` writes the same three archives. The
 [controller trial how-to](guide/howto/switchback-trial.md) walks through
 sizing and reading a trial for a process engineer.
 
-```console
-$ python examples/switchback/make_trial.py
-wrote data/switchback_demo/ti201.parquet (4320 samples)
-wrote data/switchback_demo/fi200.parquet (4320 samples)
-wrote data/switchback_demo/tt001.parquet (4320 samples)
-$ tsdive switchback plan \
+```tsdive
+tsdive switchback plan \
     --window "2024-06-03T00:00:00Z/2024-06-04T00:00:00Z" \
     --block PT1H --washout PT15M --seed 7 \
     --history data/switchback_demo/ti201.parquet \
     --history-window "2024-06-02T00:00:00Z/2024-06-03T00:00:00Z" \
     -o data/switchback_demo/plan.json
-switchback plan   24 blocks of 1 h   A 12   B 12   digest 66da65ede04f
-
-window    2024-06-03 00:00:00Z -> 2024-06-04 00:00:00Z   (1 d)
-schedule  2024-06-03 00:00:00Z -> 2024-06-04 00:00:00Z   seed 7
-washout   15 min at the start of every block
-design    over 10^6 balanced assignments   1000 drawn   smallest p 0.000999
-wrote     data/switchback_demo/plan.json
-
-Schedule  (the plan file lists every block)
-     0  2024-06-03 00:00:00Z  A
-     1  2024-06-03 01:00:00Z  A
-     2  2024-06-03 02:00:00Z  A
-     3  2024-06-03 03:00:00Z  B
-     4  2024-06-03 04:00:00Z  B
-     5  2024-06-03 05:00:00Z  A
-     6  2024-06-03 06:00:00Z  B
-     7  2024-06-03 07:00:00Z  A
-     8  2024-06-03 08:00:00Z  A
-     9  2024-06-03 09:00:00Z  B
-    10  2024-06-03 10:00:00Z  B
-    11  2024-06-03 11:00:00Z  B
-    12  2024-06-03 12:00:00Z  B
-    13  2024-06-03 13:00:00Z  B
-    14  2024-06-03 14:00:00Z  B
-    15  2024-06-03 15:00:00Z  A
-    16  2024-06-03 16:00:00Z  A
-    17  2024-06-03 17:00:00Z  A
-    18  2024-06-03 18:00:00Z  A
-    19  2024-06-03 19:00:00Z  A
-    20  2024-06-03 20:00:00Z  B
-    21  2024-06-03 21:00:00Z  B
-    22  2024-06-03 22:00:00Z  A
-    23  2024-06-03 23:00:00Z  B
-
-Power  (200 schedules laid over the history, shift added in B blocks)
-  history   demo:TI201.PV   2024-06-02 00:00:00Z -> 2024-06-03 00:00:00Z
-  sigma     0.4501 degrees Celsius (1.4826 MAD)
-  shift     0      0.1    0.25   0.5    1      sigma
-  claimed   0.050  0.030  0.060  0.155  0.620
-  smallest  none on the grid with detection >= 0.8
-$ tsdive switchback analyze data/switchback_demo/*.parquet \
+tsdive switchback analyze data/switchback_demo/*.parquet \
     --plan data/switchback_demo/plan.json --target TI201.PV \
     --covariate FI200.PV --covariate TT001.PV
-demo:TI201.PV   B - A +0.6024 degrees Celsius   p 0.154
-
-plan      digest 66da65ede04f verified   seed 7
-schedule  2024-06-03 00:00:00Z -> 2024-06-04 00:00:00Z   (1 d)
-blocks    24 of 1 h   A 12   B 12   washout 15 min
-design    over 10^6 balanced assignments   1000 drawn   smallest p 0.000999
-units     degC -> degrees Celsius
-quality   GOOD 1.000   censored unknown
-
-Difference in means  (B - A over the kept samples)
-  estimate  +0.6024 degrees Celsius   p 0.154
-  95%       [-0.2223, +1.500]
-  kept      A 540   B 540   per block 45 to 45
-
-Adjusted  (OLS on 2 covariates)
-  demo:FI200.PV, demo:TT001.PV
-  estimate  +0.2847 degrees Celsius   p 0.000999
-  95%       [+0.2214, +0.3444]
-  kept      A 540   B 540   per block 45 to 45
-
-Assumptions
-  difference between settings A and B under the declared random schedule, by
-  intended assignment; holds if the schedule was followed and carryover ended
-  within the washout
 ```
 
 On the history, 24 blocks detect a 1 sigma shift of the raw target in

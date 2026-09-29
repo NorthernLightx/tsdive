@@ -329,7 +329,8 @@ def index_markdown(markdown: str) -> Rewrite:
 SUMMARY_COL = 42
 # Lines of example output a command page shows before the cut.
 EXAMPLE_LINES = 30
-# Pages whose ``$ tsdive`` console lines are the examples, in this order.
+# Pages whose ``$ tsdive`` console lines and ``tsdive`` blocks are the
+# examples, in this order.
 EXAMPLE_SOURCES = ("README.md", "docs/SWITCHBACK.md")
 # Commands the pages above show without a ``$`` prompt: argv, and the
 # sentence that says what the example prepared.
@@ -514,10 +515,21 @@ def _console_lines(markdown: str) -> list[str]:
 
 
 def documented_invocations() -> dict[str, tuple[list[str], str]]:
-    """Command -> (argv, console text) of its first ``$ tsdive`` line in the example sources."""
+    """Command -> (argv, console text) of its first invocation in the example sources.
+
+    A source's ``$ tsdive`` console lines come first, then the commands of
+    its ``tsdive`` blocks.
+    """
     found: dict[str, tuple[list[str], str]] = {}
     for source in EXAMPLE_SOURCES:
-        for text in _console_lines(_read(source)):
+        markdown = _read(source)
+        texts = _console_lines(markdown) + [
+            f"$ {command}"
+            for _, block in guide_blocks(markdown)
+            if block.runs
+            for command in guide_commands(block.body)
+        ]
+        for text in texts:
             argv = shlex.split(text.replace("\\\n", " "))[2:]
             command = " ".join(argv[:2]) if argv[0] == "switchback" else argv[0]
             found.setdefault(command, (argv, text))
