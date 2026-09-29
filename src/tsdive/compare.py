@@ -322,7 +322,7 @@ def _change_intervals_s(frame: pd.DataFrame) -> list[float]:
         return []
     values = cast(pd.Series, good["value"].reset_index(drop=True))
     stamps = cast(pd.Series, good["timestamp"].reset_index(drop=True))
-    changed = values.ne(values.shift()).to_numpy(dtype=bool, na_value=False)
+    changed = values.ne(values.shift()).to_numpy(dtype=bool, na_value=False, copy=True)
     # The first row compares against nothing, so it is not a change.
     changed[0] = False
     at = np.flatnonzero(changed)

@@ -377,7 +377,7 @@ def null_digital_state_values(
         return out
     values = out["value"]
     coerced = pd.to_numeric(values, errors="coerce").to_numpy(
-        dtype="float64", na_value=np.nan
+        dtype="float64", na_value=np.nan, copy=True
     )
     # ``to_numeric`` and ``float()`` disagree on a handful of spellings, so
     # anything it could not read is re-checked one row at a time. Normally

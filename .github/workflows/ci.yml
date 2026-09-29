@@ -39,6 +39,22 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: uv run python examples/benchmarks/run_benchmarks.py
 
+  lowest:
+    name: test (ubuntu-latest, 3.12, lowest direct dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.12"
+      # Resolves the lowest version each pyproject.toml range allows. The
+      # later steps pass --no-sync, because uv run would lock afresh at the
+      # highest versions.
+      - name: Install (lowest direct versions)
+        run: uv sync --resolution lowest-direct
+      - name: Test (offline)
+        run: uv run --no-sync pytest
+
   docs:
     runs-on: ubuntu-latest
     env:

@@ -829,7 +829,7 @@ def mask_beyond_float32(frame: pd.DataFrame, columns: list[str]) -> tuple[pd.Dat
     silently, where the value becomes -inf - or divides by a scale that
     one value dictates.
     """
-    block = frame[columns].to_numpy(dtype=float)
+    block = frame[columns].to_numpy(dtype=float, copy=True)
     bad = np.abs(block) > float(np.finfo(np.float32).max)
     detail = {"n_cells": int(bad.sum()), "n_rows": int(bad.any(axis=1).sum())}
     if not bad.any():

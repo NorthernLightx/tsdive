@@ -140,7 +140,7 @@ def test_label_columns_become_mode_archives(converted: tuple[Path, dict]) -> Non
     meta = meta_from_parquet(out_dir / "LABEL_class.parquet")
     assert meta.role is Role.MODE
     frame = pd.read_parquet(out_dir / "LABEL_class.parquet")
-    assert frame["value"].iloc[0] is None
+    assert pd.isna(frame["value"].iloc[0])
     assert frame["quality"].iloc[0] == "NO_DATA"
     assert frame["value"].iloc[-1] == "0"
     assert frame["quality"].iloc[-1] == "GOOD_ASSUMED"

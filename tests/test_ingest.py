@@ -328,7 +328,7 @@ def test_one_parse_reads_a_uniform_column_and_other_layouts_row_by_row():
     minutes = pd.date_range("2024-03-01", periods=1000, freq="min")
     uniform = pd.Series(minutes.strftime("%d/%m/%Y %H:%M"))
     parsed = _parse_timestamps(uniform, "ts", dayfirst=True)
-    assert str(parsed.dtype) == "datetime64[ns]"
+    assert parsed.dtype.kind == "M"
     assert parsed.iloc[-1] == pd.Timestamp("2024-03-01 16:39")
 
     # The first row fixes the inferred format; the rows that miss it parse one by one.
@@ -1309,8 +1309,12 @@ def test_tag_col_types_each_tags_values_on_their_own(tmp_path):
         value_col="Value",
         assume_quality="GOOD",
     )
-    dtypes = {p.stem: str(pd.read_parquet(p)["value"].dtype) for p in written}
-    assert dtypes == {"PI101.PV": "object", "FI102.PV": "float64", "TI103.PV": "float64"}
+    values = {p.stem: pd.read_parquet(p)["value"] for p in written}
+    assert not pd.api.types.is_numeric_dtype(values.pop("PI101.PV"))
+    assert {k: str(v.dtype) for k, v in values.items()} == {
+        "FI102.PV": "float64",
+        "TI103.PV": "float64",
+    }
 
     templates = tsdive.init_long_meta(src, out_dir=tmp_path / "templates", source_id="plant1",
                                       tag_col="Tag", timestamp_col="Timestamp",

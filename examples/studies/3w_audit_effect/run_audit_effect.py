@@ -151,7 +151,7 @@ def mask_beyond_float32(frame: pd.DataFrame, columns: list[str]) -> tuple[pd.Dat
     whole life. Both variants get the same mask, so it is not part of the
     difference this study measures.
     """
-    block = frame[columns].to_numpy(dtype=float)
+    block = frame[columns].to_numpy(dtype=float, copy=True)
     bad = np.abs(block) > float(np.finfo(np.float32).max)
     detail = {"n_cells": int(bad.sum()), "n_rows": int(bad.any(axis=1).sum())}
     if not bad.any():
