@@ -136,8 +136,23 @@ def summary_row(summary: pd.DataFrame, tool: str, group: str) -> pd.Series | Non
     return None if sub.empty else sub.iloc[0]
 
 
+# The MSPC numbers this report published before tsdive 0.7.0, when `fit_pca`
+# centred each tag and did not scale it (results at tsdive 0.3.0 @ 0969513e).
+MSPC_BEFORE = {
+    "code": "0969513e",
+    "t2_auc": "0.480",
+    "t2_far": "31.0%",
+    "t2_recovered": "71.4%",
+    "spe_auc": "0.734",
+    "spe_ratio": "0.304",
+    "spe_recovered": "9.1%",
+}
+
+
 def refusal_class(reason: str) -> str:
     """The error class or the first clause of a window refusal string."""
+    if reason.startswith("the PCA keeps all "):
+        return "the PCA keeps every component, so SPE is 0 up to rounding"
     first = reason.split(";")[0]
     if ": " in first:
         head, _, rest = first.partition(": ")
@@ -540,7 +555,7 @@ def render_report(data: dict, figure_record: str | None) -> str:
         assert row is not None, (tool, group)
         return row
 
-    screen, _, t2, _, clock = (s(t) for t in rs.TOOLS)
+    screen, _, t2, spe, clock = (s(t) for t in rs.TOOLS)
     frozen_tags = profile[profile["n_zero_mad_whole_record"] > 0].sort_values(
         "n_zero_mad_whole_record", ascending=False
     )
@@ -647,6 +662,9 @@ def render_report(data: dict, figure_record: str | None) -> str:
         post_median = float(sub.loc[rs.PHASE_POST, "median_score"])
         ratio_parts.append(f"{fmt(post_median / span_median, 3)} for {SHORT_LABELS[tool]}")
     ratio_text = ", ".join(ratio_parts[:-1]) + " and " + ratio_parts[-1]
+    t2_phase = phase[phase["tool"] == rs.TOOL_T2].set_index("phase")["median_score"]
+    spe_phase = phase[phase["tool"] == rs.TOOL_SPE].set_index("phase")["median_score"]
+    spe_ratio = float(spe_phase[rs.PHASE_POST]) / float(spe_phase[rs.PHASE_SPAN])
 
     lines = [
         "# The detectors and the clock control on SKAB",
@@ -769,8 +787,8 @@ def render_report(data: dict, figure_record: str | None) -> str:
         "uv run python examples/studies/skab/make_report.py --update-benchmarks",
         "```",
         "",
-        f"The scoring run takes {run['wall_seconds']} s. Two runs write byte-identical "
-        "CSVs.",
+        f"The scoring run takes {run['wall_seconds']} s on {code_cite(run)}. Two runs "
+        "write byte-identical CSVs.",
         "",
         "## Results",
         "",
@@ -784,8 +802,9 @@ def render_report(data: dict, figure_record: str | None) -> str:
         "so position does not separate the classes. "
         f"{SHORT_LABELS[best_auc]} ranks highest at {fmt(s(best_auc)['roc_auc'])}, "
         f"{signed(float(s(best_auc)['roc_auc']) - float(clock['roc_auc']))} over the clock. "
-        f"The MSPC tools refuse {num(t2['n_windows_refused'])} stream windows, so their AUCs "
-        f"read over fewer windows than the univariate ones. {folder_refusal_text}",
+        f"MSPC T2 refuses {num(t2['n_windows_refused'])} stream windows and MSPC SPE "
+        f"{num(spe['n_windows_refused'])}, so their AUCs read over fewer windows than the "
+        f"univariate ones. {folder_refusal_text}",
         "",
         "### The alarm rule on the labelled records",
         "",
@@ -916,6 +935,31 @@ def render_report(data: dict, figure_record: str | None) -> str:
         f"MSPC T2 fires on {pct(t2['far_pre'])} before onset and detects "
         f"{pct(t2['detect_rate'])} of the records, with {pct(t2['far_post'])} after "
         "recovery.",
+        "",
+        "MSPC moved with tsdive 0.7.0, because `fit_pca` divides each tag by its "
+        "baseline standard deviation before the SVD. Before, the fit ran on the tags' "
+        "own units, so the tags with the largest spread set the model (tsdive 0.3.0 @ "
+        f"`{MSPC_BEFORE['code']}`). MSPC T2 then ranked at {MSPC_BEFORE['t2_auc']} and had "
+        f"the lowest FAR before onset, {MSPC_BEFORE['t2_far']}. It came back under its "
+        f"threshold within 2 windows on {MSPC_BEFORE['t2_recovered']} of the records that "
+        f"fired. Scaled, T2 ranks highest of all tools at {fmt(t2['roc_auc'])}, "
+        f"{signed(float(t2['roc_auc']) - float(clock['roc_auc']))} over the clock. Its "
+        f"alarm flips: it fires on {pct(t2['far_pre'])} before onset and "
+        f"{pct(t2['far_post'])} after recovery, and comes back on "
+        f"{pct(t2['recovered_rate'])} of the records. Its window mean now moves with the "
+        f"anomaly: {fmt(t2_phase[rs.PHASE_PRE], 2)} before onset, "
+        f"{fmt(t2_phase[rs.PHASE_SPAN], 2)} in the span and "
+        f"{fmt(t2_phase[rs.PHASE_POST], 2)} after it, where all three sat near 1 before. "
+        "After the span it stays above the baseline windows' maximum, so T2 ranks the "
+        "anomaly and does not mark its end. On "
+        f"{num(spe['n_records_no_threshold'] - t2['n_records_no_threshold'])} more records "
+        "than T2 the PCA keeps every component, and the study refuses SPE there. SPE "
+        f"ranks at {fmt(spe['roc_auc'])} over {num(spe['n_windows_scored'])} windows, "
+        f"against {MSPC_BEFORE['spe_auc']} before. Its median after the span is "
+        f"{fmt(spe_ratio, 3)} of the in-span median, the lowest ratio of the tools as "
+        f"before ({MSPC_BEFORE['spe_ratio']}). Its alarm comes back on "
+        f"{pct(spe['recovered_rate'])} of the records that fired, "
+        f"{MSPC_BEFORE['spe_recovered']} before.",
         "",
         f"The profile found the two low-information sensors ({frozen_text}) and the "
         f"{n_gap_records} gapped records before any detector ran. The refusal rows carry "
