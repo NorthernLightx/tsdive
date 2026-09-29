@@ -3,6 +3,38 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
+## 0.6.0 - 2026-09-29
+
+### Added
+
+- `tsdive demo [DIR]` and `tsdive.write_demo_data` write the demo
+  archives, two tags for the walkthrough and three for the switchback
+  trial, into a directory, `tsdive-demo/` by default. An archive that
+  exists already is refused, and nothing is written.
+- The documentation site gains a getting-started tutorial, eleven
+  concept pages, the annotated output of profile, screen, spc, mspc,
+  compare and switchback analyze, six how-to guides, an errors and
+  refusals reference, a glossary and a home page that starts from the
+  reader's question. Every command on those pages runs on the demo data
+  when the site is built, and every Python snippet runs as a test.
+
+### Changed
+
+- `scripts/make_demo_archive.py` and `examples/switchback/make_trial.py`
+  call the builders in `tsdive.demo` and write the same bytes as before.
+- The README installs with `pip install` and writes the demo data with
+  `tsdive demo data`, so the transcripts need no clone.
+
+### Fixed
+
+- The `SchemaError` for a date that reads day first and month first
+  suggests a strptime format with the shape of the value it quotes, such
+  as `%d/%m/%Y %H:%M` for `01/02/2026 00:00`, instead of always
+  `%d/%m/%Y %H:%M:%S`.
+- `tsdive-mcp` without the `mcp` extra names the git and release-wheel
+  installs with the extra, instead of a command that works only in a
+  clone.
+
 ## 0.5.0 - 2026-09-28
 
 ### Added
