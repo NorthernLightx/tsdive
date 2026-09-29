@@ -74,8 +74,8 @@ Flatline
   NOT ASSESSED (window censored; saturated != frozen)
 ```
 
-Omit `--window` to profile the whole archive. Statistics cover GOOD rows
-only. The transmitter sat at full scale for half an hour.
+Omit `--window` to profile the whole archive. The transmitter sat at
+full scale for half an hour.
 
 ### segment
 
@@ -179,7 +179,7 @@ residual.
 ### compare
 
 Reports what changed between two periods, over every tag of a unit. The
-tables say that a tag changed and a pair decoupled; they do not say why.
+tables do not say why.
 
 ```console
 $ tsdive compare \
@@ -318,6 +318,7 @@ Every read runs these checks.
 | values pinned at the engineering range | `Range`: `clipped`, `censored` | `InsufficientQuality`: censored window used as a baseline |
 | unit spelling resolves through one alias table | `units <raw> -> <canonical>` or `unresolved (null)` | `UnresolvedUnitError`; `IncomparableUnitsError`: reference-condition unit with no declared state |
 | statistics use GOOD rows only | `Values  GOOD n=...` | `InsufficientQuality`: no GOOD sample |
+| baseline values spread | `scale`, `sigma` | `ZeroSpreadBaseline`: scale 0 |
 
 ## How it compares
 

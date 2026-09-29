@@ -76,6 +76,7 @@ sys.path.insert(0, str(Path(__file__).parents[3] / "src"))
 
 import tsdive
 from tsdive.baselines import (
+    RegimeBaseline,
     mad_baseline,
     match_population,
     match_regime,
@@ -95,6 +96,7 @@ from tsdive.errors import (
     MspcAlignmentError,
     PopulationTooSparse,
     RegimeTooSparse,
+    ZeroSpreadBaseline,
 )
 from tsdive.eval import clock_control, fires, ranking_metrics, worst_baseline_threshold
 from tsdive.mspc.pca import AlignedMatrix, PcaModel, detect, fit_pca
@@ -298,7 +300,7 @@ def own_history_baselines(
         except InsufficientQuality as e:
             degenerate[pair] = f"{variable}: InsufficientQuality: {e}"
             continue
-        if baseline.scale <= 0:
+        except ZeroSpreadBaseline:
             degenerate[pair] = (
                 f"{variable}: the tag's own first-{layout.k}-window MAD is zero, "
                 "so no robust z exists"
@@ -459,7 +461,7 @@ def score_mad(train: pd.DataFrame, test: pd.DataFrame) -> ToolScores:
         except InsufficientQuality as e:
             degenerate[str(variable)] = f"InsufficientQuality: {e}"
             continue
-        if base.scale <= 0:
+        except ZeroSpreadBaseline:
             degenerate[str(variable)] = "MAD scale is zero across the training folds"
             continue
         baselines[str(variable)] = base
@@ -488,6 +490,34 @@ def score_mad(train: pd.DataFrame, test: pd.DataFrame) -> ToolScores:
     return out
 
 
+def _regime_bases(subset: pd.DataFrame, min_samples: int) -> dict[str, RegimeBaseline]:
+    """``regime_baselines`` one regime at a time, keeping a regime with no spread.
+
+    ``regime_baselines`` raises ``ZeroSpreadBaseline`` for a regime whose
+    training medians share one value. Such a regime keeps a zero-scale
+    baseline here, and the scoring loop refuses its rows as "regime scale
+    is zero".
+    """
+    frame = _quality_frame(subset["median"], subset["window_start"])
+    modes = subset["state_mode"].astype(str).reset_index(drop=True)
+    bases: dict[str, RegimeBaseline] = {}
+    for regime in sorted(set(modes)):
+        mask = (modes == regime).to_numpy()
+        part = frame[mask].reset_index(drop=True)
+        try:
+            bases.update(
+                regime_baselines(
+                    part, modes[mask].reset_index(drop=True), min_samples=min_samples
+                )
+            )
+        except ZeroSpreadBaseline:
+            values = part["value"].to_numpy(dtype=float)
+            bases[regime] = RegimeBaseline(
+                regime=regime, center=float(np.median(values)), scale=0.0, n_good=len(values)
+            )
+    return bases
+
+
 def score_regime(train: pd.DataFrame, test: pd.DataFrame, *, min_samples: int = 20) -> ToolScores:
     """The MAD screen conditioned on the window's modal state."""
     out = ToolScores.empty()
@@ -503,11 +533,7 @@ def score_regime(train: pd.DataFrame, test: pd.DataFrame, *, min_samples: int = 
         if subset.empty:
             continue
         try:
-            per_variable[str(variable)] = regime_baselines(
-                _quality_frame(subset["median"], subset["window_start"]),
-                subset["state_mode"].astype(str).reset_index(drop=True),
-                min_samples=min_samples,
-            )
+            per_variable[str(variable)] = _regime_bases(subset, min_samples)
         except (RegimeTooSparse, InsufficientQuality):  # pragma: no cover - defensive
             continue
 
@@ -614,7 +640,7 @@ def score_spc(
             base = mad_baseline(_quality_frame(pd.Series(values), pd.Series(stamps)))
         except InsufficientQuality:  # pragma: no cover - guarded by the length check
             continue
-        if base.scale <= 0:
+        except ZeroSpreadBaseline:
             continue
         limits[str(variable)] = individuals_limits(base.center, base.scale)
 

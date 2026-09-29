@@ -40,6 +40,7 @@ from tsdive.errors import (
     SchemaError,
     TSDiveError,
     UnresolvedUnitError,
+    ZeroSpreadBaseline,
 )
 from tsdive.store.sampling_contract import CalculationBasis, RetrievalMode, SamplingContract
 from tsdive.store.tagstore import SingleFileStore
@@ -288,6 +289,40 @@ def v_dimensions_differ(tmp_path: Path) -> None:
     from tsdive.store.units import check_comparable
 
     check_comparable("m3/h", "degC")
+
+
+# --------------------------------------------------------------------------
+# ZeroSpreadBaseline
+# --------------------------------------------------------------------------
+def _lattice(n: int, steps: tuple[int, ...]) -> pd.DataFrame:
+    values = [20.5 if i in steps else 20.0 for i in range(n)]
+    return annotate(_frame(_stamps(n), values))
+
+
+def z_mad_on_a_lattice(tmp_path: Path) -> None:
+    from tsdive.baselines.provisional import mad_baseline
+
+    mad_baseline(_lattice(120, (37,)))
+
+
+def z_moving_range_on_one_value(tmp_path: Path) -> None:
+    from tsdive.baselines.provisional import moving_range_baseline
+
+    moving_range_baseline(_lattice(40, ()))
+
+
+def z_regime_on_one_value(tmp_path: Path) -> None:
+    from tsdive.baselines.regime import regime_baselines
+
+    history = annotate(_frame(_stamps(60), [float(i % 7) for i in range(30)] + [5.0] * 30))
+    modes = pd.Series(["R1"] * 30 + ["R2"] * 30, index=history.index)
+    regime_baselines(history, modes)
+
+
+def z_individuals_sigma_zero(tmp_path: Path) -> None:
+    from tsdive.spc import individuals_limits
+
+    individuals_limits(20.0, 0.0)
 
 
 # --------------------------------------------------------------------------
@@ -704,6 +739,32 @@ CORPUS: list[Case] = [
         IncomparableUnitsError,
         r"units 'm3/h' and 'degC' have different dimensions",
         v_dimensions_differ,
+    ),
+    Case(
+        "MAD baseline with 119 of 120 samples on one lattice value",
+        ZeroSpreadBaseline,
+        r"^the MAD scale is 0, because the 120 GOOD baseline samples hold 2 distinct "
+        r"values and 20 makes up 99% of them",
+        z_mad_on_a_lattice,
+    ),
+    Case(
+        "moving-range baseline whose samples hold one value",
+        ZeroSpreadBaseline,
+        r"^the moving-range scale is 0, because the 40 GOOD baseline samples hold 1 "
+        r"distinct value",
+        z_moving_range_on_one_value,
+    ),
+    Case(
+        "regime R2 whose samples hold one value",
+        ZeroSpreadBaseline,
+        r"^regime 'R2': the MAD scale is 0, because the 30 GOOD baseline samples",
+        z_regime_on_one_value,
+    ),
+    Case(
+        "individuals limits with a sigma of 0",
+        ZeroSpreadBaseline,
+        r"^sigma is 0, so both limits sit on the center 20",
+        z_individuals_sigma_zero,
     ),
     Case(
         "regime R2 holding 3 GOOD samples against a floor of 20",

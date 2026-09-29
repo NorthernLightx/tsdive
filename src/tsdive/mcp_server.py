@@ -70,9 +70,9 @@ Returns one JSON object, discriminated on result_kind:
       a check that has no answer on this data. error_type names a
       tsdive.errors class: SchemaError, InsufficientQuality,
       IncomparableSamplingError, NonMonotonicIndex, UnresolvedUnitError,
-      IncomparableUnitsError, RegimeTooSparse, PopulationTooSparse,
-      GroupLeakage, MspcAlignmentError, DesignTooSmall, ScheduleMismatch
-      or NarratorUnavailable.
+      IncomparableUnitsError, RegimeTooSparse, ZeroSpreadBaseline,
+      PopulationTooSparse, GroupLeakage, MspcAlignmentError,
+      DesignTooSmall, ScheduleMismatch or NarratorUnavailable.
 
 A refusal comes back with isError false, so the call succeeds. A
 malformed window, a rejected option or an unreadable path raises a tool

@@ -119,6 +119,8 @@ def test_a_flat_before_period_refuses_the_level_shift_and_the_spread(archive_fac
     assert row.spread_ratio is None
     assert row.level_shift_reason == "no spread before"
     assert row.spread_reason == "no spread before"
+    assert row.flagged_fraction is None
+    assert row.flagged_reason == "no spread before"
 
 
 def test_the_flagged_share_screens_the_after_period_on_the_before_baseline(

@@ -130,6 +130,11 @@ def _baseline_and_monitor(
     return base, monitor
 
 
+def _baseline_label(base: Window) -> str:
+    """``<tag> baseline <start>/<end>``, the words a baseline refusal starts with."""
+    return f"{base.identity} baseline {base.start:%Y-%m-%dT%H:%M:%SZ}/{base.end:%Y-%m-%dT%H:%M:%SZ}"
+
+
 def _aligned_modes(
     frame: pd.DataFrame, modes: Window, label: str
 ) -> tuple[pd.DataFrame, pd.Series, int]:
@@ -379,9 +384,12 @@ def screen(
     base_w, monitor_w = _baseline_and_monitor(
         archive, baseline, window, basis=basis, stepped=stepped
     )
+    label = _baseline_label(base_w)
     if mode is None:
-        base = mad_baseline(base_w.frame) if method == "mad" else moving_range_baseline(
-            base_w.frame
+        base = (
+            mad_baseline(base_w.frame, label=label)
+            if method == "mad"
+            else moving_range_baseline(base_w.frame, label=label)
         )
         return ScreenAnalysis(
             baseline=base_w,
@@ -395,7 +403,7 @@ def screen(
     )
     b_frame, b_modes, b_dropped = _aligned_modes(base_w.frame, mode_base, "baseline")
     m_frame, m_modes, m_dropped = _aligned_modes(monitor_w.frame, mode_monitor, "window")
-    regimes = regime_baselines(b_frame, b_modes)
+    regimes = regime_baselines(b_frame, b_modes, label=label)
     return ScreenAnalysis(
         baseline=base_w,
         monitor=monitor_w,
@@ -493,7 +501,7 @@ def spc(
     base_w, monitor_w = _baseline_and_monitor(
         archive, baseline, window, basis=basis, stepped=stepped
     )
-    base = mad_baseline(base_w.frame)
+    base = mad_baseline(base_w.frame, label=_baseline_label(base_w))
     limits = individuals_limits(base.center, base.scale)
     good = monitor_w.frame[monitor_w.frame["valid"]]
     return SpcAnalysis(

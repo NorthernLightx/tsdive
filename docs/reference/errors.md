@@ -237,6 +237,34 @@ tsdive screen data/demo/fic101_demo.parquet --mode modes.parquet \
 What to do: choose a baseline that covers every regime the window
 visits, or screen without `--mode`.
 
+### ZeroSpreadBaseline
+
+Raised by `screen`, `spc` and `screen --mode` when the GOOD values of the
+baseline do not spread, so its MAD or moving-range scale is 0. Limits of
+zero width would flag every sample that differs from the baseline's
+center. A tag that sits on one value of a coarse lattice for most of the
+baseline is the usual cause. The message names the tag, the baseline
+window, the count of distinct values and the most common value with its
+share.
+
+```pycon
+>>> import pandas as pd
+>>> from tsdive.baselines import mad_baseline
+>>> history = pd.DataFrame({
+...     "timestamp": pd.date_range("2024-03-01", periods=120, freq="min", tz="UTC"),
+...     "value": [20.0] * 119 + [20.5], "quality": ["GOOD"] * 120})
+>>> mad_baseline(history)
+Traceback (most recent call last):
+    ...
+tsdive.errors.ZeroSpreadBaseline: the MAD scale is 0, because the 120 GOOD
+baseline samples hold 2 distinct values and 20 makes up 99% of them; choose a
+baseline window where the tag moves
+
+```
+
+What to do: choose a baseline window where the tag moves. `tsdive
+profile` over a candidate window prints its `distinct` count.
+
 ### PopulationTooSparse
 
 Raised by the population baseline of the detector studies when an

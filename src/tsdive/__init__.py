@@ -43,6 +43,7 @@ from tsdive.errors import (
     SchemaError,
     TSDiveError,
     UnresolvedUnitError,
+    ZeroSpreadBaseline,
 )
 from tsdive.store.identity import EngRange, Role, TagIdentity, TagMeta
 from tsdive.store.sampling_contract import (
@@ -95,6 +96,7 @@ __all__ = [
     "TagStore",
     "UnresolvedUnitError",
     "Window",
+    "ZeroSpreadBaseline",
     "__version__",
     "compare",
     "ingest",

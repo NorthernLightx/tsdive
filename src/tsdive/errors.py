@@ -72,6 +72,16 @@ class RegimeTooSparse(TSDiveError):
     """
 
 
+class ZeroSpreadBaseline(TSDiveError):
+    """A baseline whose GOOD values do not spread, so its scale is 0.
+
+    Raised by the MAD and moving-range baselines, per regime by the
+    regime baselines, and by individuals chart limits with a sigma of 0.
+    Limits of zero width flag every sample that differs from the
+    baseline's center.
+    """
+
+
 class PopulationTooSparse(TSDiveError):
     """A cross-instance (asset, variable) baseline has too few windows.
 

@@ -49,7 +49,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import tsdive  # noqa: E402
 from tsdive.baselines import mad_baseline  # noqa: E402
-from tsdive.errors import InsufficientQuality  # noqa: E402
+from tsdive.errors import InsufficientQuality, ZeroSpreadBaseline  # noqa: E402
 from tsdive.eval import (  # noqa: E402
     clock_control,
     far_floor,
@@ -302,6 +302,9 @@ def fit_pair(values: np.ndarray, variant: str) -> Baseline:
     try:
         baseline = mad_baseline(synthetic_history(finite))
         centre, scale = float(baseline.center), float(baseline.scale)
+        quality_ok = True
+    except ZeroSpreadBaseline:
+        centre, scale = float(np.median(finite)), 0.0
         quality_ok = True
     except InsufficientQuality:
         centre = float(np.median(finite))

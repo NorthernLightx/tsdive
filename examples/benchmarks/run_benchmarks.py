@@ -173,6 +173,7 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
         score_isolation,
         train_isolation,
     )
+    from tsdive.errors import ZeroSpreadBaseline
     from tsdive.features import extract
     from tsdive.mspc import align_windows, detect, fit_pca
     from tsdive.spc import apply_rules, individuals_limits
@@ -224,6 +225,22 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
     ff3 = f"{clean3.n_flagged / max(clean3.n_screened, 1) * 100:.1f}%"
     rows.append(
         ("3", "MAD false-flag rate (clean day)", ff3, "backbone seed=42 loop0", "provisional")
+    )
+    # A tag on a 0.5 lattice: 119 of 120 baseline samples read 20.0.
+    lattice = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(DAY1[0], periods=120, freq="min"),
+            "value": [20.5 if i == 37 else 20.0 for i in range(120)],
+            "quality": ["GOOD"] * 120,
+        }
+    )
+    try:
+        mad_baseline(lattice)
+        zero3 = "not refused"
+    except ZeroSpreadBaseline:
+        zero3 = "ZeroSpreadBaseline"
+    rows.append(
+        ("3", "MAD baseline, 119 of 120 samples on one value", zero3, "0.5 lattice", "")
     )
 
     mode_ident = next(t for t in store.list_tags() if t.point_id == "FIC000.MODE")

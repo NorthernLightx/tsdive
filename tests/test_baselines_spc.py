@@ -15,7 +15,7 @@ from tsdive.baselines import (
     screen,
     screen_regime,
 )
-from tsdive.errors import InsufficientQuality, RegimeTooSparse
+from tsdive.errors import InsufficientQuality, RegimeTooSparse, ZeroSpreadBaseline
 from tsdive.spc import apply_rules, individuals_limits, xbar_r_limits
 from tsdive.store.quality import good_mask, usable_mask
 from tsdive.store.tagstore import SingleFileStore, Window
@@ -51,6 +51,65 @@ def test_moving_range_baseline_shape():
 def test_insufficient_history_refused():
     with pytest.raises(InsufficientQuality):
         mad_baseline(_history(n=10))
+
+
+def _lattice_history(n: int = 120, off: tuple[int, ...] = (37,)) -> pd.DataFrame:
+    """``n`` GOOD samples at 20.0 on a 0.5 lattice, one step up at each of ``off``."""
+    history = _history(n)
+    history["value"] = 20.0
+    history.loc[list(off), "value"] = 20.5
+    return history
+
+
+def test_a_mad_baseline_without_spread_names_its_values():
+    with pytest.raises(ZeroSpreadBaseline) as info:
+        mad_baseline(_lattice_history(), label="plant1:LI201.PV baseline B")
+    assert str(info.value) == (
+        "plant1:LI201.PV baseline B: the MAD scale is 0, because the 120 GOOD baseline "
+        "samples hold 2 distinct values and 20 makes up 99% of them; choose a baseline "
+        "window where the tag moves"
+    )
+
+
+def test_a_moving_range_baseline_on_one_value_is_refused():
+    with pytest.raises(
+        ZeroSpreadBaseline,
+        match=r"^the moving-range scale is 0, because the 120 GOOD baseline samples hold "
+        r"1 distinct value and 20 makes up 100% of them",
+    ):
+        moving_range_baseline(_lattice_history(off=()))
+
+
+def test_a_regime_without_spread_is_named():
+    history = pd.concat([_history(40), _lattice_history(40, off=())], ignore_index=True)
+    modes = pd.Series(["R1"] * 40 + ["R2"] * 40)
+    with pytest.raises(ZeroSpreadBaseline, match=r"^LI201 baseline, regime 'R2': the MAD scale"):
+        regime_baselines(history, modes, label="LI201 baseline")
+
+
+def test_individuals_limits_refuse_a_sigma_of_zero():
+    with pytest.raises(ZeroSpreadBaseline, match=r"sigma is 0, so both limits sit on the center"):
+        individuals_limits(20.0, 0.0)
+
+
+def test_screen_and_spc_refuse_a_flat_baseline_naming_tag_and_window(tmp_path, capsys):
+    import tsdive
+    from tsdive.cli import main
+
+    frame = _lattice_history(240)
+    frame["timestamp"] = pd.date_range("2024-03-01", periods=240, freq="min", tz="UTC")
+    meta = tsdive.TagMeta(identity=tsdive.TagIdentity("plant1", "LI201.PV"),
+                          name="LI-201 level", sample_rate_s=60.0)
+    path = tsdive.write_tag(tmp_path / "LI201.PV.parquet", frame, meta)
+    baseline = "2024-03-01T00:00:00Z/2024-03-01T02:00:00Z"
+    for command in ("screen", "spc"):
+        rc = main([command, str(path), "--baseline", baseline,
+                   "--window", "2024-03-01T02:00:00Z/2024-03-01T04:00:00Z"])
+        assert rc == 3
+        assert capsys.readouterr().err.startswith(
+            f"[ZeroSpreadBaseline] plant1:LI201.PV baseline {baseline}: the MAD scale is 0, "
+            "because the 120 GOOD baseline samples hold 2 distinct values"
+        )
 
 
 def test_screen_flags_shift():

@@ -16,6 +16,7 @@ import pandas as pd
 from tsdive.baselines.provisional import (
     MAD_TO_SIGMA,
     ScreenResult,
+    zero_spread,
 )
 from tsdive.errors import InsufficientQuality, RegimeTooSparse
 from tsdive.store.quality import usable_mask
@@ -55,12 +56,15 @@ def regime_baselines(
     modes: pd.Series,
     *,
     min_samples: int = 20,
+    label: str | None = None,
 ) -> dict[str, RegimeBaseline]:
     """One baseline per distinct mode value.
 
     ``modes`` must align row-for-row with ``history``. A regime with fewer
     than ``min_samples`` GOOD rows raises :class:`RegimeTooSparse` rather
-    than producing a quietly wide interval.
+    than producing a quietly wide interval. A regime whose MAD is 0
+    raises :class:`ZeroSpreadBaseline` naming the regime, and ``label``
+    names the tag and window in that message.
     """
     _require_alignment(history, modes, "history")
     usable = usable_mask(history) & cast(
@@ -79,6 +83,9 @@ def regime_baselines(
             )
         med = float(np.median(vals))
         mad = float(np.median(np.abs(vals - med))) * MAD_TO_SIGMA
+        if mad == 0:
+            where = f"{label}, regime {regime!r}" if label else f"regime {regime!r}"
+            raise zero_spread(vals, scale="MAD scale", label=where)
         out[regime] = RegimeBaseline(regime=regime, center=med, scale=mad, n_good=len(vals))
     if not out:
         # Reachable only with no mode labels, which _require_alignment

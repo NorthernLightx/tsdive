@@ -23,6 +23,7 @@ from tsdive.errors import (
     SchemaError,
     TSDiveError,
     UnresolvedUnitError,
+    ZeroSpreadBaseline,
 )
 from tsdive.store.sampling_contract import CalculationBasis, RetrievalMode, SamplingContract
 from tsdive.store.tagstore import SingleFileStore, assert_windows_comparable
@@ -154,6 +155,12 @@ def _provoke_mspc_alignment():
     align_windows([shell("A.PV", 0), shell("B.PV", 2)], rate_s=3, min_coverage=0.99)
 
 
+def _provoke_zero_spread_baseline():
+    from tsdive.spc import individuals_limits
+
+    individuals_limits(20.0, 0.0)
+
+
 def _provoke_population_too_sparse():
     from tsdive.baselines.population import population_baseline, screen_population
 
@@ -226,6 +233,7 @@ PROVOKERS = {
     UnresolvedUnitError: _provoke_unresolved_unit,
     IncomparableUnitsError: _provoke_incomparable_units,
     RegimeTooSparse: _provoke_regime_too_sparse,
+    ZeroSpreadBaseline: _provoke_zero_spread_baseline,
     MspcAlignmentError: _provoke_mspc_alignment,
     GroupLeakage: _provoke_group_leakage,
     PopulationTooSparse: _provoke_population_too_sparse,
@@ -243,6 +251,7 @@ PROVOKERS = {
         UnresolvedUnitError,
         IncomparableUnitsError,
         RegimeTooSparse,
+        ZeroSpreadBaseline,
         MspcAlignmentError,
         GroupLeakage,
         PopulationTooSparse,

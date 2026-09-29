@@ -129,6 +129,7 @@ TOP_LEVEL_GROUPS: dict[str, list[str]] = {
         "ScheduleMismatch",
         "SchemaError",
         "UnresolvedUnitError",
+        "ZeroSpreadBaseline",
     ],
     "Package": ["__version__"],
 }

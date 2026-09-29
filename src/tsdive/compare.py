@@ -40,7 +40,7 @@ from tsdive.api import parse_window
 from tsdive.baselines.provisional import MAD_TO_SIGMA, mad_baseline, screen
 from tsdive.changepoints.pelt import segment_window
 from tsdive.detectors.flatline import assess_flatline
-from tsdive.errors import InsufficientQuality, TSDiveError
+from tsdive.errors import InsufficientQuality, TSDiveError, ZeroSpreadBaseline
 from tsdive.mspc.pca import (
     AlignedMatrix,
     PcaModel,
@@ -393,6 +393,8 @@ def _flagged(before: Window, after: Window) -> tuple[float | None, str | None]:
     try:
         assert_usable_baseline(before.meta, before.physics.clipping)
         result = screen(mad_baseline(before.frame), after.frame)
+    except ZeroSpreadBaseline:
+        return None, "no spread before"
     except TSDiveError as e:
         return None, f"{type(e).__name__}: {e}"
     if result.n_screened == 0:
