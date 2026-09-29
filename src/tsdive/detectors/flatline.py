@@ -201,7 +201,7 @@ def assess_flatline(
     # Signal 1: stall vs own p99 of change intervals.
     stall_s: float | None = None
     sig1_evaluable = False
-    findings_stall = "no GOOD samples; signal not evaluable"
+    findings_stall = "fewer than 2 GOOD samples; signal not evaluable"
     if len(good) >= 2:
         last_change = _last_actual_change(window.frame)
         end = cast(pd.Timestamp, good["timestamp"].max())
@@ -215,6 +215,7 @@ def assess_flatline(
             )
         else:
             stall_s = (end - last_change).total_seconds()
+            findings_stall = f"stall {stall_s:.0f}s"
         p99 = _pctl(reference_change_intervals_s, 0.99)
         if p99 is not None and stall_s is not None:
             did_fire = stall_s > p99

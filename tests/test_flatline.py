@@ -214,6 +214,43 @@ def test_one_evaluable_signal_is_enough_to_return_a_verdict(tmp_path):
     assert verdict.fired  # 1 distinct value against a reference p05 of 7.1
 
 
+def _stall_evidence(window) -> str:
+    """Signal 1's evidence with no reference history and a reference-window p05."""
+    verdict = assess_flatline(
+        window, reference_change_intervals_s=[], reference_distinct_counts=[1, 1]
+    )
+    stall = next(s for s in verdict.signals if s.signal == "time_since_last_actual_change")
+    assert not stall.evaluable
+    return stall.evidence
+
+
+def test_a_moving_window_without_reference_history_states_its_stall(tmp_path):
+    stamps = _stamps(0, 120)
+    # The value changes every 30 s up to 01:58 and holds for the last 120 s.
+    values = [float(min(i, 236)) for i in range(len(stamps))]
+    window = _window_for(tmp_path, "MOVING.PV", stamps, values)
+
+    assert _stall_evidence(window) == "stall 120s; no reference history provided"
+
+
+def test_a_still_window_without_reference_history_states_its_span(tmp_path):
+    stamps = _stamps(0, 120)
+    window = _window_for(tmp_path, "STILL.PV", stamps, [42.0] * len(stamps))
+
+    assert _stall_evidence(window) == (
+        "no change inside window at all (span 7200s); cannot beat a p99 the tag "
+        "never established; no reference history provided"
+    )
+
+
+def test_a_window_with_one_good_sample_has_no_stall(tmp_path):
+    stamps = _stamps(0, 120)
+    qualities = ["GOOD"] + ["BAD"] * (len(stamps) - 1)
+    window = _window_for(tmp_path, "ONE.PV", stamps, [42.0] * len(stamps), qualities)
+
+    assert _stall_evidence(window) == "fewer than 2 GOOD samples; signal not evaluable"
+
+
 def test_window_with_no_valid_samples_is_not_assessed(tmp_path):
     """Nothing observed is not evidence of a frozen tag."""
     base = pd.Timestamp("2024-03-01 00:00:00+00:00")
