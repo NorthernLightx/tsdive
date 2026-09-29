@@ -35,71 +35,71 @@ clock,valve2__1,valve2,labelled,21,18,18,0,2.0,0.5972,,10.0,16.0,7.0,7.0,True,0.
 clock,valve2__2,valve2,labelled,20,17,17,0,2.0,0.7,,10.0,16.0,7.0,7.0,True,0.0,3.0,3.0,False,
 clock,valve2__3,valve2,labelled,18,15,15,0,2.0,1.0,,10.0,17.0,7.0,7.0,True,0.0,0.0,0.0,,
 mspc_spe,anomaly-free__anomaly-free,anomaly-free,anomaly_free,167,164,0,164,,,record carries one class only in its scored stream windows,,,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
-mspc_spe,other__1,other,labelled,14,11,10,1,0.768,1.0,,9.0,13.0,6.0,6.0,True,0.0,0.0,0.0,,
-mspc_spe,other__10,other,labelled,24,21,17,4,0.5843,0.9861,,10.0,20.0,7.0,5.0,True,0.0,1.0,1.0,False,
-mspc_spe,other__11,other,labelled,21,18,13,5,0.6071,1.0,,10.0,17.0,5.0,5.0,True,0.0,0.0,0.0,False,
+mspc_spe,other__1,other,labelled,14,11,10,1,0.3221,1.0,,9.0,13.0,6.0,6.0,True,0.0,0.0,0.0,,
+mspc_spe,other__10,other,labelled,24,21,0,21,,,no scored stream window,10.0,20.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 8 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 8 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 8 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,other__11,other,labelled,21,18,13,5,0.3921,1.0,,10.0,17.0,5.0,5.0,True,0.0,0.0,0.0,False,
 mspc_spe,other__12,other,labelled,21,18,0,18,,,no scored stream window,10.0,17.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
 mspc_spe,other__13,other,labelled,19,16,0,16,,,no scored stream window,9.0,15.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
-mspc_spe,other__14,other,labelled,16,13,11,2,1.057,1.0,,10.0,15.0,6.0,1.0,True,0.0,0.0,0.0,,
+mspc_spe,other__14,other,labelled,16,13,11,2,0.3052,1.0,,10.0,15.0,6.0,3.0,True,0.0,0.0,0.0,,
 mspc_spe,other__2,other,labelled,18,15,0,15,,,no scored stream window,5.0,12.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
-mspc_spe,other__3,other,labelled,20,17,13,4,0.5196,0.881,,9.0,16.0,5.0,4.0,True,0.0,2.0,2.0,False,
-mspc_spe,other__4,other,labelled,21,18,14,4,1.449,1.0,,14.0,20.0,9.0,6.0,True,1.0,0.0,0.0,,
-mspc_spe,other__5,other,labelled,21,18,17,1,0.5001,0.8056,,10.0,17.0,7.0,4.0,True,0.0,2.0,2.0,False,
-mspc_spe,other__6,other,labelled,21,18,17,1,0.5041,0.9583,,10.0,17.0,7.0,3.0,True,0.0,2.0,2.0,False,
-mspc_spe,other__7,other,labelled,20,17,16,1,0.5168,0.6825,,10.0,16.0,7.0,5.0,True,1.0,2.0,2.0,False,
-mspc_spe,other__8,other,labelled,21,18,17,1,0.6603,0.4444,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
-mspc_spe,other__9,other,labelled,20,17,16,1,0.4922,0.9375,,9.0,16.0,6.0,5.0,True,0.0,2.0,2.0,False,
-mspc_spe,valve1__0,valve1,labelled,20,17,17,0,0.1068,0.8143,,10.0,16.0,7.0,7.0,True,0.0,3.0,3.0,False,
-mspc_spe,valve1__1,valve1,labelled,21,18,17,1,0.1319,0.5417,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
-mspc_spe,valve1__10,valve1,labelled,20,17,17,0,0.5646,0.9857,,10.0,16.0,7.0,7.0,True,0.0,3.0,0.0,True,
-mspc_spe,valve1__11,valve1,labelled,21,18,15,3,0.156,0.1964,,10.0,17.0,7.0,7.0,True,1.0,1.0,1.0,False,
-mspc_spe,valve1__12,valve1,labelled,21,18,15,3,0.3427,0.9286,,10.0,17.0,7.0,6.0,True,0.0,1.0,1.0,False,
-mspc_spe,valve1__13,valve1,labelled,20,17,17,0,1.7684,1.0,,10.0,16.0,7.0,3.0,True,0.0,3.0,2.0,False,
+mspc_spe,other__3,other,labelled,20,17,0,17,,,no scored stream window,9.0,16.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,other__4,other,labelled,21,18,14,4,0.3889,0.9556,,14.0,20.0,9.0,9.0,True,1.0,0.0,0.0,,
+mspc_spe,other__5,other,labelled,21,18,0,18,,,no scored stream window,10.0,17.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,other__6,other,labelled,21,18,17,1,0.3595,0.9306,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_spe,other__7,other,labelled,20,17,16,1,0.3929,0.9524,,10.0,16.0,7.0,6.0,True,0.0,2.0,2.0,False,
+mspc_spe,other__8,other,labelled,21,18,17,1,0.4526,0.9167,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_spe,other__9,other,labelled,20,17,16,1,0.3301,0.9531,,9.0,16.0,6.0,6.0,True,0.0,2.0,2.0,False,
+mspc_spe,valve1__0,valve1,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__1,valve1,labelled,21,18,17,1,0.3521,0.6806,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_spe,valve1__10,valve1,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__11,valve1,labelled,21,18,0,18,,,no scored stream window,10.0,17.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__12,valve1,labelled,21,18,0,18,,,no scored stream window,10.0,17.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__13,valve1,labelled,20,17,17,0,0.438,0.9429,,10.0,16.0,7.0,4.0,True,0.0,3.0,3.0,False,
 mspc_spe,valve1__14,valve1,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
-mspc_spe,valve1__15,valve1,labelled,21,18,17,1,0.3026,0.9722,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
-mspc_spe,valve1__2,valve1,labelled,20,17,14,3,0.3839,0.7778,,11.0,16.0,6.0,5.0,True,1.0,3.0,3.0,False,
-mspc_spe,valve1__3,valve1,labelled,21,18,17,1,1.4085,0.8472,,10.0,17.0,7.0,0.0,False,,2.0,0.0,,
-mspc_spe,valve1__4,valve1,labelled,20,17,13,4,0.1198,0.3056,,10.0,16.0,6.0,6.0,True,0.0,3.0,3.0,False,
-mspc_spe,valve1__5,valve1,labelled,20,17,17,0,0.1021,0.2857,,10.0,16.0,7.0,6.0,True,0.0,3.0,2.0,True,
-mspc_spe,valve1__6,valve1,labelled,20,17,17,0,0.1478,0.3472,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
-mspc_spe,valve1__7,valve1,labelled,21,18,15,3,0.4183,1.0,,10.0,17.0,7.0,7.0,True,0.0,1.0,1.0,False,
-mspc_spe,valve1__8,valve1,labelled,20,17,16,1,0.1088,0.7656,,9.0,16.0,6.0,4.0,True,0.0,2.0,2.0,False,
-mspc_spe,valve1__9,valve1,labelled,21,18,17,1,0.1416,0.7361,,10.0,17.0,7.0,3.0,True,0.0,2.0,2.0,False,
+mspc_spe,valve1__15,valve1,labelled,21,18,0,18,,,no scored stream window,10.0,17.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__2,valve1,labelled,20,17,0,17,,,no scored stream window,11.0,16.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 7 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__3,valve1,labelled,21,18,17,1,0.3037,0.5556,,10.0,17.0,7.0,5.0,True,0.0,2.0,1.0,True,
+mspc_spe,valve1__4,valve1,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__5,valve1,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__6,valve1,labelled,20,17,0,17,,,no scored stream window,10.0,17.0,,,,,,,,"baseline window refused: window 0: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 1: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing; window 2: the PCA keeps all 6 components, so SPE is 0 up to rounding and scores nothing"
+mspc_spe,valve1__7,valve1,labelled,21,18,15,3,0.4616,0.8214,,10.0,17.0,7.0,7.0,True,0.0,1.0,1.0,False,
+mspc_spe,valve1__8,valve1,labelled,20,17,16,1,0.3499,0.625,,9.0,16.0,6.0,6.0,True,0.0,2.0,2.0,False,
+mspc_spe,valve1__9,valve1,labelled,21,18,17,1,0.4004,0.3472,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
 mspc_spe,valve2__0,valve2,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
 mspc_spe,valve2__1,valve2,labelled,21,18,0,18,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
 mspc_spe,valve2__2,valve2,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
 mspc_spe,valve2__3,valve2,labelled,18,15,0,15,,,no scored stream window,10.0,17.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
 mspc_t2,anomaly-free__anomaly-free,anomaly-free,anomaly_free,167,164,0,164,,,record carries one class only in its scored stream windows,,,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
-mspc_t2,other__1,other,labelled,14,11,10,1,1.0107,0.125,,9.0,13.0,6.0,4.0,False,,0.0,0.0,,
-mspc_t2,other__10,other,labelled,24,21,17,4,1.2183,0.625,,10.0,20.0,7.0,1.0,True,9.0,1.0,0.0,True,
-mspc_t2,other__11,other,labelled,21,18,13,5,1.0651,0.525,,10.0,17.0,5.0,1.0,True,0.0,0.0,0.0,False,
+mspc_t2,other__1,other,labelled,14,11,10,1,6.7081,1.0,,9.0,13.0,6.0,6.0,True,0.0,0.0,0.0,,
+mspc_t2,other__10,other,labelled,24,21,17,4,8.8349,0.9861,,10.0,20.0,7.0,7.0,True,0.0,1.0,1.0,False,
+mspc_t2,other__11,other,labelled,21,18,13,5,7.9815,1.0,,10.0,17.0,5.0,5.0,True,0.0,0.0,0.0,False,
 mspc_t2,other__12,other,labelled,21,18,0,18,,,no scored stream window,10.0,17.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
 mspc_t2,other__13,other,labelled,19,16,0,16,,,no scored stream window,9.0,15.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
-mspc_t2,other__14,other,labelled,16,13,11,2,1.1028,0.3667,,10.0,15.0,6.0,0.0,False,,0.0,0.0,,
+mspc_t2,other__14,other,labelled,16,13,11,2,6.7437,1.0,,10.0,15.0,6.0,5.0,True,0.0,0.0,0.0,,
 mspc_t2,other__2,other,labelled,18,15,0,15,,,no scored stream window,5.0,12.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
-mspc_t2,other__3,other,labelled,20,17,13,4,1.0642,0.0714,,9.0,16.0,5.0,3.0,False,,2.0,1.0,,
-mspc_t2,other__4,other,labelled,21,18,14,4,1.0897,0.2,,14.0,20.0,9.0,2.0,False,,0.0,0.0,,
-mspc_t2,other__5,other,labelled,21,18,17,1,1.1296,0.5556,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
-mspc_t2,other__6,other,labelled,21,18,17,1,1.0844,0.375,,10.0,17.0,7.0,1.0,True,5.0,2.0,0.0,True,
-mspc_t2,other__7,other,labelled,20,17,16,1,1.0585,0.5873,,10.0,16.0,7.0,5.0,True,0.0,2.0,1.0,True,
-mspc_t2,other__8,other,labelled,21,18,17,1,1.2775,0.5278,,10.0,17.0,7.0,0.0,False,,2.0,0.0,,
-mspc_t2,other__9,other,labelled,20,17,16,1,1.0654,0.7656,,9.0,16.0,6.0,3.0,True,0.0,2.0,0.0,True,
-mspc_t2,valve1__0,valve1,labelled,20,17,17,0,1.3385,0.5,,10.0,16.0,7.0,1.0,True,4.0,3.0,2.0,True,
-mspc_t2,valve1__1,valve1,labelled,21,18,17,1,1.1158,0.3333,,10.0,17.0,7.0,3.0,True,1.0,2.0,1.0,True,
-mspc_t2,valve1__10,valve1,labelled,20,17,17,0,1.2545,0.3571,,10.0,16.0,7.0,4.0,True,0.0,3.0,2.0,False,
-mspc_t2,valve1__11,valve1,labelled,21,18,15,3,1.0953,0.5,,10.0,17.0,7.0,2.0,True,0.0,1.0,1.0,False,
-mspc_t2,valve1__12,valve1,labelled,21,18,15,3,1.411,0.5179,,10.0,17.0,7.0,0.0,False,,1.0,0.0,,
-mspc_t2,valve1__13,valve1,labelled,20,17,17,0,1.2786,0.3286,,10.0,16.0,7.0,4.0,False,,3.0,1.0,,
+mspc_t2,other__3,other,labelled,20,17,13,4,7.9977,0.7143,,9.0,16.0,5.0,4.0,True,0.0,2.0,2.0,False,
+mspc_t2,other__4,other,labelled,21,18,14,4,6.4673,0.6889,,14.0,20.0,9.0,9.0,True,1.0,0.0,0.0,,
+mspc_t2,other__5,other,labelled,21,18,17,1,7.3629,1.0,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_t2,other__6,other,labelled,21,18,17,1,6.6401,1.0,,10.0,17.0,7.0,3.0,True,0.0,2.0,2.0,False,
+mspc_t2,other__7,other,labelled,20,17,16,1,6.8997,1.0,,10.0,16.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_t2,other__8,other,labelled,21,18,17,1,7.9856,0.8611,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_t2,other__9,other,labelled,20,17,16,1,7.0945,0.9688,,9.0,16.0,6.0,5.0,True,0.0,2.0,2.0,False,
+mspc_t2,valve1__0,valve1,labelled,20,17,17,0,6.7341,0.8429,,10.0,16.0,7.0,7.0,True,0.0,3.0,3.0,False,
+mspc_t2,valve1__1,valve1,labelled,21,18,17,1,5.4279,0.4861,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_t2,valve1__10,valve1,labelled,20,17,17,0,8.2566,0.9143,,10.0,16.0,7.0,7.0,True,0.0,3.0,3.0,False,
+mspc_t2,valve1__11,valve1,labelled,21,18,15,3,6.7233,0.1607,,10.0,17.0,7.0,7.0,True,1.0,1.0,1.0,False,
+mspc_t2,valve1__12,valve1,labelled,21,18,15,3,7.7085,0.7857,,10.0,17.0,7.0,6.0,True,0.0,1.0,1.0,False,
+mspc_t2,valve1__13,valve1,labelled,20,17,17,0,6.7345,1.0,,10.0,16.0,7.0,6.0,True,0.0,3.0,3.0,False,
 mspc_t2,valve1__14,valve1,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
-mspc_t2,valve1__15,valve1,labelled,21,18,17,1,1.2151,0.3056,,10.0,17.0,7.0,1.0,False,,2.0,0.0,,
-mspc_t2,valve1__2,valve1,labelled,20,17,14,3,1.1207,0.4,,11.0,16.0,6.0,2.0,False,,3.0,0.0,,
-mspc_t2,valve1__3,valve1,labelled,21,18,17,1,1.0797,0.7083,,10.0,17.0,7.0,3.0,True,0.0,2.0,0.0,True,
-mspc_t2,valve1__4,valve1,labelled,20,17,13,4,1.2998,0.6389,,10.0,16.0,6.0,1.0,False,,3.0,0.0,,
-mspc_t2,valve1__5,valve1,labelled,20,17,17,0,1.304,0.4857,,10.0,16.0,7.0,1.0,False,,3.0,0.0,,
-mspc_t2,valve1__6,valve1,labelled,20,17,17,0,1.3245,0.5,,10.0,17.0,7.0,0.0,True,5.0,2.0,0.0,True,
-mspc_t2,valve1__7,valve1,labelled,21,18,15,3,1.1445,0.3393,,10.0,17.0,7.0,5.0,True,0.0,1.0,0.0,True,
-mspc_t2,valve1__8,valve1,labelled,20,17,16,1,1.3982,0.625,,9.0,16.0,6.0,0.0,False,,2.0,0.0,,
-mspc_t2,valve1__9,valve1,labelled,21,18,17,1,1.073,0.6667,,10.0,17.0,7.0,0.0,True,0.0,2.0,0.0,True,
+mspc_t2,valve1__15,valve1,labelled,21,18,17,1,7.2629,0.9583,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_t2,valve1__2,valve1,labelled,20,17,14,3,7.4841,0.8222,,11.0,16.0,6.0,6.0,True,1.0,3.0,3.0,False,
+mspc_t2,valve1__3,valve1,labelled,21,18,17,1,5.0007,0.5972,,10.0,17.0,7.0,2.0,True,3.0,2.0,2.0,False,
+mspc_t2,valve1__4,valve1,labelled,20,17,13,4,6.8232,0.2222,,10.0,16.0,6.0,6.0,True,0.0,3.0,3.0,False,
+mspc_t2,valve1__5,valve1,labelled,20,17,17,0,6.8523,0.7429,,10.0,16.0,7.0,7.0,True,0.0,3.0,3.0,False,
+mspc_t2,valve1__6,valve1,labelled,20,17,17,0,6.0905,0.4861,,10.0,17.0,7.0,7.0,True,0.0,2.0,2.0,False,
+mspc_t2,valve1__7,valve1,labelled,21,18,15,3,7.5929,0.9464,,10.0,17.0,7.0,6.0,True,0.0,1.0,1.0,False,
+mspc_t2,valve1__8,valve1,labelled,20,17,16,1,6.1767,0.7656,,9.0,16.0,6.0,3.0,True,0.0,2.0,2.0,False,
+mspc_t2,valve1__9,valve1,labelled,21,18,17,1,5.4955,0.75,,10.0,17.0,7.0,6.0,True,0.0,2.0,2.0,False,
 mspc_t2,valve2__0,valve2,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
 mspc_t2,valve2__1,valve2,labelled,21,18,0,18,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"
 mspc_t2,valve2__2,valve2,labelled,20,17,0,17,,,no scored stream window,10.0,16.0,,,,,,,,"baseline window refused: window 0: every stream window refused, so no fitted model scores the baseline; window 1: every stream window refused, so no fitted model scores the baseline; window 2: every stream window refused, so no fitted model scores the baseline"

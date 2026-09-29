@@ -46,12 +46,12 @@ The detector rows are read from the detector study's frozen `results/aligned_sum
 
 | tool | instances with threshold | ROC-AUC (fold range) | paired hit post0 / post1 | FAR on pre | over floor | detect post1 | source |
 |---|---:|---|---|---:|---:|---:|---|
-| MAD screen (regime-blind), own history | 48 of 48 | 0.799 (0.729-0.938) | 0.812 / 0.917 | 62.5% | +0.375 | 91.7% | detector study, tagledger 0.1.0 @ `edf2b4ad` |
-| SPC individuals rules, own history | 48 of 48 | 0.713 (0.571-0.879) | 0.812 / 0.812 | 43.8% | +0.188 | 85.4% | detector study, tagledger 0.1.0 @ `edf2b4ad` |
-| MSPC Hotelling T2, per-instance-standardised | 28 of 48 | 0.541 (0.407-0.750) | 0.643 / 0.630 | 57.1% | +0.321 | 77.8% | detector study, tagledger 0.1.0 @ `edf2b4ad` |
-| MSPC SPE, per-instance-standardised | 28 of 48 | 0.658 (0.562-1.000) | 0.893 / 0.852 | 96.4% | +0.714 | 100.0% | detector study, tagledger 0.1.0 @ `edf2b4ad` |
-| IsolationForest, per-instance-standardised | 48 of 48 | 0.793 (0.745-0.949) | 0.875 / 0.875 | 100.0% | +0.750 | 100.0% | detector study, tagledger 0.1.0 @ `edf2b4ad` |
-| clock control (position in the record) | 48 of 48 | 0.626 (0.626-0.686) | 1.000 / 1.000 | 100.0% | +0.750 | 100.0% | detector study, tagledger 0.1.0 @ `edf2b4ad` |
+| MAD screen (regime-blind), own history | 48 of 48 | 0.799 (0.729-0.938) | 0.812 / 0.917 | 62.5% | +0.375 | 91.7% | detector study, tsdive 0.7.0 @ `11d27513` |
+| SPC individuals rules, own history | 48 of 48 | 0.713 (0.571-0.879) | 0.812 / 0.812 | 43.8% | +0.188 | 85.4% | detector study, tsdive 0.7.0 @ `11d27513` |
+| MSPC Hotelling T2, per-instance-standardised | 28 of 48 | 0.636 (0.562-0.900) | 0.893 / 0.778 | 96.4% | +0.714 | 100.0% | detector study, tsdive 0.7.0 @ `11d27513` |
+| MSPC SPE, per-instance-standardised | 0 of 48 | refused | refused / refused | refused | refused | refused | detector study, tsdive 0.7.0 @ `11d27513` |
+| IsolationForest, per-instance-standardised | 48 of 48 | 0.793 (0.745-0.949) | 0.875 / 0.875 | 100.0% | +0.750 | 100.0% | detector study, tsdive 0.7.0 @ `11d27513` |
+| clock control (position in the record) | 48 of 48 | 0.626 (0.626-0.686) | 1.000 / 1.000 | 100.0% | +0.750 | 100.0% | detector study, tsdive 0.7.0 @ `11d27513` |
 | Chronos-Bolt small, zero-shot forecast surprise | 33 of 48 | 0.675 (0.469-0.819) | 0.909 / 0.545 | 18.2% | -0.068 | 27.3% | this study, tsdive 0.2.0 @ `3c673377` |
 | clock control, the 33 instances Chronos-Bolt scores | 33 of 33 | 0.621 (0.618-0.676) | 1.000 / 1.000 | 100.0% | +0.750 | 100.0% | this study, tsdive 0.2.0 @ `3c673377` |
 | clock control (position in the record), all 48 instances | 48 of 48 | 0.626 (0.626-0.686) | 1.000 / 1.000 | 100.0% | +0.750 | 100.0% | this study, tsdive 0.2.0 @ `3c673377` |
@@ -159,4 +159,4 @@ What the numbers do not support: a claim about the steady fault state (never sco
 | `results/benchmarks_section.md` | the BENCHMARKS.md REAL section |
 | `results/run.json` | model id and revision, library versions, code head, manifest hashes, parameters, refusal counts, wall seconds |
 
-Detector-study numbers: tagledger 0.1.0 @ `edf2b4ad`. This study: tsdive 0.2.0 @ `3c673377`.
+Detector-study numbers: tsdive 0.7.0 @ `11d27513`. This study: tsdive 0.2.0 @ `3c673377`.

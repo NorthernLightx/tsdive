@@ -289,7 +289,9 @@ def render_report(data: dict) -> str:
     manifest = run["dataset_manifest_sha256"][:12]
     aligned_sha = run["aligned_windows_manifest_sha256"][:12]
     best_det = max(
-        (float(det.loc[t, "roc_auc"]), t) for t, _, _ in DETECTOR_ROWS if t != "clock"
+        (float(det.loc[t, "roc_auc"]), t)
+        for t, _, _ in DETECTOR_ROWS
+        if t != "clock" and not pd.isna(det.loc[t, "roc_auc"])
     )
     windows = data["windows"]
     n_open_record = int(
@@ -687,8 +689,10 @@ def splice_section(text: str, section: str) -> str:
     if start < 0:
         return text.rstrip("\n") + "\n\n" + section
     nxt = text.find("\n## ", start + len(SECTION_HEADING))
-    end = len(text) if nxt < 0 else nxt + 1
-    return text[:start] + section + text[end:]
+    if nxt < 0:
+        return text[:start] + section
+    # The blank line before the next heading belongs to the replaced text.
+    return text[:start] + section + "\n" + text[nxt + 1 :]
 
 
 # ------------------------------------------------------------------- main

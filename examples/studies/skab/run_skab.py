@@ -499,6 +499,13 @@ def score_multivariate(
         return t2_out, spe_out
     paths = [record.archive(t) for t in usable]
     train_found = None
+    # A model that keeps every component leaves no residual subspace: SPE is
+    # 0 up to rounding, so ranking it would rank rounding error.
+    spe_reason = (
+        f"the PCA keeps all {len(usable)} components, so SPE is 0 up to rounding and "
+        "scores nothing"
+    )
+    no_residual = False
     for index, start, end in bounds[k:]:
         try:
             m = analyses.mspc(paths, baseline, read_spec(start, end), rate_s=rate_s)
@@ -508,12 +515,16 @@ def score_multivariate(
             continue
         if train_found is None:
             train_found = detect(m.model, m.train)
+            no_residual = m.model.components.shape[0] == len(m.model.columns)
         if m.found.t2.size == 0:
             t2_out.refuse(index, REFUSAL_NO_ROWS)
             spe_out.refuse(index, REFUSAL_NO_ROWS)
             continue
         t2_out.record(index, float(np.mean(m.found.t2)))
-        spe_out.record(index, float(np.mean(m.found.spe)))
+        if no_residual:
+            spe_out.refuse(index, spe_reason)
+        else:
+            spe_out.record(index, float(np.mean(m.found.spe)))
     if train_found is None:
         reason = "every stream window refused, so no fitted model scores the baseline"
         for index, _, _ in bounds[:k]:
@@ -528,7 +539,10 @@ def score_multivariate(
             spe_out.refuse(index, REFUSAL_NO_ROWS)
             continue
         t2_out.record(index, float(np.mean(train_found.t2[inside])))
-        spe_out.record(index, float(np.mean(train_found.spe[inside])))
+        if no_residual:
+            spe_out.refuse(index, spe_reason)
+        else:
+            spe_out.record(index, float(np.mean(train_found.spe[inside])))
     return t2_out, spe_out
 
 
