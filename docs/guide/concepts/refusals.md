@@ -39,8 +39,9 @@ A refusal is a result: it tells you what to fix in the question.
   3. Under `--json`, stdout also carries one object with `result_kind`
   `refusal`, `error_type` and `cause`.
 - In Python: an exception that derives from `tsdive.TSDiveError`.
-- In a `tsdive run` ledger: a row of its own, beside the findings, and
-  the run still exits 0 when anything else was found.
+- In a `tsdive run` ledger: a row of the `refusals` list, beside the
+  findings. The run still exits 0 when anything else was found. Under
+  `--strict` it exits 3, or 2 when a step also raised a usage error.
 - In `compare`: a tag whose read is refused keeps its row, with the
   error class in the `quality` column.
 - Through the MCP server: a result with `result_kind` `refusal`, not a
@@ -49,7 +50,7 @@ A refusal is a result: it tells you what to fix in the question.
 A usage error is different: a malformed window, a missing file or an
 unknown flag exits 2, and in Python it raises `ValueError`,
 `TypeError` or `FileNotFoundError`. That points at the call, not the
-data.
+data. In a `tsdive run` ledger it is a row of the `errors` list.
 
 ## What to do
 

@@ -149,8 +149,9 @@ end the reading stops meaning what it says.
 
 ## Evidence ledger {#evidence-ledger}
 
-What `tsdive run` writes: every profile, finding and refusal of a plan,
-as `ledger.json`, `ledger.txt` and `report.html`.
+What `tsdive run` writes: a row per tag and every profile, finding,
+refusal and error of a plan, as `ledger.json`, `ledger.txt` and
+`report.html`.
 
 ## Explained variance {#explained-variance}
 

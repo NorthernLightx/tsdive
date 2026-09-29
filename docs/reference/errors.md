@@ -20,10 +20,12 @@ was wrong: a malformed window, a missing file, overlapping periods.
 | 3 | refusal: a typed error, printed as `[ErrorName] message` on stderr |
 
 `tsdive run` keeps its own rule. It exits 0 when the ledger holds at
-least one profile or finding, and a refused step is a row of that
-ledger. It exits 2 when the plan cannot be read or no step produced a
-result. `tsdive switchback analyze` exits 3 when its difference in means
-is refused, even when the command printed the rest of its report.
+least one profile or finding. A refused step is a refusal row of that
+ledger, and a step that raised any other error is an error row. It exits
+2 when the plan cannot be read or no step produced a result. With
+`--strict` it exits 2 on an error row, else 3 on a refusal row.
+`tsdive switchback analyze` exits 3 when its difference in means is
+refused, even when the command printed the rest of its report.
 
 A refusal on the command line:
 

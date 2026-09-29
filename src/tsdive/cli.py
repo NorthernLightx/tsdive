@@ -79,7 +79,7 @@ from tsdive.store.tagstore import (
 from tsdive.switchback.archive import SwitchbackAnalysis
 from tsdive.switchback.plan import SwitchbackPlan
 from tsdive.switchback.render import plan_lines
-from tsdive.ui.jsonout import error_text, refusal_json, to_jsonable
+from tsdive.ui.jsonout import error_fields, error_text, refusal_json, to_jsonable
 from tsdive.ui.term import colour_enabled, colourise, red
 
 MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time series
@@ -117,7 +117,7 @@ commands, in the order an archive walks them:
   switchback analyze <parquet...> --plan PLAN.json --target TAG [--covariate TAG]
                                           the difference between settings A and B
                                           under the plan, by randomization inference
-  run <plan.toml> [-o DIR]                walk one plan over several archives into
+  run <plan.toml> [-o DIR] [--strict]     walk one plan over several archives into
                                           one evidence ledger
   report-html <parquet...> [--window START/END] [-o FILE]
                                           render a static HTML evidence snapshot
@@ -1235,7 +1235,7 @@ def _report_html(args: argparse.Namespace) -> int:
         window_label = f"{start.isoformat()}/{end.isoformat()}"
         profiles: list[str] = []
         figures: list[str] = []
-        refusals: list[str] = []
+        rows: list[dict[str, str]] = []
         contract = SamplingContract(CalculationBasis.TIME_WEIGHTED, RetrievalMode.RECORDED)
         for path in args.parquet:
             try:
@@ -1251,12 +1251,11 @@ def _report_html(args: argparse.Namespace) -> int:
                     render_window_report(window, stats=compute_stats(window))
                 )
                 figures.append(window_figure(window))
-            except TSDiveError as e:
-                refusals.append(f"[{type(e).__name__}] {e}")
-            except OSError as e:
-                refusals.append(f"[{type(e).__name__}] {error_text(e)}")
+            except (TSDiveError, OSError) as e:
+                rows.append({"step": "profile", "tags": str(path), **error_fields(e)})
+        refusals = [f"[{row['error_type']}] {row['cause']}" for row in rows]
         ledger = EvidenceLedger(
-            title=f"snapshot {window_label}", profiles=profiles, refusals=refusals
+            title=f"snapshot {window_label}", profiles=profiles, refusals=rows
         )
         html_text = render_static_report(
             title="tsdive evidence snapshot",
@@ -1343,8 +1342,9 @@ def _parser_run() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tsdive run",
         epilog="exit status: 0 when the ledger holds at least one profile or finding, "
-        "refused steps included as rows of the ledger; 2 when the plan cannot be read "
-        "or no step produced a result",
+        "refused and failed steps included as rows of the ledger; 2 when the plan cannot "
+        "be read or no step produced a result. With --strict: 2 when a step filed an "
+        "error, else 3 when a step was refused, else 0",
     )
     parser.add_argument("plan", help="TOML plan naming archives, windows and steps")
     parser.add_argument(
@@ -1355,15 +1355,23 @@ def _parser_run() -> argparse.ArgumentParser:
         help="directory for ledger.json, ledger.txt and report.html; omitted, "
         "tsdive-run/ beside the plan",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 2 when a step filed an error and 3 when a step was refused, as the "
+        "single commands do",
+    )
     return _add_output_flags(parser, json_flag=False)
 
 
 def cmd_run(argv: Sequence[str] | None = None) -> int:
     """Walk one plan over several archives into one evidence ledger.
 
-    A refused step is a row of the ledger and does not change the exit
-    status: 0 when the ledger holds at least one profile or finding, 2
-    when the plan cannot be read or no step produced a result.
+    A refused or failed step is a row of the ledger and does not change
+    the exit status: 0 when the ledger holds at least one profile or
+    finding, 2 when the plan cannot be read or no step produced a result.
+    With ``--strict`` the rows decide it: 2 when ``errors`` is not empty,
+    else 3 when ``refusals`` is not empty, else 0.
     """
     args = _parser_run().parse_args(argv)
     with cli_names():
@@ -1383,13 +1391,15 @@ def _run(args: argparse.Namespace) -> int:
         # step or an unmatched glob leaves no half-run output directory.
         _print_refusal("error:", error_text(e), args)
         return USAGE
-    profiles, findings, refusals, figures = execute(plan)
+    walk = execute(plan)
     out_dir = Path(args.out) if args.out else plan_path.parent / "tsdive-run"
-    _, _, lines = write_run(plan, out_dir, profiles, findings, refusals, figures)
+    _, _, lines = write_run(plan, out_dir, walk)
     _print_lines(lines, args)
-    # A refused step is a row of the ledger, so it does not decide the
-    # status; a ledger with no profile and no finding does.
-    return OK if profiles or findings else USAGE
+    if args.strict:
+        return USAGE if walk.errors else REFUSED if walk.refusals else OK
+    # A refused or failed step is a row of the ledger, so it does not
+    # decide the status; a ledger with no profile and no finding does.
+    return OK if walk.profiles or walk.findings else USAGE
 
 
 def main(argv: Sequence[str] | None = None) -> int:

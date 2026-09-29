@@ -36,8 +36,8 @@ under `scripts/` download on request and print their size first.
 Commands in the order you run them on an archive. A window is `START/END`,
 `START/PT5H`, `PT5H/END`, or a date for one UTC day. Every analysis
 command takes `--json` and prints one JSON object instead of text.
-`--no-color` and the `NO_COLOR` environment variable turn colour off. The
-transcripts below are trimmed to the lines the text reads.
+`--no-color` and the `NO_COLOR` environment variable turn colour off.
+Transcripts are trimmed to the lines the text reads.
 
 ### profile
 
@@ -212,15 +212,15 @@ fall outside its before-period baseline, and its coupling to the flow drops
 from 0.69 to 0.17 with an interval excluding 0. The PCA model fitted on the
 before period keeps 51% of the after period's variance. With two tags the
 residual splits evenly between them. `--top N` sets how many rows each table
-prints; `--json` carries every column and pair.
+prints.
 
 ### run
 
 Runs one TOML plan over many archives and writes `ledger.json`,
 `ledger.txt` and `report.html` (tables and one plot per tag) to
 `-o DIR` (default `tsdive-run/` beside the plan). Options are the
-step's own flags: a list repeats the flag, `true` is the bare flag.
-Globs resolve against the plan file. `examples/plans/demo.toml`, in a clone:
+step's own flags. Globs resolve against the plan file.
+`examples/plans/demo.toml`, in a clone:
 
 ```toml
 archives = ["../../data/demo/*.parquet"]
@@ -248,10 +248,10 @@ wrote     examples/plans/tsdive-run/ledger.json
 ```
 
 The baseline holds the 40-minute outage, so the aligned grid covers 0.867
-and `mspc` raises `MspcAlignmentError`. `compare` reads `before` and
-`after`. `ledger.txt` opens with this text, then every finding in full.
-`tsdive report-html <parquet...> --window START/END -o report.html` writes
-the same page without a plan.
+and `mspc` raises `MspcAlignmentError`. `ledger.txt` opens with this text,
+then one row per tag, every profile and every finding. `--strict` exits 2
+on an error row and 3 on a refusal row. `tsdive report-html <parquet...>
+--window START/END -o report.html` writes the same page without a plan.
 
 ### ingest
 

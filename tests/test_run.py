@@ -11,7 +11,8 @@ import pandas as pd
 import pytest
 
 from conftest import EngRange, make_meta, write_archive
-from tsdive.cli import cmd_compare, cmd_run
+from tsdive.api import profile
+from tsdive.cli import cmd_compare, cmd_run, cmd_screen
 
 ALL_FIVE = """\
 archives = ["plant1/*.parquet"]
@@ -89,10 +90,23 @@ def test_plan_runs_every_step_over_every_archive(tmp_path, capsys):
         f"          {(out / 'ledger.txt').as_posix()}",
         f"          {(out / 'report.html').as_posix()}",
     ]
-    # ledger.txt opens with the same text, then every finding in full.
+    # ledger.txt opens with the same text, then the tag table, every
+    # profile and every finding in full.
     text = (out / "ledger.txt").read_text(encoding="utf-8").splitlines()
     assert text[: len(printed)] == printed
+    assert text[len(printed) : len(printed) + 2] == ["", "TAGS"]
+    assert text[len(printed) + 2].split() == [
+        "tag", "coverage", "GOOD", "censored", "gaps", "longest", "flatline", "refused"
+    ]
+    assert [ln for ln in text if ln.startswith("PROFILE  ")] == [
+        "PROFILE  plant1:FIC101.PV",
+        "PROFILE  plant1:TIC101.PV",
+    ]
     assert sum(1 for ln in text if ln.startswith("FINDING  ")) == 7
+    first_finding = text.index("FINDING  segment   plant1:FIC101.PV")
+    assert text.index("PROFILE  plant1:TIC101.PV") < first_finding
+    for profile_text in ledger["profiles"]:
+        assert profile_text in "\n".join(text)
 
 
 def test_a_refusal_names_the_step_then_wraps_its_message(tmp_path, capsys):
@@ -111,9 +125,13 @@ steps    = ["mspc"]
     assert printed[0].endswith("profiles 0   findings 0   refusals 1")
     assert printed[2] == "REFUSAL  mspc   plant1:FIC101.PV"
     assert printed[3] == "  [MspcAlignmentError] need at least two windows to align"
-    # The ledger keeps the one-line form the refusal log has always had.
     assert _ledger(tmp_path / "out")["refusals"] == [
-        "[MspcAlignmentError] mspc plant1:FIC101.PV: need at least two windows to align"
+        {
+            "step": "mspc",
+            "tags": "plant1:FIC101.PV",
+            "error_type": "MspcAlignmentError",
+            "cause": "need at least two windows to align",
+        }
     ]
 
 
@@ -165,10 +183,16 @@ tz = ["Europe/London", "Mars/Olympus_Mons"]
     )
     out = tmp_path / "out"
     assert cmd_run([str(plan), "-o", str(out)]) == 2
-    row = _ledger(out)["refusals"][0]
-    assert row.startswith("[ValueError] profile plant1:FIC101.PV: ")
-    assert "Mars/Olympus_Mons" in row
-    assert "IANA" in row
+    ledger = _ledger(out)
+    assert ledger["refusals"] == []
+    (row,) = ledger["errors"]
+    assert (row["step"], row["tags"], row["error_type"]) == (
+        "profile",
+        "plant1:FIC101.PV",
+        "ValueError",
+    )
+    assert "Mars/Olympus_Mons" in row["cause"]
+    assert "IANA" in row["cause"]
 
 
 def test_ledger_json_is_byte_identical_run_to_run(tmp_path):
@@ -246,8 +270,16 @@ steps    = ["profile", "screen", "spc"]
     assert figures[1].count('class="flag"') == 0
     assert len(ledger["refusals"]) == 2
     for row, step in zip(ledger["refusals"], ("screen", "spc"), strict=True):
-        assert row.startswith(f"[InsufficientQuality] {step} plant1:TIC101.PV: ")
-        assert "may never serve as a baseline" in row
+        assert (row["step"], row["tags"], row["error_type"]) == (
+            step,
+            "plant1:TIC101.PV",
+            "InsufficientQuality",
+        )
+        assert "may never serve as a baseline" in row["cause"]
+    assert [(t["tag"], t["refused"]) for t in ledger["tags"]] == [
+        ("plant1:FIC101.PV", []),
+        ("plant1:TIC101.PV", ["screen", "spc"]),
+    ]
 
 
 def test_unknown_step_refuses_before_anything_runs(tmp_path, capsys):
@@ -328,9 +360,10 @@ steps    = ["profile", "screen"]
     assert cmd_run([str(plan), "-o", str(out)]) == 0  # profile still produced output
     ledger = _ledger(out)
     assert ledger["findings"] == []
-    assert ledger["refusals"] == [
-        f"[ValueError] screen plant1:FIC101.PV: {expected}",
-        f"[ValueError] screen plant1:TIC101.PV: {expected}",
+    assert ledger["refusals"] == []
+    assert ledger["errors"] == [
+        {"step": "screen", "tags": tag, "error_type": "ValueError", "cause": expected}
+        for tag in ("plant1:FIC101.PV", "plant1:TIC101.PV")
     ]
 
 
@@ -348,7 +381,12 @@ steps    = ["mspc"]
     out = tmp_path / "out"
     assert cmd_run([str(plan), "-o", str(out)]) == 2  # nothing else produced output
     assert _ledger(out)["refusals"] == [
-        "[MspcAlignmentError] mspc plant1:FIC101.PV: need at least two windows to align"
+        {
+            "step": "mspc",
+            "tags": "plant1:FIC101.PV",
+            "error_type": "MspcAlignmentError",
+            "cause": "need at least two windows to align",
+        }
     ]
 
 
@@ -367,9 +405,13 @@ steps    = ["profile", "screen"]
     ledger = _ledger(out)
     # profile defaults an omitted window to the archive's own extent.
     assert len(ledger["profiles"]) == 1
-    assert ledger["refusals"] == [
-        "[ValueError] screen plant1:FIC101.PV: the plan sets no 'window', which "
-        "screen requires"
+    assert ledger["errors"] == [
+        {
+            "step": "screen",
+            "tags": "plant1:FIC101.PV",
+            "error_type": "ValueError",
+            "cause": "the plan sets no 'window', which screen requires",
+        }
     ]
 
 
@@ -385,9 +427,13 @@ steps    = ["spc"]
     )
     out = tmp_path / "out"
     assert cmd_run([str(plan), "-o", str(out)]) == 2
-    assert _ledger(out)["refusals"] == [
-        "[ValueError] spc plant1:FIC101.PV: the plan sets no 'baseline', which "
-        "spc requires"
+    assert _ledger(out)["errors"] == [
+        {
+            "step": "spc",
+            "tags": "plant1:FIC101.PV",
+            "error_type": "ValueError",
+            "cause": "the plan sets no 'baseline', which spc requires",
+        }
     ]
 
 
@@ -425,6 +471,9 @@ top = 1
     argv = [str(flow), str(temp), "--before", BEFORE, "--after", AFTER, "--top", "1"]
     assert cmd_compare(argv) == 0
     assert ledger["findings"][-1]["text"] == capsys.readouterr().out.rstrip("\n")
+    # A finding's data is the document the command prints under --json.
+    assert cmd_compare([*argv, "--json"]) == 0
+    assert ledger["findings"][-1]["data"] == json.loads(capsys.readouterr().out)
 
 
 def test_compare_without_before_and_after_is_a_refusal_row(tmp_path):
@@ -440,9 +489,13 @@ steps    = ["compare"]
     )
     out = tmp_path / "out"
     assert cmd_run([str(plan), "-o", str(out)]) == 2
-    assert _ledger(out)["refusals"] == [
-        "[ValueError] compare plant1:FIC101.PV, plant1:TIC101.PV: the plan sets no "
-        "'before' and 'after', which compare requires"
+    assert _ledger(out)["errors"] == [
+        {
+            "step": "compare",
+            "tags": "plant1:FIC101.PV, plant1:TIC101.PV",
+            "error_type": "ValueError",
+            "cause": "the plan sets no 'before' and 'after', which compare requires",
+        }
     ]
 
 
@@ -473,3 +526,102 @@ def test_the_default_output_directory_sits_beside_the_plan(tmp_path):
     plan = _plan(tmp_path, 'archives = ["plant1/*.parquet"]\nsteps = ["profile"]\n')
     assert cmd_run([str(plan)]) == 0
     assert (tmp_path / "tsdive-run" / "ledger.json").exists()
+
+
+OVERLAPPING = """\
+archives = ["plant1/*.parquet"]
+window   = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+baseline = "2024-03-01T00:30:00Z/2024-03-01T01:30:00Z"
+steps    = ["profile", "screen"]
+"""
+
+# mspc over one archive raises MspcAlignmentError, a typed refusal.
+ONE_ARCHIVE_MSPC = """\
+archives = ["plant1/FIC101.PV.parquet"]
+window   = "2024-03-01T01:00:00Z/2024-03-01T02:00:00Z"
+baseline = "2024-03-01T00:00:00Z/2024-03-01T00:59:00Z"
+steps    = ["profile", "mspc"]
+"""
+
+
+def test_an_overlapping_baseline_is_an_error_row_not_a_refusal(tmp_path, capsys):
+    _two_archives(tmp_path)
+    plan = _plan(tmp_path, OVERLAPPING)
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out)]) == 0  # the default rule
+    ledger = _ledger(out)
+    assert ledger["refusals"] == []
+    assert [(e["step"], e["error_type"], e["cause"]) for e in ledger["errors"]] == [
+        ("screen", "ValueError", "baseline and window overlap"),
+        ("screen", "ValueError", "baseline and window overlap"),
+    ]
+    printed = capsys.readouterr().out.splitlines()
+    assert printed[0].endswith("refusals 0   errors 2")
+    assert printed[2:4] == [
+        "ERROR    screen   plant1:FIC101.PV",
+        "  [ValueError] baseline and window overlap",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("body", "status"),
+    [
+        (ALL_FIVE, 0),
+        (OVERLAPPING, 2),
+        (ONE_ARCHIVE_MSPC, 3),
+        (ONE_ARCHIVE_MSPC.replace('"mspc"', '"screen", "mspc"') + "[options.screen]\nk = -1\n", 2),
+    ],
+    ids=["clean", "error", "refusal", "error and refusal"],
+)
+def test_strict_exits_on_errors_then_refusals(tmp_path, body, status):
+    _two_archives(tmp_path)
+    plan = _plan(tmp_path, body)
+    out = tmp_path / "out"
+    assert cmd_run([str(plan), "-o", str(out), "--strict"]) == status
+    ledger = _ledger(out)
+    assert bool(ledger["errors"]) == (status == 2)
+    assert bool(ledger["refusals"]) == (status == 3 or "k = -1" in body)
+
+
+def test_a_finding_carries_its_json_document(tmp_path, capsys):
+    flow, _ = _two_archives(tmp_path)
+    out = tmp_path / "out"
+    assert cmd_run([str(_plan(tmp_path, ALL_FIVE)), "-o", str(out)]) == 0
+    capsys.readouterr()
+    by_step = {(f["step"], f["tags"]): f["data"] for f in _ledger(out)["findings"]}
+    argv = [str(flow), "--window", AFTER, "--baseline", BEFORE, "--json"]
+    assert cmd_screen(argv) == 0
+    assert by_step[("screen", "plant1:FIC101.PV")] == json.loads(capsys.readouterr().out)
+
+
+def test_the_tag_rows_read_the_profile_document(tmp_path):
+    flow, _ = _two_archives(tmp_path)
+    out = tmp_path / "out"
+    assert cmd_run([str(_plan(tmp_path, ALL_FIVE)), "-o", str(out)]) == 0
+    ledger = _ledger(out)
+    doc = profile(flow, AFTER, tz="Europe/London", flatline=True).to_dict()
+    assert ledger["tags"][0] == {
+        "tag": "plant1:FIC101.PV",
+        "coverage": doc["coverage"]["coverage"],
+        "good_share": doc["values"]["n_good"] / doc["values"]["n_samples"],
+        "censored": doc["range"]["censored"],
+        "gaps": doc["coverage"]["n_gaps"],
+        "longest_gap_s": doc["coverage"]["longest_gap_s"],
+        "flatline": doc["flatline"]["verdict"],
+        "refused": [],
+    }
+    html_text = (out / "report.html").read_text(encoding="utf-8")
+    assert html_text.index("<h2>Tags</h2>") < html_text.index("<h2>Plots</h2>")
+    assert "<td>plant1:TIC101.PV</td>" in html_text
+
+
+def test_a_tag_without_a_profile_reads_n_a(tmp_path):
+    _two_archives(tmp_path)
+    body = ALL_FIVE.replace('"profile", ', "")
+    out = tmp_path / "out"
+    assert cmd_run([str(_plan(tmp_path, body)), "-o", str(out)]) == 0
+    row = _ledger(out)["tags"][0]
+    assert row["gaps"] is None and row["coverage"] is None and row["refused"] == []
+    text = (out / "ledger.txt").read_text(encoding="utf-8").splitlines()
+    at = text.index("TAGS")
+    assert text[at + 2].split() == ["plant1:FIC101.PV", *["n/a"] * 6, "none"]

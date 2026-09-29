@@ -51,6 +51,7 @@ SECTION_HEADERS = frozenset(
 # above zero, so a quiet report stays uncoloured.
 _TOKENS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bREFUSAL\b"), "red"),
+    (re.compile(r"^ERROR\b"), "red"),
     (re.compile(r"\bcensored yes\b"), "red"),
     # A count, or the share compare's quality column states.
     (re.compile(r"\bBAD [1-9]\d*%?"), "red"),
@@ -62,6 +63,7 @@ _TOKENS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"\bbreaches [1-9]\d*\b"), "bold"),
     (re.compile(r"\b[1-9]\d* rule hits\b"), "bold"),
     (re.compile(r"\brefusals [1-9]\d*\b"), "bold"),
+    (re.compile(r"\berrors [1-9]\d*\b"), "bold"),
     # "(+3 more)", and the forms that name what was left out.
     (re.compile(r"^ *\(\+\d+ more\b.*\)$"), "dim"),
 )

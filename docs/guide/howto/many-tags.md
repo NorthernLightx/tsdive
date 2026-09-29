@@ -1,9 +1,9 @@
 # Check many tags at once
 
 `tsdive run` walks one plan over many archives and writes one
-[evidence ledger](../../reference/glossary.md#evidence-ledger): every
-profile, every finding and every refusal, as text, JSON and a static
-HTML page. This guide writes a plan for the two demo tags and reads
+[evidence ledger](../../reference/glossary.md#evidence-ledger): a row
+per tag, every profile, every finding, every refusal and every error,
+as text, JSON and a static HTML page. This guide writes a plan for the two demo tags and reads
 what it produces.
 
 ## Write the plan
@@ -51,10 +51,18 @@ while the other steps still run.
 
 ## Read the ledger
 
-`ledger.txt` holds the full text of every result, in step order:
+`ledger.txt` opens with the text the command printed. A `TAGS` table
+follows, one row per archive, then the full text of every profile and
+every finding, in step order:
 
 ```text show=unit-run/ledger.txt lines=40
 ```
+
+The `TAGS` row reads the archive's profile: coverage, the GOOD share of
+its samples, the censoring verdict, the gap count, the longest gap, the
+flatline verdict (`not run` without `flatline = true`) and the steps
+refused for that tag. A tag the `profile` step did not read shows
+`n/a`.
 
 `ledger.json` holds the same content for a script:
 
@@ -62,24 +70,38 @@ while the other steps still run.
 |---|---|
 | `title` | the plan's file name |
 | `tsdive_version` | the version that wrote the ledger |
+| `tags` | one object per archive: `tag`, `coverage`, `good_share`, `censored`, `gaps`, `longest_gap_s`, `flatline`, `refused`. The profile keys are `null` for a tag the `profile` step did not read |
 | `profiles` | one rendered profile report per archive |
-| `findings` | one object per result: `step`, `tags` and the rendered `text` |
-| `refusals` | one line per refused step: `[ErrorName] step tags: message` |
+| `findings` | one object per result: `step`, `tags`, the rendered `text`, and `data`, the document the command prints under `--json` |
+| `refusals` | one object per step that raised a typed error: `step`, `tags`, `error_type`, `cause` |
+| `errors` | one object per step that raised any other error, in the same keys: a rejected option, overlapping windows, a file the OS cannot read |
 | `benchmark_rows` | empty for a plan run |
 
-The findings carry the rendered text, not the fields of `--json`. For
-the fields, call the command with `--json` or use the Python API.
+A refusal row is a result about the data of that tag. An error row
+names a plan the step could not run, the input that exits 2 on the
+command line.
 
-`report.html` is a static page with every profile, a figure per archive
-and the refusal log. It needs no server: open it in a browser, or attach
-it to an e-mail.
+`report.html` is a static page with the tag table, every profile, a
+figure per archive, the refusal log and the error log. It needs no
+server: open it in a browser, or attach it to an e-mail.
 
 ## Exit status
 
 `tsdive run` exits 0 when the ledger holds at least one profile or
-finding, refusals included as rows. It exits 2 when the plan cannot be
-read or no step produced a result. A script that needs to know about
-refusals reads the `refusals` list of `ledger.json`.
+finding, refusal and error rows included. It exits 2 when the plan
+cannot be read or no step produced a result.
+
+With `--strict` the rows decide the status, as they would for the
+single commands:
+
+| status | when |
+|---|---|
+| 0 | no refusal and no error row |
+| 2 | at least one error row |
+| 3 | at least one refusal row and no error row |
+
+A scheduled job passes `--strict`, or reads the `refusals` and `errors`
+lists of `ledger.json`.
 
 ## What to do
 

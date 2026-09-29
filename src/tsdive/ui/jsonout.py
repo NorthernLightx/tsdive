@@ -94,8 +94,18 @@ def refusal_json(error: BaseException) -> dict[str, str]:
         >>> refusal_json(InsufficientQuality("censored"))
         {'result_kind': 'refusal', 'error_type': 'InsufficientQuality', 'cause': 'censored'}
     """
-    return {
-        "result_kind": "refusal",
-        "error_type": type(error).__name__,
-        "cause": str(error),
-    }
+    return {"result_kind": "refusal", **error_fields(error)}
+
+
+def error_fields(error: BaseException) -> dict[str, str]:
+    """``error_type`` and ``cause`` of an error, the fields every JSON surface names it by.
+
+    :func:`refusal_json` and the refusal and error rows of a run ledger
+    share them, so a typed error reads the same wherever it lands.
+
+    Examples:
+        >>> from tsdive.ui.jsonout import error_fields
+        >>> error_fields(ValueError("baseline and window overlap"))
+        {'error_type': 'ValueError', 'cause': 'baseline and window overlap'}
+    """
+    return {"error_type": type(error).__name__, "cause": error_text(error)}
