@@ -589,7 +589,7 @@ CORPUS: list[Case] = [
     Case(
         "string value on a tag not declared role=MODE",
         SchemaError,
-        r"'RUN' is not numeric and no digital state",
+        r"'RUN' \(1 row\) and 'STOP' \(1 row\) are not numeric and no digital state",
         s_non_numeric_value,
     ),
     Case(

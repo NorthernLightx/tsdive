@@ -570,6 +570,66 @@ def test_a_pi_digital_state_in_the_value_column_ingests_once_declared(tmp_path, 
     assert p.stats.features.max == 52.0
 
 
+def _three_state_export(tmp_path):
+    path = tmp_path / "states.csv"
+    pd.DataFrame(
+        {
+            "ts": [f"2024-03-01T00:0{k}:00Z" for k in range(6)],
+            "v": ["50.0", "Shutdown", "I/O Timeout", "I/O Timeout", "Comm Fail", "52.0"],
+        }
+    ).to_csv(path, index=False)
+    return path
+
+
+def test_every_undeclared_state_is_named_in_one_refusal(tmp_path):
+    with pytest.raises(SchemaError) as info:
+        tsdive.ingest(_three_state_export(tmp_path), out=tmp_path / "s.parquet",
+                      meta=tsdive.read_meta_json(_meta_file(tmp_path)), timestamp_col="ts",
+                      value_col="v", assume_quality="GOOD")
+    assert str(info.value).startswith(
+        "tag plant1:FIC101.PV: values 'Shutdown' (1 row), 'I/O Timeout' (2 rows) and "
+        "'Comm Fail' (1 row) are not numeric"
+    )
+    assert '{"Shutdown": "BAD", "I/O Timeout": "BAD", "Comm Fail": "BAD"}' in str(info.value)
+
+
+def test_the_template_lists_every_state_and_ingest_waits_for_their_severity(tmp_path):
+    template = tsdive.init_tag_meta(_three_state_export(tmp_path), out=tmp_path / "t.json",
+                                    timestamp_col="ts", value_col="v")
+    payload = json.loads(template.read_text(encoding="utf-8"))
+    assert payload["quality_codes"] == {"Shutdown": None, "I/O Timeout": None, "Comm Fail": None}
+
+    payload.pop("_comments")
+    payload.update(identity=META["identity"], name=META["name"])
+    template.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(SchemaError, match="quality_codes"):
+        tsdive.read_meta_json(template)
+
+    payload["quality_codes"] = dict.fromkeys(payload["quality_codes"], "BAD")
+    template.write_text(json.dumps(payload), encoding="utf-8")
+    out = tsdive.ingest(_three_state_export(tmp_path), out=tmp_path / "s.parquet",
+                        meta=tsdive.read_meta_json(template), timestamp_col="ts",
+                        value_col="v", assume_quality="GOOD")
+    counts = {k.value: n for k, n in tsdive.profile(out).physics.severity_counts.items()}
+    assert counts == {"GOOD": 2, "UNCERTAIN": 0, "BAD": 4}
+
+
+def test_a_template_adds_value_states_after_the_quality_codes(tmp_path):
+    template = tsdive.init_tag_meta(_pi_export(tmp_path), out=tmp_path / "t.json",
+                                    timestamp_col="ts", value_col="v", quality_col="q")
+    codes = json.loads(template.read_text(encoding="utf-8"))["quality_codes"]
+    assert codes == {"Bad": "BAD", "Good": "GOOD", "I/O Timeout": None}
+
+
+def test_a_column_of_string_states_adds_nothing_to_the_template(tmp_path):
+    """A MODE tag's values are all states, so none of them is listed as a quality code."""
+    path = tmp_path / "mode.csv"
+    pd.DataFrame({"ts": AWARE, "v": ["R0", "R1", "R1"]}).to_csv(path, index=False)
+    template = tsdive.init_tag_meta(path, out=tmp_path / "t.json", timestamp_col="ts",
+                                    value_col="v")
+    assert json.loads(template.read_text(encoding="utf-8"))["quality_codes"] is None
+
+
 def test_mode_tag_string_states_ingest_cleanly(tmp_path):
     path = tmp_path / "mode.csv"
     pd.DataFrame({"ts": AWARE, "v": ["R0", "R1", "R1"], "q": ["GOOD"] * 3}).to_csv(
@@ -1127,6 +1187,13 @@ def test_tag_col_types_each_tags_values_on_their_own(tmp_path):
     )
     dtypes = {p.stem: str(pd.read_parquet(p)["value"].dtype) for p in written}
     assert dtypes == {"PI101.PV": "object", "FI102.PV": "float64", "TI103.PV": "float64"}
+
+    templates = tsdive.init_long_meta(src, out_dir=tmp_path / "templates", source_id="plant1",
+                                      tag_col="Tag", timestamp_col="Timestamp",
+                                      value_col="Value")
+    codes = {p.stem: json.loads(p.read_text(encoding="utf-8"))["quality_codes"]
+             for p in templates}
+    assert codes == {"PI101.PV": {"Shutdown": None}, "FI102.PV": None, "TI103.PV": None}
 
 
 def test_tag_col_refuses_a_tag_that_runs_backwards_naming_the_file_row(tmp_path):

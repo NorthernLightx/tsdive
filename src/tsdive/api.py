@@ -34,6 +34,7 @@ from tsdive.store.quality import (
     declared_value_state,
     good_mask,
     null_digital_state_values,
+    value_strings,
 )
 from tsdive.store.sampling_contract import (
     AggregateType,
@@ -1195,26 +1196,37 @@ _META_TEMPLATE_KEYS = (
 )
 
 
-def _quality_code_template(raw_codes: pd.Series) -> dict[str, str | None]:
-    """One entry per distinct raw quality value, filled only where the value names a severity."""
+def _quality_code_template(
+    raw_codes: pd.Series | None, values: pd.Series
+) -> dict[str, str | None] | None:
+    """The ``quality_codes`` of a template, or None when it has nothing to list.
+
+    One entry per distinct raw quality value, filled only where the value
+    names a severity. Then one null entry per string of the value column
+    that does not read as a number (see ``value_strings``) and is not a
+    quality code already.
+    """
     severities = {s.value for s in Severity}
     template: dict[str, str | None] = {}
-    for raw in sorted({str(v) for v in raw_codes.dropna()}):
-        folded = raw.strip().upper()
-        template[raw] = folded if folded in severities else None
-    return template
+    if raw_codes is not None:
+        for raw in sorted({str(v) for v in raw_codes.dropna()}):
+            folded = raw.strip().upper()
+            template[raw] = folded if folded in severities else None
+    for state in value_strings(values):
+        template.setdefault(state, None)
+    return template if template or raw_codes is not None else None
 
 
-def _tag_template(tag: str, source_id: str, raw_codes: pd.Series | None) -> dict[str, object]:
+def _tag_template(
+    tag: str, source_id: str, raw_codes: pd.Series | None, values: pd.Series
+) -> dict[str, object]:
     """The metadata template of one tag of a multi-tag export."""
-    payload: dict[str, object] = {
+    return {
         "identity": {"source_id": source_id, "point_id": tag},
         "name": tag,
         **dict.fromkeys(_META_TEMPLATE_KEYS),
+        "quality_codes": _quality_code_template(raw_codes, values),
     }
-    if raw_codes is not None:
-        payload["quality_codes"] = _quality_code_template(raw_codes)
-    return payload
 
 
 def init_meta(
@@ -1238,6 +1250,8 @@ def init_meta(
     only where the value spells ``GOOD``, ``UNCERTAIN`` or ``BAD``
     itself; every other code stays ``null`` for the reader to fill, and
     [`read_meta_json`][tsdive.read_meta_json] refuses the file until they are.
+    A tag column that holds numbers and strings, such as PI digital
+    states, adds each string to ``quality_codes`` as ``null``.
 
     Raises:
         SchemaError: unreadable input, or a missing timestamp, tag or
@@ -1286,7 +1300,9 @@ def init_meta(
     written: list[Path] = []
     for tag in chosen:
         qcol = quality_cols[tag]
-        payload = _tag_template(tag, source_id, None if qcol is None else frame[qcol])
+        payload = _tag_template(
+            tag, source_id, None if qcol is None else frame[qcol], frame[tag]
+        )
         targets[tag].write_text(
             json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
@@ -1314,7 +1330,8 @@ def init_long_meta(
     (``source_id`` and the tag as ``point_id``), ``name`` (the tag) and
     every optional key of ``tsdive.meta`` set to ``null``. When
     ``quality_col`` exists, ``quality_codes`` lists every raw code of the
-    tag's rows, filled as [`init_meta`][tsdive.init_meta] fills it.
+    tag's rows, filled as [`init_meta`][tsdive.init_meta] fills it. Each
+    string among a tag's numeric values is added to it as ``null``.
     [`ingest_long`][tsdive.ingest_long] reads the templates from
     ``out_dir``.
 
@@ -1366,8 +1383,9 @@ def init_long_meta(
     has_quality = quality_col in frame.columns
     written: list[Path] = []
     for tag in chosen:
-        codes = frame.loc[keys == tag, quality_col] if has_quality else None
-        payload = _tag_template(tag, source_id, codes)
+        rows = keys == tag
+        codes = frame.loc[rows, quality_col] if has_quality else None
+        payload = _tag_template(tag, source_id, codes, frame.loc[rows, value_col])
         targets[tag].write_text(
             json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
@@ -1393,8 +1411,9 @@ _KEY_NOTES = {
     "asset": "unit or equipment the tag belongs to",
     "loop_id": "control loop id",
     "role": "PV, SP, OP or MODE; MODE for a tag whose values are string states",
-    "quality_codes": "each raw quality code mapped to GOOD, UNCERTAIN or BAD; a null "
-    "entry raises SchemaError until it names a severity",
+    "quality_codes": "each raw quality code, and each string in a numeric value column, "
+    "mapped to GOOD, UNCERTAIN or BAD; a null entry raises SchemaError until it names a "
+    "severity",
     "quality_assumed": "leave null; ingest sets it when the quality is assumed",
 }
 
@@ -1417,8 +1436,10 @@ def init_tag_meta(
     data. When ``quality_col`` exists, ``quality_codes`` lists each raw
     code found in it, mapped to a severity only where the code spells
     ``GOOD``, ``UNCERTAIN`` or ``BAD`` itself; every other code stays
-    ``null``. [`read_meta_json`][tsdive.read_meta_json] refuses the file
-    until the identity, the name and every code are filled.
+    ``null``. A value column that holds numbers and strings, such as PI
+    digital states, adds each string to ``quality_codes`` as ``null``.
+    [`read_meta_json`][tsdive.read_meta_json] refuses the file until the
+    identity, the name and every code are filled.
 
     Raises:
         SchemaError: unreadable input, or a missing timestamp or value
@@ -1467,8 +1488,9 @@ def init_tag_meta(
         "name": None,
         **dict.fromkeys(_META_TEMPLATE_KEYS),
     }
-    if has_quality:
-        payload["quality_codes"] = _quality_code_template(frame[quality_col])
+    payload["quality_codes"] = _quality_code_template(
+        frame[quality_col] if has_quality else None, frame[value_col]
+    )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
     return target

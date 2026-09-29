@@ -38,9 +38,9 @@ tsdive ingest TI3101.csv --init-meta TI3101.json \
 ```
 
 The `columns` comment in the template says what ingest found: no
-quality column. Fill in the tag, and name the digital state in
-`quality_codes` so ingest reads it as a BAD sample instead of refusing a
-string in a numeric column:
+quality column. `quality_codes` lists `I/O Timeout`, the one string in
+the value column, with no severity. Fill in the tag, and give the state
+the severity BAD so ingest reads it as a BAD sample:
 
 ```json file=TI3101.json
 {
@@ -216,7 +216,7 @@ tsdive ingest plant.csv --tag-col Tag --timestamp-col Timestamp \
 | `does not exist in` | export the stretch around the clock change with UTC offsets |
 | `no quality column` | name it with `--quality-col`, or pass `--assume-quality` |
 | `unknown key` | fix the metadata key it names; the message suggests the right one |
-| `is not numeric and no digital state explains it` | name the string in `quality_codes` |
+| `not numeric and no digital state` | give each string it lists a severity in `quality_codes` |
 | `the export holds several tags` | pass `--tag-col` with the column the message names |
 | `precedes the row before it` | fix the row order in the export; tsdive does not sort it |
 
