@@ -3,6 +3,59 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
+## 0.9.0 - 2026-09-29
+
+### Added
+
+- CI tests Python 3.12 on Linux, Windows and macOS, and Python 3.13 and
+  3.14 on Linux. The reference case and the benchmarks run on Python
+  3.12 on Linux. The package classifiers list the three versions.
+- A CI job installs the lowest version of each direct dependency that
+  its range allows and runs the tests. It installs pandas 2.2.2, numpy
+  2.0.0, pyarrow 23.0.1 and pint 0.24.4.
+- A weekly workflow locks the newest versions the ranges allow, then
+  runs the tests, the reference case and the benchmarks. A failed run is
+  the report.
+- The release workflow installs the built wheel in a clean environment
+  and runs `tsdive demo` and `tsdive profile` before it uploads.
+
+### Changed
+
+- tsdive accepts pandas 2.2 to 3.x (`pandas>=2.2,<4`) and pyarrow 23.0.1
+  to 25.x (`pyarrow>=23.0.1,<26`). The lock file installs pandas 3.0.6
+  and pyarrow 25.0.1. Under pandas 3, `ingest` reads the date order, the
+  decimal mark and each tag's value type from text columns as under
+  pandas 2.
+- pint needs 0.24.4 or newer (`pint>=0.24.4,<1`). pint 0.24 to 0.24.3
+  fail to import next to flexparser 0.4.
+- Breaking: the `tsfm` and `tep` extras are removed.
+  `pip install "tsdive[tsfm]"` and `pip install "tsdive[tep]"` install
+  tsdive alone. In a clone, `uv sync --group tsfm` installs
+  chronos-forecasting for `examples/studies/3w_chronos`, and
+  `uv sync --group tep` installs pyreadr for `scripts/convert_tep.py`.
+  The library imports neither.
+- Breaking: `Backbone.tag_path`, `severity_floor_note` in
+  `tsdive.features.window_features`, and `dim`, `green` and `yellow` in
+  `tsdive.ui.term` are removed. Nothing in the package called them.
+- The documentation build runs the switchback transcript of
+  `docs/SWITCHBACK.md` on the demo data. A test runs each README
+  transcript command on the demo data and fails when the output drops a
+  line the README shows.
+
+### Fixed
+
+- An archive with timestamps stored in microseconds or milliseconds
+  gives the same results as one stored in nanoseconds. `profile
+  --flatline` found no reference history on such an archive, `compare`
+  read its change intervals 1000 times too short and could report a
+  moving tag as `frozen`, and `report-html` drew its samples outside the
+  plot. Under pandas 3, `ingest` writes microsecond timestamps.
+- With no reference history, the flatline `time_since_last_actual_change`
+  finding of a window whose value changed reads `stall 120s; no reference
+  history provided` instead of `no GOOD samples; signal not evaluable; no
+  reference history provided`. A window with one GOOD sample reads `fewer
+  than 2 GOOD samples; signal not evaluable`.
+
 ## 0.8.0 - 2026-09-29
 
 ### Added
