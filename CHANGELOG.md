@@ -3,6 +3,83 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
+## 0.8.0 - 2026-09-29
+
+### Added
+
+- Every JSON document opens with `result_kind` and `tsdive_version`:
+  the `--json` output of each command that takes the flag, the refusal
+  object, each MCP answer and `ledger.json`. `result_kind` is `evidence` for an analysis,
+  `refusal`, `ingest`, `plan` for `switchback plan --json`, or `ledger`.
+  `to_dict()` returns the document without the two keys.
+- `tsdive ingest --json` prints one object: `form` (`single`, `wide` or
+  `long`) and `archives`, one entry per archive written with `path`,
+  `tag`, `identity`, `rows`, `first`, `last`, `quality_source` (`column`
+  or `assumed`) and `assumed_quality`. Under `--init-meta` the object
+  lists `templates`. A refused ingest prints the refusal object and exits
+  3.
+- `tsdive run --strict` exits 2 when a step filed an error row, else 3
+  when a step filed a refusal row, else 0.
+- `ledger.json` carries `tags`, one row per archive read off its
+  profile: `coverage`, `good_share`, `censored`, `gaps`,
+  `longest_gap_s`, `flatline` and the steps `refused` for it. Each
+  finding carries `data`, the document the step prints under `--json`.
+  `ledger.txt` and `report.html` open with the same table, and
+  `ledger.txt` holds every profile.
+- `ScreenAnalysis.to_dict()` and `SpcAnalysis.to_dict()` carry `runs`:
+  each stretch of consecutive flagged GOOD samples as `start`, `end` and
+  `n`, with its `rule` in `spc`.
+- The MCP `screen` and `spc` tools take `max_events`, the flagged
+  timestamps or hits per rule to list, 0 when left out. `flagged_dropped`
+  and `hits_dropped` count the entries left out, and `n_flagged`,
+  `n_hits` and each rule's `n` count every sample. On the switchback demo
+  temperature, a 12 h baseline and a two-day window, the `spc` answer
+  holds 32,828 characters instead of 223,070 and the `screen` answer
+  8,094 instead of 53,974.
+- `make api-diff` lists the public API breaks since the last `v*` tag
+  with griffe.
+
+### Changed
+
+- `ledger.json` holds each refusal as an object (`step`, `tags`,
+  `error_type`, `cause`) instead of a `[ErrorName] step tags: message`
+  line. A step that raises `ValueError` or `OSError` (a rejected option,
+  overlapping windows, a file the OS cannot read) files a row of the
+  `errors` list instead of a refusal. `tsdive run` prints the row as
+  `ERROR` and adds `errors N` to its headline. The default exit rule of
+  `tsdive run` stays as it was.
+- `tsdive screen` and `tsdive spc` print consecutive flagged samples and
+  rule hits as one line per run, with its span and sample count. Each
+  section lists five runs and counts the rest as `(+N more runs)`. A
+  lone flag or hit prints as before. `RUNS_SHOWN` replaces
+  `FLAGGED_SHOWN` in `tsdive.analyses_render`.
+- Breaking: the optional fields of these public dataclasses are
+  keyword-only, so a positional call raises `TypeError`: `TagMeta` from
+  `unit_raw` on, `SamplingContract` (`aggregate_type`, `stepped`),
+  `Profile` (`flatline`), `ScreenAnalysis` (`mode_path`, `provisional`,
+  `regimes`, `alignment`), `CompareAnalysis` (`top`),
+  `SwitchbackAnalysis` (`assumptions`, `covariate_checks`),
+  `SwitchbackEstimate` (`estimate`, `p_value`, `lo`, `hi`, `reason`,
+  `detail`) and `SwitchbackPlan` (`power`). Pass each by name. A field
+  added to one of them no longer moves another.
+
+### Fixed
+
+- A path the OS cannot read, such as a directory passed as an archive,
+  exits 2 with one `error:` line that names the path and carries the OS
+  message, instead of a traceback and exit 1. The MCP server returns the
+  same message as a tool error instead of `Error executing tool`.
+  `report-html` names the error class of each unreadable archive instead
+  of `FileNotFoundError` for every one.
+- `mspc` and the joint table of `compare` do not assess SPE for a model
+  that keeps as many components as tags. Its residual is zero up to
+  rounding, and its empirical limit flagged rounding error: four
+  independent tags reported 3 SPE breaches in 200 rows. The report
+  prints `SPE  NOT ASSESSED` with the reason, and `mspc` adds the
+  `--variance` value that keeps one component fewer. The JSON carries
+  `spe_breaches: null` and `spe_not_assessed`, the SPE limit is null,
+  and `mspc` ranks no contributors for such a model.
+
 ## 0.7.0 - 2026-09-29
 
 ### Added
