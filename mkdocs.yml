@@ -80,13 +80,36 @@ validation:
 
 nav:
   - Home: index.md
-  - Usage: usage.md
-  - Guides:
-      - Archive schema: SCHEMA.md
-      - Source adapters: SOURCES.md
+  - Getting started: getting-started.md
+  - User guide:
+      - Concepts:
+          - Windows and time zones: guide/concepts/windows-and-time.md
+          - Archives and metadata: guide/concepts/archives-and-metadata.md
+          - The sampling contract: guide/concepts/sampling-contract.md
+          - Quality codes and severity: guide/concepts/quality-and-severity.md
+          - Coverage and gap classes: guide/concepts/coverage-and-gaps.md
+          - Clipping and censoring: guide/concepts/clipping-and-censoring.md
+          - Baselines and the MAD screen: guide/concepts/baselines.md
+          - SPC rules: guide/concepts/spc-rules.md
+          - "MSPC: T2, SPE and contributors": guide/concepts/mspc.md
+          - Compare's three tables: guide/concepts/compare.md
+          - Refusals: guide/concepts/refusals.md
+      - Reading the output:
+          - profile: guide/output/profile.md
+          - screen: guide/output/screen.md
+          - spc: guide/output/spc.md
+          - mspc: guide/output/mspc.md
+          - compare: guide/output/compare.md
+          - switchback analyze: guide/output/switchback.md
+      - How-to guides:
+          - Ingest a PI, IP.21 or OPC export: guide/howto/historian-export.md
+          - Choose a clean baseline window: guide/howto/baseline-window.md
+          - Check many tags at once: guide/howto/many-tags.md
+          - Use tsdive from Python and pandas: guide/howto/python.md
+          - Connect an AI assistant: guide/howto/mcp.md
+          - Test a controller tuning: guide/howto/switchback-trial.md
+      - Command tour: usage.md
       - Switchback trials: SWITCHBACK.md
-      - Evaluation protocol: EVAL.md
-      - MCP server: MCP.md
   - Reference:
       - CLI: reference/cli.md
       - API reference:
@@ -97,9 +120,15 @@ nav:
           - Evaluation: reference/api/eval.md
           - Archive, sampling contract and types: reference/api/types.md
           - Errors: reference/api/errors.md
+      - Errors and refusals: reference/errors.md
+      - Glossary: reference/glossary.md
+      - Archive schema: SCHEMA.md
+      - Source adapters: SOURCES.md
+      - MCP server: MCP.md
   - Project:
       - Scope: SCOPE.md
       - Roadmap: ROADMAP.md
       - Datasets and studies: DATA.md
+      - Evaluation protocol: EVAL.md
       - Benchmarks: benchmarks.md
       - Changelog: changelog.md

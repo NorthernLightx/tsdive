@@ -50,9 +50,14 @@ from tsdive.cli import (
 from tsdive.errors import TSDiveError
 from tsdive.ui.jsonout import refusal_json, to_jsonable
 
+RELEASE_WHEEL = (
+    "https://github.com/NorthernLightx/tsdive/releases/download/"
+    f"v{__version__}/tsdive-{__version__}-py3-none-any.whl"
+)
 MISSING_MCP = (
-    "the tsdive MCP server needs the mcp package (>=2.1); install tsdive with "
-    "the mcp extra, for example pip install -e '.[mcp]' from a clone"
+    "the tsdive MCP server needs the mcp package (>=2.1); install tsdive with the mcp "
+    'extra: pip install "tsdive[mcp] @ git+https://github.com/NorthernLightx/tsdive.git", '
+    f'or the release wheel with it, pip install "tsdive[mcp] @ {RELEASE_WHEEL}"'
 )
 
 RESULT_CONTRACT = """\

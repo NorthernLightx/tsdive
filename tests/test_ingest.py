@@ -222,6 +222,31 @@ def test_a_date_that_reads_both_ways_is_refused(tmp_path, capsys):
 
 
 @pytest.mark.parametrize(
+    ("stamps", "suggested", "first_utc"),
+    [
+        (["01/02/2026 00:00", "01/02/2026 00:01"], "%d/%m/%Y %H:%M", "2026-01-31 23:00"),
+        (["01.02.26 08:00:00", "01.02.26 08:01:00"], "%d.%m.%y %H:%M:%S", "2026-02-01 07:00"),
+        (
+            ["01-02-2026T08:00:00.250", "01-02-2026T08:01:00.250"],
+            "%d-%m-%YT%H:%M:%S.%f",
+            "2026-02-01 07:00",
+        ),
+    ],
+)
+def test_the_suggested_date_format_has_the_shape_of_the_value(
+    tmp_path, stamps, suggested, first_utc
+):
+    """The refusal suggests a format that parses the value it quotes."""
+    with pytest.raises(SchemaError) as info:
+        _ingest_stamps(tmp_path, stamps, tz="Europe/Paris")
+    assert f"strptime format such as '{suggested}'" in str(info.value)
+    read = _ingest_stamps(
+        tmp_path, stamps, name="suggested", tz="Europe/Paris", timestamp_format=suggested
+    )
+    assert read[0] == first_utc
+
+
+@pytest.mark.parametrize(
     "order",
     [{"dayfirst": True}, {"timestamp_format": "%d/%m/%Y %H:%M:%S"}],
     ids=["dayfirst", "format"],

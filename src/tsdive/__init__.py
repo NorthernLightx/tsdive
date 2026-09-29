@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 from tsdive.analyses import (
     CompareAnalysis,
@@ -27,6 +27,7 @@ from tsdive.api import (
     switchback_analyze,
     switchback_plan,
 )
+from tsdive.demo import write_demo_data
 from tsdive.errors import (
     DesignTooSmall,
     IncomparableSamplingError,
@@ -106,5 +107,6 @@ __all__ = [
     "spc",
     "switchback_analyze",
     "switchback_plan",
+    "write_demo_data",
     "write_tag",
 ]

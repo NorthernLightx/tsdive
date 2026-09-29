@@ -246,5 +246,12 @@ def test_build_server_without_the_extra_names_the_install(
     # without the mcp extra behaves.
     for name in ("mcp", "mcp.server", "mcp.server.mcpserver", "mcp.types"):
         monkeypatch.setitem(sys.modules, name, None)
-    with pytest.raises(ImportError, match="the mcp extra"):
+    with pytest.raises(ImportError, match="the mcp extra") as info:
         mcp_server.build_server()
+    message = str(info.value)
+    assert 'pip install "tsdive[mcp] @ git+https://github.com/NorthernLightx/tsdive.git"' in message
+    version = mcp_server.__version__
+    releases = "https://github.com/NorthernLightx/tsdive/releases/download"
+    wheel = f"{releases}/v{version}/tsdive-{version}-py3-none-any.whl"
+    assert f'pip install "tsdive[mcp] @ {wheel}"' in message
+    assert "clone" not in message

@@ -1,13 +1,14 @@
 """MkDocs hooks that build the documentation site from the repository sources.
 
-``mkdocs.yml`` loads this file. On every build it generates the usage page
-from README.md, the CLI reference from the command parsers, the API
+``mkdocs.yml`` loads this file. On every build it runs the example
+commands of the guide pages on the demo data and inserts their output,
+and it generates the usage page from README.md, the CLI reference from
+the command parsers (with an example run of every command), the API
 reference (an index, one page per group and one page per public object)
 from ``__all__``, and the changelog and benchmarks pages from the root
-markdown files. The CLI pages carry example runs on the demo archives,
-executed in-process at build time. None of them is committed. A relative link whose
-target lies outside ``docs/`` is rewritten to the file on GitHub, so the
-pages under ``docs/`` keep working both on GitHub and on the site.
+markdown files. None of the generated text is committed. A relative link
+whose target lies outside ``docs/`` is rewritten to the file on GitHub,
+so the pages under ``docs/`` keep working both on GitHub and on the site.
 
 The module imports neither mkdocs nor griffe at the top, so the page
 generators run without the ``docs`` dependency group.
@@ -17,10 +18,10 @@ from __future__ import annotations
 
 import argparse
 import ast
+import atexit
 import contextlib
 import functools
 import glob
-import importlib.util
 import inspect
 import io
 import json
@@ -30,7 +31,6 @@ import posixpath
 import re
 import shlex
 import shutil
-import sys
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -77,6 +77,7 @@ TOP_LEVEL_GROUPS: dict[str, list[str]] = {
         "init_tag_meta",
         "read_meta_json",
         "write_tag",
+        "write_demo_data",
     ],
     "Analyses": [
         "profile",
@@ -330,6 +331,10 @@ EXAMPLE_SOURCES = ("README.md", "docs/SWITCHBACK.md")
 # Commands the pages above show without a ``$`` prompt: argv, and the
 # sentence that says what the example prepared.
 EXTRA_EXAMPLES = {
+    "demo": (
+        ["demo"],
+        "The command writes into `tsdive-demo/` under the current directory.",
+    ),
     "ingest": (
         ["ingest", "fic101.csv", "--out", "archive/plant1/FIC101.PV.parquet", "--meta",
          "fic101.json"],
@@ -344,8 +349,6 @@ EXTRA_EXAMPLES = {
 }
 # Guides that walk a command on real output, beside the README usage page.
 GUIDES = {"switchback plan": "SWITCHBACK.md", "switchback analyze": "SWITCHBACK.md"}
-# Scripts that write the archives the examples read.
-DATA_SCRIPTS = ("scripts/make_demo_archive.py", "examples/switchback/make_trial.py")
 
 
 def cli_entries() -> dict[str, str]:
@@ -529,25 +532,55 @@ def _wrap_console(argv: list[str]) -> str:
     return "\n".join([*lines, line])
 
 
-def _prepare_examples(work: Path) -> None:
-    """Write into ``work`` every file the example commands read."""
+@functools.cache
+def _demo_data() -> Path:
+    """The ``data/`` directory ``tsdive demo data`` writes, built once per build."""
+    from tsdive.demo import write_demo_data
+
+    data = Path(tempfile.mkdtemp(prefix="tsdive-docs-")) / "data"
+    write_demo_data(data)
+    atexit.register(shutil.rmtree, data.parent, ignore_errors=True)
+    return data
+
+
+@contextlib.contextmanager
+def demo_workdir() -> Iterator[Path]:
+    """A fresh current directory holding ``data/`` and ``examples/plans/demo.toml``.
+
+    It is the directory a reader works in after ``tsdive demo data`` in a
+    clone: every example command of the docs runs in one of these.
+    """
+    before = Path.cwd()
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        work = Path(tmp).resolve()
+        shutil.copytree(_demo_data(), work / "data")
+        plans = work / "examples" / "plans"
+        plans.mkdir(parents=True)
+        shutil.copy(ROOT / "examples" / "plans" / "demo.toml", plans / "demo.toml")
+        os.chdir(work)
+        try:
+            yield work
+        finally:
+            os.chdir(before)
+
+
+def run_in(work: Path, argv: list[str]) -> tuple[int | str | None, str]:
+    """``tsdive <argv>`` in ``work``: globs expanded as a shell would, paths relative."""
+    expanded = [
+        p.replace(os.sep, "/")
+        for a in argv
+        for p in (sorted(glob.glob(a)) if "*" in a else [a])
+    ]
+    code, output = _run_cli(expanded)
+    return code, output.replace(str(work) + os.sep, "").replace(str(work), ".")
+
+
+def _export_fic101(work: Path) -> None:
+    """``fic101.csv`` and ``fic101.json``: the FIC-101 demo archive as an export."""
     import pandas as pd
 
     from tsdive.store.tagstore import meta_from_parquet, meta_to_dict
 
-    for script in DATA_SCRIPTS:
-        path = ROOT / script
-        spec = importlib.util.spec_from_file_location(f"docs_data_{path.stem}", path)
-        assert spec is not None and spec.loader is not None
-        module = importlib.util.module_from_spec(spec)
-        # The dataclass decorator looks its module up in sys.modules.
-        sys.modules[spec.name] = module
-        spec.loader.exec_module(module)
-        with contextlib.redirect_stdout(io.StringIO()):
-            module.main()
-    plans = work / "examples" / "plans"
-    plans.mkdir(parents=True)
-    shutil.copy(ROOT / "examples" / "plans" / "demo.toml", plans / "demo.toml")
     demo = work / "data" / "demo" / "fic101_demo.parquet"
     pd.read_parquet(demo).to_csv(work / "fic101.csv", index=False)
     meta = meta_to_dict(meta_from_parquet(demo))
@@ -563,38 +596,29 @@ def cli_examples() -> dict[str, tuple[str, str]]:
     """
     documented = documented_invocations()
     examples: dict[str, tuple[str, str]] = {}
-    before = Path.cwd()
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
-        work = Path(tmp).resolve()
-        os.chdir(work)
-        try:
-            _prepare_examples(work)
-            for command in cli_commands():
-                if command in documented:
-                    argv, text = documented[command]
-                    note = ""
-                elif command in EXTRA_EXAMPLES:
-                    argv, note = EXTRA_EXAMPLES[command]
-                    text = _wrap_console(argv)
-                else:
-                    raise ValueError(f"no example invocation for tsdive {command}")
-                expanded = [
-                    p.replace(os.sep, "/")
-                    for a in argv
-                    for p in (sorted(glob.glob(a)) if "*" in a else [a])
-                ]
-                code, output = _run_cli(expanded)
-                if code not in (0, None):
-                    raise RuntimeError(f"tsdive {command} example exited {code}:\n{output}")
-                output = output.replace(str(work) + os.sep, "").replace(str(work), ".")
-                lines = output.splitlines()
-                if len(lines) > EXAMPLE_LINES:
-                    cut = len(lines) - EXAMPLE_LINES
-                    lines = [*lines[:EXAMPLE_LINES], f"[{cut} more lines not shown]"]
-                examples[command] = ("\n".join([text, *lines]), note)
-        finally:
-            os.chdir(before)
+    with demo_workdir() as work:
+        _export_fic101(work)
+        for command in cli_commands():
+            if command in documented:
+                argv, text = documented[command]
+                note = ""
+            elif command in EXTRA_EXAMPLES:
+                argv, note = EXTRA_EXAMPLES[command]
+                text = _wrap_console(argv)
+            else:
+                raise ValueError(f"no example invocation for tsdive {command}")
+            code, output = run_in(work, argv)
+            if code not in (0, None):
+                raise RuntimeError(f"tsdive {command} example exited {code}:\n{output}")
+            examples[command] = ("\n".join([text, *_cut(output.splitlines())]), note)
     return examples
+
+
+def _cut(lines: list[str], keep: int = EXAMPLE_LINES) -> list[str]:
+    """The first ``keep`` lines, and a marked cut when there were more."""
+    if len(lines) <= keep:
+        return lines
+    return [*lines[:keep], f"[{len(lines) - keep} more lines not shown]"]
 
 
 def _cli_index(entries: dict[str, str]) -> str:
@@ -607,9 +631,8 @@ def _cli_index(entries: dict[str, str]) -> str:
             "# CLI reference\n",
             "Every command, with the summary `tsdive --help` prints. Each command links to "
             "its usage line, its options and an example run on the demo archives.\n",
-            "The examples run in a directory where `python scripts/make_demo_archive.py` and "
-            "`python examples/switchback/make_trial.py` wrote those archives, with the "
-            "repository's `examples/plans/demo.toml`.\n",
+            "The examples run in a directory where `tsdive demo data` wrote those archives, "
+            "with the repository's `examples/plans/demo.toml`.\n",
             "\n".join(rows) + "\n",
             "## tsdive --help\n",
             f"```text\n{cli_help([])}\n```\n",
@@ -851,8 +874,7 @@ def _api_index(entries: list[ApiEntry]) -> str:
         "Every public name of `tsdive`, `tsdive.eval` and `tsdive.switchback`, grouped by "
         "task, with the first line of its docstring. Each name links to its own page.\n",
         "The examples on those pages read the demo archives that "
-        "`python scripts/make_demo_archive.py` and "
-        "`python examples/switchback/make_trial.py` write under `data/`.\n",
+        "`tsdive demo data` writes under `data/`.\n",
     ]
     for group in API_GROUPS:
         members = [e for e in entries if e.group == group]
@@ -896,6 +918,130 @@ def api_markdown() -> dict[str, tuple[str, bool]]:
     for entry in entries:
         pages.setdefault(entry.page, (_object_page(entry), False))
     return pages
+
+
+# ------------------------------------------------------------------ guide pages
+
+# A fenced block in a docs page whose info string is ``tsdive`` holds
+# commands the build runs on the demo data, in page order, in one working
+# directory per page: the rendered page shows each command and its real
+# output. ``exit=N`` states the exit status every command in the block
+# must return (0 when absent). ``lines=N`` keeps the first N lines of
+# the output and ``tail=N`` the last N, each with a marked cut. A block
+# with ``file=NAME`` writes its text to NAME in that directory before the
+# next command runs; a block with ``show=NAME`` shows the file as it is
+# then.
+_BLOCK = re.compile(
+    r"^```(?P<lang>[\w-]*)(?P<opts>(?: [a-z]+=\S+)*)[ \t]*\n(?P<body>.*?)^```[ \t]*$",
+    re.MULTILINE | re.DOTALL,
+)
+# Lines of output a guide block shows before the cut, when it states none.
+GUIDE_LINES = 60
+# Stands in, in a docs page, for the version being documented.
+VERSION_TOKEN = "X.Y.Z"
+
+
+@dataclass(frozen=True)
+class GuideBlock:
+    """One fenced block of a docs page the build acts on."""
+
+    lang: str
+    options: dict[str, str]
+    body: str
+
+    @property
+    def runs(self) -> bool:
+        return self.lang == "tsdive"
+
+    @property
+    def acts(self) -> bool:
+        return self.runs or "file" in self.options or "show" in self.options
+
+
+def guide_blocks(markdown: str) -> list[tuple[re.Match[str], GuideBlock]]:
+    """Every fenced block of ``markdown`` the build runs, writes or shows, in order."""
+    found = []
+    for m in _BLOCK.finditer(markdown):
+        options = dict(opt.split("=", 1) for opt in m.group("opts").split())
+        block = GuideBlock(m.group("lang"), options, m.group("body"))
+        if block.acts:
+            found.append((m, block))
+    return found
+
+
+def guide_commands(body: str) -> list[str]:
+    """The commands of a ``tsdive`` block, each with its continuation lines."""
+    commands: list[str] = []
+    current: list[str] = []
+    for line in body.splitlines():
+        if not line.strip() and not current:
+            continue
+        current.append(line)
+        if not line.endswith("\\"):
+            commands.append("\n".join(current))
+            current = []
+    if current:
+        raise ValueError(f"a command ends in a continuation: {current[-1]!r}")
+    bad = [c for c in commands if not c.startswith("tsdive ")]
+    if bad:
+        raise ValueError(f"a tsdive block runs tsdive commands only, not {bad[0]!r}")
+    return commands
+
+
+def _render_block(block: GuideBlock, work: Path, page: str) -> str:
+    """The markdown a block becomes once its commands ran in ``work``."""
+    if block.runs:
+        expected = int(block.options.get("exit", "0"))
+        keep = int(block.options.get("lines", str(GUIDE_LINES)))
+        shown: list[str] = []
+        for command in guide_commands(block.body):
+            code, output = run_in(work, shlex.split(command.replace("\\\n", " "))[1:])
+            if (code or 0) != expected:
+                raise RuntimeError(
+                    f"{page}: `{command}` exited {code}, the page expects {expected}:\n{output}"
+                )
+            lines = output.splitlines()
+            if "tail" in block.options:
+                shown += [f"$ {command}", *_cut_head(lines, int(block.options["tail"]))]
+            else:
+                shown += [f"$ {command}", *_cut(lines, keep)]
+        return "```console\n" + "\n".join(shown) + "\n```"
+    if "file" in block.options:
+        name = block.options["file"]
+        target = work / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(block.body, encoding="utf-8")
+        return f'```{block.lang} title="{name}"\n{block.body}```'
+    name = block.options["show"]
+    text = (work / name).read_text(encoding="utf-8").rstrip("\n")
+    keep = int(block.options.get("lines", str(GUIDE_LINES)))
+    return f'```{block.lang} title="{name}"\n' + "\n".join(_cut(text.splitlines(), keep)) + "\n```"
+
+
+def _cut_head(lines: list[str], keep: int) -> list[str]:
+    """The last ``keep`` lines, after a marked cut when there were more."""
+    if len(lines) <= keep:
+        return lines
+    return [f"[{len(lines) - keep} lines above not shown]", *lines[-keep:]]
+
+
+def run_guide_blocks(markdown: str, page: str) -> str:
+    """``markdown`` with its ``tsdive``, ``file=`` and ``show=`` blocks carried out.
+
+    The commands run in page order in one fresh demo working directory, so
+    a later command reads what an earlier one wrote. A command whose exit
+    status differs from the block's stops the build.
+    """
+    blocks = guide_blocks(markdown)
+    if not blocks:
+        return markdown
+    parts: list[str] = []
+    last = 0
+    with demo_workdir() as work:
+        for m, block in blocks:
+            parts += [markdown[last : m.start()], _render_block(block, work, page)]
+            last = m.end()
+    return "".join([*parts, markdown[last:]])
 
 
 # ------------------------------------------------------------------ pages
@@ -958,10 +1104,13 @@ def on_files(files: Files, config: MkDocsConfig) -> Files:
 
 
 def on_page_markdown(markdown: str, page: Page, config: MkDocsConfig, **_: Any) -> str:
-    """Fill the README markers of the index and resolve links that leave docs/."""
+    """Run a page's example blocks, fill the index's README markers, resolve links."""
+    from tsdive import __version__
+
     src = page.file.src_uri
     if page.file.generated_by is not None:
         return markdown
+    markdown = run_guide_blocks(markdown.replace(VERSION_TOKEN, __version__), src)
     if src == "index.md":
         result = index_markdown(markdown)
     else:
