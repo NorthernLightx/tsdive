@@ -289,7 +289,9 @@ def render_report(data: dict) -> str:
     manifest = run["dataset_manifest_sha256"][:12]
     aligned_sha = run["aligned_windows_manifest_sha256"][:12]
     best_det = max(
-        (float(det.loc[t, "roc_auc"]), t) for t, _, _ in DETECTOR_ROWS if t != "clock"
+        (float(det.loc[t, "roc_auc"]), t)
+        for t, _, _ in DETECTOR_ROWS
+        if t != "clock" and not pd.isna(det.loc[t, "roc_auc"])
     )
     windows = data["windows"]
     n_open_record = int(
