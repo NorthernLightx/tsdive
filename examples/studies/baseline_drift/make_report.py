@@ -830,8 +830,10 @@ def splice_section(text: str, section: str) -> str:
     if start < 0:
         return text.rstrip("\n") + "\n\n" + section
     nxt = text.find("\n## ", start + len(SECTION_HEADING))
-    end = len(text) if nxt < 0 else nxt + 1
-    return text[:start] + section + text[end:]
+    if nxt < 0:
+        return text[:start] + section
+    # The blank line before the next heading belongs to the replaced text.
+    return text[:start] + section + "\n" + text[nxt + 1 :]
 
 
 # ---------------------------------------------------------------- main
