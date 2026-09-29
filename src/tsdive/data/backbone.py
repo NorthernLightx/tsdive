@@ -30,9 +30,6 @@ class Backbone:
     root: Path
     truth: pd.DataFrame  # fault_type, loop, start, end, magnitude
 
-    def tag_path(self, source_id: str, point_id: str) -> Path:
-        return self.root / source_id / f"{point_id}.parquet"
-
 
 def _write_tag(root: Path, df: pd.DataFrame, meta: TagMeta) -> None:
     path = root / meta.identity.source_id / f"{meta.identity.point_id}.parquet"
