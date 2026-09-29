@@ -75,6 +75,7 @@ from tsdive.store.tagstore import (
     SingleFileStore,
     archive_extent,
     meta_from_parquet,
+    read_archive_table,
 )
 from tsdive.switchback.archive import SwitchbackAnalysis
 from tsdive.switchback.plan import SwitchbackPlan
@@ -124,7 +125,7 @@ commands, in the order an archive walks them:
 
 options, on every command:
   --json                                  one JSON object on stdout instead of
-                                          text (the analysis commands)
+                                          text (the analysis commands and ingest)
   --no-color                              plain text; NO_COLOR does the same
   --version                               print the tsdive version
 
@@ -978,7 +979,7 @@ def _parser_ingest() -> argparse.ArgumentParser:
         action="store_true",
         help="replace an existing archive at --out, or template under --init-meta",
     )
-    return _add_output_flags(parser, json_flag=False)
+    return _add_output_flags(parser)
 
 
 def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -1079,6 +1080,55 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
         return _ingest(args)
 
 
+def _ingest_form(args: argparse.Namespace) -> str:
+    """``single``, ``wide`` or ``long``: the export shape the flags name."""
+    return "wide" if args.wide else "long" if args.tag_col is not None else "single"
+
+
+def _archive_json(path: Path, assume_quality: str | None) -> dict[str, object]:
+    """One archive ``ingest --json`` lists, read back from the file ingest wrote."""
+    meta = meta_from_parquet(path)
+    stamps = read_archive_table(path, columns=["timestamp"])["timestamp"].to_pandas()
+    assumed = meta.quality_assumed and assume_quality is not None
+    return {
+        "path": path.as_posix(),
+        "tag": str(meta.identity),
+        "identity": {"source_id": meta.identity.source_id, "point_id": meta.identity.point_id},
+        "rows": len(stamps),
+        "first": stamps.min() if len(stamps) else None,
+        "last": stamps.max() if len(stamps) else None,
+        "quality_source": "assumed" if meta.quality_assumed else "column",
+        "assumed_quality": assume_quality.strip().upper() if assumed else None,
+    }
+
+
+def _templates_written(templates: Sequence[Path], args: argparse.Namespace) -> int:
+    """Print the metadata templates written: one ``wrote`` line each, or one JSON object."""
+    if args.json:
+        doc = {"form": _ingest_form(args), "templates": [p.as_posix() for p in templates]}
+        print(json.dumps(doc, indent=2))
+    else:
+        _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
+    return OK
+
+
+def _archives_written(
+    written: Sequence[Path], args: argparse.Namespace, lines: list[str] | None = None
+) -> int:
+    """Print the archives written: ``lines`` (one ``wrote`` line each by default) or JSON."""
+    if args.json:
+        doc = {
+            "form": _ingest_form(args),
+            "archives": [_archive_json(Path(p), args.assume_quality) for p in written],
+        }
+        print(json.dumps(to_jsonable(doc), indent=2))
+    else:
+        default = [label_line("wrote", Path(path).as_posix()) for path in written]
+        _print_lines(default if lines is None else lines, args)
+    _warn_assumed_quality(args.assume_quality)
+    return OK
+
+
 def _ingest(args: argparse.Namespace) -> int:
     try:
         if args.init_meta is not None and not args.wide and args.tag_col is None:
@@ -1091,8 +1141,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 overwrite=args.overwrite,
                 **_csv_options(args),
             )
-            _print_lines([label_line("wrote", template.as_posix())], args)
-            return OK
+            return _templates_written([template], args)
         if args.init_meta is not None and args.tag_col is not None:
             templates = init_long_meta(
                 args.source,
@@ -1106,8 +1155,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 overwrite=args.overwrite,
                 **_csv_options(args),
             )
-            _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
-            return OK
+            return _templates_written(templates, args)
         if args.init_meta is not None:
             templates = init_meta(
                 args.source,
@@ -1119,8 +1167,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 overwrite=args.overwrite,
                 **_csv_options(args),
             )
-            _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
-            return 0
+            return _templates_written(templates, args)
         if args.tag_col is not None:
             written = ingest_long(
                 args.source,
@@ -1138,9 +1185,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 dayfirst=args.dayfirst,
                 **_csv_options(args),
             )
-            _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
-            _warn_assumed_quality(args.assume_quality)
-            return OK
+            return _archives_written(written, args)
         if args.wide:
             written = ingest_wide(
                 args.source,
@@ -1156,9 +1201,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 dayfirst=args.dayfirst,
                 **_csv_options(args),
             )
-            _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
-            _warn_assumed_quality(args.assume_quality)
-            return 0
+            return _archives_written(written, args)
         value_col = args.value_col or "value"
         quality_col = args.quality_col or "quality"
         meta = read_meta_json(args.meta)
@@ -1191,9 +1234,7 @@ def _ingest(args: argparse.Namespace) -> int:
         ]
         if args.tz:
             lines.append(label_line("tz", f"{args.tz} -> UTC"))
-        _print_lines(lines, args)
-        _warn_assumed_quality(args.assume_quality)
-        return OK
+        return _archives_written([Path(out)], args, lines)
     except TSDiveError as e:
         return _refused(e, args)
     except (ValueError, OSError) as e:

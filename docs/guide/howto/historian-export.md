@@ -239,6 +239,21 @@ tsdive ingest plant.csv --tag-col Tag --timestamp-col Timestamp \
     --value-col Value --quality-col Status --out archive --meta-dir meta
 ```
 
+## Read the result in a script
+
+With `--json` ingest prints one object in place of the `wrote` lines.
+`form` names the export shape, and `archives` holds one entry per
+archive written: path, tag, identity, row count, first and last
+timestamp, and `quality_source` (`column` or `assumed`). Under
+`--init-meta` the object lists `templates` instead. A refused ingest
+prints the refusal object and exits 3.
+
+```tsdive
+tsdive ingest plant.csv --tag-col Tag --timestamp-col Timestamp \
+    --value-col Value --quality-col Status --out archive --meta-dir meta \
+    --overwrite --json
+```
+
 ## When ingest refuses
 
 | message says | do |
