@@ -464,6 +464,10 @@ def _to_utc(
     instant they name. With ``tz`` the caller states the source's zone and
     the column is localised then converted; without it, a naive column
     raises ``SchemaError`` naming the column and ``tz`` (``--tz`` in the CLI).
+    The hour the clocks repeat in autumn is placed by row order: its first
+    pass takes the summer offset and its second the winter one. A time in
+    that hour that the export holds once, rows of it out of time order,
+    and a spring time the clocks skip raise ``SchemaError``.
 
     Rows with different UTC offsets all name real instants and are
     converted individually. A column that mixes naive and offset-bearing
@@ -509,13 +513,41 @@ def _localise(
     validate_tz_names((tz,))
     local = pd.Series(pd.DatetimeIndex(stamps), index=index)
     try:
-        localised = local.dt.tz_localize(tz)
+        localised = local.dt.tz_localize(tz, ambiguous="infer")
     except Exception as e:
-        raise SchemaError(
-            f"{column}: cannot localise to {tz} ({e}); a DST transition makes some of "
-            "these local times ambiguous or nonexistent - export with UTC offsets"
-        ) from e
+        raise SchemaError(_clock_change_refusal(local, tz, column, e)) from e
     return cast(pd.Series, localised.dt.tz_convert("UTC"))
+
+
+def _clock_change_refusal(local: pd.Series, tz: str, column: str, error: Exception) -> str:
+    """The message for naive local times that ``tz`` cannot place in UTC.
+
+    A time in the hour the clocks skip names no instant. A time in the
+    hour the clocks repeat is placed by row order only when the export
+    holds both passes of that hour, each in time order.
+    """
+    unplaced = local.dt.tz_localize(tz, ambiguous="NaT", nonexistent="NaT").isna()
+    repeated = local.dt.tz_localize(tz, ambiguous="NaT", nonexistent="shift_forward").isna()
+    skipped = local[unplaced & ~repeated]
+    if len(skipped):
+        return (
+            f"{column}: {skipped.iloc[0]} does not exist in {tz}, because the clocks skip "
+            "it when they go forward; export the stretch around the change with UTC offsets"
+        )
+    hour = local[repeated]
+    if len(hour) and not hour.duplicated().any():
+        return (
+            f"{column}: {hour.iloc[0]} falls in the hour {tz} repeats when the clocks go "
+            "back, and the export holds that hour once, so the row order cannot say which "
+            "pass it belongs to; export the stretch around the change with UTC offsets"
+        )
+    if len(hour):
+        return (
+            f"{column}: the rows of the hour {tz} repeats when the clocks go back, from "
+            f"{hour.iloc[0]}, are out of time order or repeat, so the row order cannot "
+            "place them; export the stretch around the change with UTC offsets"
+        )
+    return f"{column}: cannot localise to {tz} ({error}); export with UTC offsets"
 
 
 def _resolve_quality(

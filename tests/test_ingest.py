@@ -777,6 +777,104 @@ def test_wide_export_writes_one_archive_per_column_across_dst(tmp_path):
     assert p.physics.unmapped_quality_codes == []
 
 
+# 48 h at 5 min across the 2026-10-25 01:00Z fall back in Berlin: written as
+# naive wall clock, 02:00..02:55 appears twice and the column has 577 rows.
+AUTUMN_INSTANTS = pd.date_range(
+    pd.Timestamp("2026-10-24 00:00", tz="Europe/Berlin").tz_convert("UTC"),
+    periods=577,
+    freq="5min",
+)
+
+
+def _autumn_csv(tmp_path, local=None, name="autumn.csv"):
+    if local is None:
+        local = list(AUTUMN_INSTANTS.tz_convert("Europe/Berlin").strftime("%Y-%m-%d %H:%M:%S"))
+    path = tmp_path / name
+    pd.DataFrame({"ts": local, "FIC101.PV": [50.0 + 0.01 * k for k in range(len(local))]}).to_csv(
+        path, index=False
+    )
+    return path
+
+
+def _ingest_autumn(tmp_path, src):
+    return tsdive.ingest_wide(
+        src,
+        out_dir=tmp_path / "archive",
+        meta_dir=_wide_meta_dir(tmp_path, tags=("FIC101.PV",)),
+        timestamp_col="ts",
+        tz="Europe/Berlin",
+        assume_quality="GOOD",
+    )
+
+
+def test_the_repeated_autumn_hour_is_placed_by_row_order(tmp_path):
+    (written,) = _ingest_autumn(tmp_path, _autumn_csv(tmp_path))
+    stamps = pd.read_parquet(written)["timestamp"]
+    assert list(stamps) == list(AUTUMN_INSTANTS)
+    assert set(stamps.diff().dt.total_seconds().iloc[1:]) == {300.0}
+
+
+def _autumn_local():
+    return list(AUTUMN_INSTANTS.tz_convert("Europe/Berlin").strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def _one_sample_in_the_hour():
+    local = _autumn_local()
+    i = local.index("2026-10-25 02:00:00")
+    return [*local[:i], "2026-10-25 02:30:00", *local[i + 24 :]]
+
+
+def _a_repeated_row_in_the_hour():
+    local = _autumn_local()
+    i = local.index("2026-10-25 02:10:00")
+    return [*local[: i + 1], local[i], *local[i + 1 :]]
+
+
+def _the_hour_sorted_by_wall_clock():
+    local = _autumn_local()
+    i = local.index("2026-10-25 02:00:00")
+    first, second = local[i : i + 12], local[i + 12 : i + 24]
+    paired = [t for pair in zip(first, second, strict=True) for t in pair]
+    return [*local[:i], *paired, *local[i + 24 :]]
+
+
+def _a_skipped_spring_hour():
+    return list(pd.date_range("2026-03-29 01:00", "2026-03-29 03:00", freq="5min").astype(str))
+
+
+@pytest.mark.parametrize(
+    ("stamps", "message"),
+    [
+        (
+            _one_sample_in_the_hour,
+            r"ts: 2026-10-25 02:30:00 falls in the hour Europe/Berlin repeats when the clocks "
+            r"go back, and the export holds that hour once",
+        ),
+        (
+            _a_repeated_row_in_the_hour,
+            r"ts: the rows of the hour Europe/Berlin repeats when the clocks go back, from "
+            r"2026-10-25 02:00:00, are out of time order or repeat",
+        ),
+        (
+            _the_hour_sorted_by_wall_clock,
+            r"ts: the rows of the hour Europe/Berlin repeats when the clocks go back, from "
+            r"2026-10-25 02:00:00, are out of time order or repeat",
+        ),
+        (
+            _a_skipped_spring_hour,
+            r"ts: 2026-03-29 02:00:00 does not exist in Europe/Berlin, because the clocks "
+            r"skip it when they go forward",
+        ),
+    ],
+    ids=["one-sample", "repeated-row", "wall-clock-order", "spring"],
+)
+def test_local_times_the_row_order_cannot_place_are_refused(tmp_path, stamps, message):
+    tail = ".*; export the stretch around the change with UTC offsets$"
+    with pytest.raises(SchemaError, match=message + tail):
+        _ingest_autumn(tmp_path, _autumn_csv(tmp_path, stamps()))
+    assert not (tmp_path / "archive").exists()
+
+
 def test_wide_ingest_takes_the_date_order_flags(tmp_path, capsys):
     src = tmp_path / "eu_wide.csv"
     pd.DataFrame({"ts": EU_STAMPS, "FIC101.PV": [1.0, 2.0, 3.0]}).to_csv(src, index=False)

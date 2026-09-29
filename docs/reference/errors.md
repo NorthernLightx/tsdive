@@ -178,8 +178,7 @@ historian never had. The error carries the offending positions.
 ```
 
 What to do: fix the export. A backwards step in a CSV usually comes
-from dates read in the wrong order, day first or month first, or from a
-DST fall-back hour written in local time without an offset.
+from dates read in the wrong order, day first or month first.
 
 ### UnresolvedUnitError
 

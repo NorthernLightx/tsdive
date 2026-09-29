@@ -212,7 +212,8 @@ tsdive ingest plant.csv --tag-col Tag --timestamp-col Timestamp \
 |---|---|
 | `is naive (no UTC offset)` | pass `--tz` with the zone the export was written in |
 | `reads as day 02 of month 03 or as month 02` | pass `--dayfirst`, or `--timestamp-format` |
-| `cannot localise ... DST transition` | export the stretch around the clock change with UTC offsets |
+| `repeats when the clocks go back` | export the stretch around the clock change with UTC offsets |
+| `does not exist in` | export the stretch around the clock change with UTC offsets |
 | `no quality column` | name it with `--quality-col`, or pass `--assume-quality` |
 | `unknown key` | fix the metadata key it names; the message suggests the right one |
 | `is not numeric and no digital state explains it` | name the string in `quality_codes` |
