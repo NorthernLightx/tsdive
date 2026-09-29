@@ -215,6 +215,84 @@ def test_mspc_breaches_do_not_depend_on_the_units_of_a_tag(demo_archives, tmp_pa
     np.testing.assert_allclose(thousand.found.spe, plain.found.spe, rtol=1e-9)
 
 
+def _independent(n: int, columns: int, seed: int):
+    """``n`` rows of ``columns`` independent N(0, 1) tags on a 60 s grid."""
+    import numpy as np
+
+    from tsdive.mspc.pca import AlignedMatrix
+
+    rng = np.random.default_rng(seed)
+    return AlignedMatrix(
+        index=pd.date_range("2024-01-01", periods=n, freq="60s", tz="UTC"),
+        columns=[f"T{i}" for i in range(columns)],
+        matrix=rng.standard_normal((n, columns)),
+        coverage=1.0,
+    )
+
+
+def test_a_model_keeping_every_component_assesses_no_spe():
+    """Four independent tags need all four components to reach 0.95."""
+    import math
+
+    from tsdive.mspc.pca import detect, fit_pca
+
+    model = fit_pca(_independent(500, 4, seed=0))
+    assert (len(model.components), len(model.columns)) == (4, 4)
+    assert not model.spe_assessed
+    assert math.isnan(model.spe_limit)
+    assert model.spe_not_assessed == "the model keeps 4 of 4 components, so no residual is left"
+    assert 0.77 < model.variance_leaving_residual <= sum(model.explained_variance[:3])
+    found = detect(model, _independent(200, 4, seed=1))
+    assert found.spe_breaches is None
+    assert found.top_contributors == {}
+    fewer = fit_pca(_independent(500, 4, seed=0),
+                    variance_threshold=model.variance_leaving_residual)
+    assert fewer.spe_assessed and len(fewer.components) == 3
+
+
+def test_a_model_leaving_a_residual_keeps_its_spe(demo_archives):
+    flow, temp = demo_archives
+    a = tsdive.mspc([flow, temp], DEMO_BEFORE, DEMO_AFTER)
+    assert (len(a.model.components), len(a.model.columns)) == (1, 2)
+    assert a.model.spe_assessed and a.model.spe_not_assessed is None
+    assert len(a.found.spe_breaches) == 108
+    assert a.to_dict()["spe_not_assessed"] is None
+
+
+def test_mspc_prints_spe_not_assessed_for_four_independent_tags(tmp_path, capsys):
+    import json
+
+    import numpy as np
+
+    rng = np.random.default_rng(3)
+    base = pd.Timestamp("2024-03-01 00:00:00+00:00")
+    stamps = [base + pd.Timedelta(60 * i, unit="s") for i in range(240)]
+    paths = []
+    for i in range(4):
+        frame = pd.DataFrame(
+            {"timestamp": stamps, "value": 50.0 + rng.standard_normal(240), "quality": "GOOD"}
+        )
+        meta = make_meta(point_id=f"T{i}.PV", sample_rate_s=60.0)
+        paths.append(str(write_archive(tmp_path / f"T{i}.PV.parquet", frame, meta)))
+    window = ["--baseline", "2024-03-01T00:00:00Z/2024-03-01T01:59:00Z",
+              "--window", "2024-03-01T02:00:00Z/2024-03-01T03:59:00Z"]
+    assert main(["mspc", *paths, *window]) == 0
+    text = capsys.readouterr().out
+    assert "SPE NOT ASSESSED   of 120 rows" in text.splitlines()[0]
+    assert "contributors  not ranked (no residual to rank them by)" in text
+    below = tsdive.mspc(paths, *window[1::2]).model.variance_leaving_residual
+    assert "limits    T2 " in text and "   SPE n/a   (empirical q0.99)" in text
+    assert " ".join(text.split()).endswith(
+        "SPE NOT ASSESSED (the model keeps 4 of 4 components, so no residual is left; "
+        f"pass --variance below {below})"
+    )
+    assert main(["mspc", *paths, *window, "--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["spe_breaches"] is None and doc["limits"]["spe"] is None
+    assert doc["spe_not_assessed"].startswith("the model keeps 4 of 4 components")
+    assert doc["contributors_ranked"] is False
+
+
 def test_compare_agrees_with_the_cli(demo_archives, capsys):
     flow, temp = demo_archives
     a = tsdive.compare([flow, temp], DEMO_BEFORE, DEMO_AFTER)

@@ -123,6 +123,27 @@ def test_a_flat_before_period_refuses_the_level_shift_and_the_spread(archive_fac
     assert row.flagged_reason == "no spread before"
 
 
+def test_the_joint_table_assesses_no_spe_when_every_component_is_kept(archive_factory):
+    import tsdive
+
+    paths = [str(_tag(archive_factory, f"T{i}.PV", _noisy(20 + i))) for i in range(4)]
+    analysis = tsdive.compare(paths, BEFORE, AFTER)
+    joint = analysis.joint
+    assert (joint.n_components, joint.n_aligned) == (4, 4)
+    assert joint.spe_breaches is None
+    assert joint.spe_not_assessed == "the model keeps 4 of 4 components, so no residual is left"
+    assert joint.contributors == ()
+    doc = analysis.to_dict()["joint"]
+    assert doc["spe_breaches"] is None
+    assert doc["spe_not_assessed"] == joint.spe_not_assessed
+    lines = analysis.render().splitlines()
+    at = lines.index("Joint structure  (PCA fitted on before, 4 of 4 tags aligned)")
+    assert lines[at + 2].endswith("SPE NOT ASSESSED")
+    assert lines[at + 3 :] == [
+        "  SPE  NOT ASSESSED (the model keeps 4 of 4 components, so no residual is left)"
+    ]
+
+
 def test_a_flat_before_period_refuses_the_joint_table(archive_factory):
     flat = _tag(archive_factory, "FIC101.PV", [50.0] * SPLIT + _noisy(4)[SPLIT:])
     other = _tag(archive_factory, "TIC101.PV", _noisy(5))

@@ -542,19 +542,28 @@ class MspcAnalysis:
 
     @property
     def ranked(self) -> bool:
-        """True when the model holds more tags than a top-N list would name."""
-        return len(self.model.columns) > CONTRIBUTORS_KEPT
+        """True when the model holds more tags than a top-N list would name.
+
+        Contributors rank the residual, so a model that keeps every
+        component ranks none.
+        """
+        return len(self.model.columns) > CONTRIBUTORS_KEPT and self.model.spe_assessed
 
     @property
     def frame(self) -> pd.DataFrame:
         stamps = self.found.timestamps
+        spe_breaches = self.found.spe_breaches
         return pd.DataFrame(
             {
                 "timestamp": stamps,
                 "t2": self.found.t2,
-                "spe": self.found.spe,
+                "spe": self.found.spe if spe_breaches is not None else float("nan"),
                 "t2_breach": stamps.isin(self.found.t2_breaches),
-                "spe_breach": stamps.isin(self.found.spe_breaches),
+                "spe_breach": (
+                    stamps.isin(spe_breaches)
+                    if spe_breaches is not None
+                    else pd.array([pd.NA] * len(stamps), dtype="boolean")
+                ),
             }
         )
 

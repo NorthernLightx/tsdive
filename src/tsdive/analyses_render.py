@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from tsdive._naming import argname
 from tsdive.changepoints import DEFAULT_PENALTY_MULTIPLIER
 from tsdive.changepoints.pelt import Segmentation
 from tsdive.compare import (
@@ -472,12 +473,29 @@ def spc_json(a: SpcAnalysis) -> dict[str, object]:
 # --- mspc -------------------------------------------------------------------
 
 
+def _spe_count(breaches: Sequence[object] | int | None) -> str:
+    """``SPE breaches N``, or ``SPE NOT ASSESSED`` for a model with no residual."""
+    if breaches is None:
+        return "SPE NOT ASSESSED"
+    n = breaches if isinstance(breaches, int) else len(breaches)
+    return f"SPE breaches {n}"
+
+
+def _spe_not_assessed(a: MspcAnalysis) -> str | None:
+    """Why ``mspc`` assessed no SPE, with the option that leaves a residual."""
+    reason = a.model.spe_not_assessed
+    if reason is None:
+        return None
+    variance = argname("variance", "--variance")
+    return f"{reason}; pass {variance} below {a.model.variance_leaving_residual}"
+
+
 def _mspc_headline(a: MspcAnalysis) -> tuple[str, list[str]]:
     """The headline, and the ``tags`` lines it needs when the list will not fit."""
     found = a.found
     counts = (
         f"T2 breaches {len(found.t2_breaches)}{SEP}"
-        f"SPE breaches {len(found.spe_breaches)}{SEP}"
+        f"{_spe_count(found.spe_breaches)}{SEP}"
         f"of {plural(len(a.test.index), 'row')}"
     )
     listed = ", ".join(a.tags)
@@ -531,12 +549,15 @@ def mspc_lines(a: MspcAnalysis) -> list[str]:
             ),
             label_line(
                 "limits",
-                f"T2 {fmt_num(model.t2_limit)}{SEP}SPE {fmt_num(model.spe_limit)}"
+                f"T2 {fmt_num(model.t2_limit)}{SEP}"
+                f"SPE {fmt_num(model.spe_limit if model.spe_assessed else None)}"
                 f"{SEP}(empirical q{a.quantile})",
             ),
         ]
     )
-    if not a.ranked:
+    if not model.spe_assessed:
+        lines.append(label_line("contributors", "not ranked (no residual to rank them by)"))
+    elif not a.ranked:
         lines.append(
             label_line(
                 "contributors",
@@ -544,13 +565,25 @@ def mspc_lines(a: MspcAnalysis) -> list[str]:
                 f"top-{CONTRIBUTORS_KEPT} would list every one)",
             )
         )
-    for name, breaches in (
-        ("T2 breaches", a.found.t2_breaches),
-        ("SPE breaches", a.found.spe_breaches),
-    ):
-        lines.extend(rule(name, str(len(breaches))))
-        lines.extend(_breach_lines(a, breaches))
+    lines.extend(rule("T2 breaches", str(len(a.found.t2_breaches))))
+    lines.extend(_breach_lines(a, a.found.t2_breaches))
+    if a.found.spe_breaches is None:
+        lines.extend(["", *_not_assessed_lines("SPE", _spe_not_assessed(a) or "")])
+    else:
+        lines.extend(rule("SPE breaches", str(len(a.found.spe_breaches))))
+        lines.extend(_breach_lines(a, a.found.spe_breaches))
     return lines
+
+
+def _not_assessed_lines(label: str, reason: str) -> list[str]:
+    """``LABEL  NOT ASSESSED (reason)``, folded to the page."""
+    return textwrap.wrap(
+        f"{label}  NOT ASSESSED ({reason})",
+        width=WRAP_WIDTH,
+        subsequent_indent="  ",
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
 
 
 def mspc_json(a: MspcAnalysis) -> dict[str, object]:
@@ -583,6 +616,7 @@ def mspc_json(a: MspcAnalysis) -> dict[str, object]:
         "contributors_ranked": a.ranked,
         "t2_breaches": a.found.t2_breaches,
         "spe_breaches": a.found.spe_breaches,
+        "spe_not_assessed": _spe_not_assessed(a),
         "contributors": a.found.top_contributors if a.ranked else {},
     }
 
@@ -728,7 +762,7 @@ def _joint_section(joint: JointStructure) -> list[str]:
         f"explained {fmt_num(joint.explained_before)} -> "
         f"{fmt_num(joint.explained_after)} on after",
         f"rows {joint.rows}{SEP}T2 breaches {joint.t2_breaches}{SEP}"
-        f"SPE breaches {joint.spe_breaches}",
+        f"{_spe_count(joint.spe_breaches)}",
     ]
     named = SEP.join(f"{name} {_share(share)}" for name, share in joint.contributors)
     if joint.other_share is not None:
@@ -738,7 +772,9 @@ def _joint_section(joint: JointStructure) -> list[str]:
         f"(PCA fitted on before, {joint.n_aligned} of {joint.n_offered} tags aligned)",
     )
     lines = header + indent(body)
-    if named:
+    if joint.spe_not_assessed is not None:
+        lines.extend(indent(_not_assessed_lines("SPE", joint.spe_not_assessed)))
+    elif named:
         lines.extend(wrapped(f"SPE contributors{SEP}{named}"))
     else:
         lines.extend(indent(["SPE contributors   none (no SPE breach)"]))
@@ -894,6 +930,7 @@ def compare_json(a: CompareAnalysis) -> dict[str, object]:
                 "explained_after": joint.explained_after,
                 "t2_breaches": joint.t2_breaches,
                 "spe_breaches": joint.spe_breaches,
+                "spe_not_assessed": joint.spe_not_assessed,
                 "spe_contributors": [
                     {"tag": name, "share": share} for name, share in joint.contributors
                 ],
