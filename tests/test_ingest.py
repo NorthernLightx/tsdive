@@ -1586,6 +1586,8 @@ def test_ingest_json_lists_the_archive_it_wrote(tmp_path, capsys):
             "--quality-col", "q", "--json"]
     assert cmd_ingest(argv) == 0
     assert _json_out(capsys) == {
+        "result_kind": "ingest",
+        "tsdive_version": tsdive.__version__,
         "form": "single",
         "archives": [
             {
@@ -1626,6 +1628,8 @@ def test_ingest_json_on_a_long_export_and_its_templates(tmp_path, capsys):
             "--source-id", "plant1", "--json"]
     assert cmd_ingest(init) == 0
     assert _json_out(capsys) == {
+        "result_kind": "ingest",
+        "tsdive_version": tsdive.__version__,
         "form": "long",
         "templates": [(meta_dir / f"{tag}.json").as_posix() for tag in LONG_TAGS],
     }

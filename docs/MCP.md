@@ -72,7 +72,8 @@ out. The counts `n_flagged`, `n_hits` and `n` cover every sample.
 
 ## Result union
 
-Every tool returns one JSON object carrying `result_kind`.
+Every tool returns one JSON object carrying `result_kind` and
+`tsdive_version`, the version that answered.
 
 `"evidence"` holds the analysis, keyed as `--json` prints it. A
 `profile` answer, trimmed to four of its ten blocks:
@@ -80,6 +81,7 @@ Every tool returns one JSON object carrying `result_kind`.
 ```json
 {
   "result_kind": "evidence",
+  "tsdive_version": "X.Y.Z",
   "tag": "demo:FIC101.PV",
   "window": {"start": "2024-03-30T20:00:00+00:00", "end": "2024-03-30T23:00:00+00:00", "duration_s": 10800.0},
   "units": {"raw": "m3/h", "canonical": "cubic meters per hour", "resolved": true},
@@ -92,6 +94,7 @@ Every tool returns one JSON object carrying `result_kind`.
 ```json
 {
   "result_kind": "refusal",
+  "tsdive_version": "X.Y.Z",
   "error_type": "InsufficientQuality",
   "cause": "tag demo:FIC101.PV: window is censored (clipped fraction 0.935); a clipped window may never serve as a baseline"
 }

@@ -37,7 +37,7 @@ A refusal is a result: it tells you what to fix in the question.
 
 - On the command line: `[ErrorName] message` on stderr and exit status
   3. Under `--json`, stdout also carries one object with `result_kind`
-  `refusal`, `error_type` and `cause`.
+  `refusal`, `tsdive_version`, `error_type` and `cause`.
 - In Python: an exception that derives from `tsdive.TSDiveError`.
 - In a `tsdive run` ledger: a row of the `refusals` list, beside the
   findings. The run still exits 0 when anything else was found. Under

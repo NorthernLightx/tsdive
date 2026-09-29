@@ -10,7 +10,7 @@ from itertools import takewhile
 import pandas as pd
 import pytest
 
-from conftest import EngRange, make_meta, write_archive
+from conftest import EngRange, make_meta, without_contract, write_archive
 from tsdive.api import profile
 from tsdive.cli import cmd_compare, cmd_run, cmd_screen
 
@@ -473,7 +473,8 @@ top = 1
     assert ledger["findings"][-1]["text"] == capsys.readouterr().out.rstrip("\n")
     # A finding's data is the document the command prints under --json.
     assert cmd_compare([*argv, "--json"]) == 0
-    assert ledger["findings"][-1]["data"] == json.loads(capsys.readouterr().out)
+    printed = without_contract(json.loads(capsys.readouterr().out))
+    assert ledger["findings"][-1]["data"] == printed
 
 
 def test_compare_without_before_and_after_is_a_refusal_row(tmp_path):
@@ -591,7 +592,8 @@ def test_a_finding_carries_its_json_document(tmp_path, capsys):
     by_step = {(f["step"], f["tags"]): f["data"] for f in _ledger(out)["findings"]}
     argv = [str(flow), "--window", AFTER, "--baseline", BEFORE, "--json"]
     assert cmd_screen(argv) == 0
-    assert by_step[("screen", "plant1:FIC101.PV")] == json.loads(capsys.readouterr().out)
+    printed = without_contract(json.loads(capsys.readouterr().out))
+    assert by_step[("screen", "plant1:FIC101.PV")] == printed
 
 
 def test_the_tag_rows_read_the_profile_document(tmp_path):

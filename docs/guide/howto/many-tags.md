@@ -68,6 +68,7 @@ refused for that tag. A tag the `profile` step did not read shows
 
 | key | holds |
 |---|---|
+| `result_kind` | `ledger` |
 | `title` | the plan's file name |
 | `tsdive_version` | the version that wrote the ledger |
 | `tags` | one object per archive: `tag`, `coverage`, `good_share`, `censored`, `gaps`, `longest_gap_s`, `flatline`, `refused`. The profile keys are `null` for a tag the `profile` step did not read |

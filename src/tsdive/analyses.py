@@ -206,7 +206,10 @@ class SegmentAnalysis:
         return "\n".join(segment_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive segment --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive segment --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(segment_json(self))
 
     def write_mode_archive(self, path: str | Path, *, overwrite: bool = False) -> Path:
@@ -336,7 +339,10 @@ class ScreenAnalysis:
         return "\n".join(screen_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive screen --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive screen --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(screen_json(self))
 
 
@@ -461,7 +467,10 @@ class SpcAnalysis:
         return "\n".join(spc_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive spc --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive spc --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(spc_json(self))
 
 
@@ -582,7 +591,10 @@ class MspcAnalysis:
         return "\n".join(mspc_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive mspc --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive mspc --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(mspc_json(self))
 
 
@@ -686,7 +698,10 @@ class CompareAnalysis(CompareResult):
         return "\n".join(compare_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive compare --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive compare --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(compare_json(self))
 
 

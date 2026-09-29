@@ -105,6 +105,8 @@ class EvidenceLedger:
     # One row per archive: the profile's headline numbers and the steps
     # refused for it. A tag the profile step did not read carries None.
     tags: list[dict[str, object]] = field(default_factory=list)
+    # The contract ledger.json follows, named as in every tsdive JSON document.
+    result_kind: str = "ledger"
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2, sort_keys=True)

@@ -45,8 +45,9 @@ tsdive screen data/demo/fic101_demo.parquet \
     --window 2024-03-31T03:00:00Z/2024-03-31T06:00:00Z --json
 ```
 
-`result_kind` is `refusal`, `error_type` names the class, and `cause` is
-the message. A script reads the exit status first and the object second.
+`result_kind` is `refusal`, `tsdive_version` names the version that
+refused, `error_type` names the class, and `cause` is the message. A
+script reads the exit status first and the object second.
 
 ## In Python
 

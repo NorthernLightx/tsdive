@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 import tsdive
-from conftest import EngRange, Role, make_meta, write_archive
+from conftest import EngRange, Role, make_meta, without_contract, write_archive
 from tsdive.cli import (
     _parser_compare,
     _parser_mspc,
@@ -173,7 +173,7 @@ def test_profile_to_dict_equals_the_cli_json(tmp_path, capsys):
     path, _ = _demo_archive(tmp_path)
     argv = [str(path), "--window", WINDOW, "--flatline", "--tz", "Europe/London", "--json"]
     assert cmd_profile(argv) == 0
-    printed = json.loads(capsys.readouterr().out)
+    printed = without_contract(json.loads(capsys.readouterr().out))
     result = tsdive.profile(path, WINDOW, flatline=True, tz="Europe/London")
     assert result.to_dict() == printed
     assert printed["flatline"] is not None

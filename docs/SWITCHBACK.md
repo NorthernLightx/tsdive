@@ -193,7 +193,8 @@ difference in means carries that drift, and its interval holds 0. The
 adjusted estimate takes the feed flow and the ambient temperature out
 and its interval, 0.22 to 0.34 degC, holds the 0.25 degC the script
 added. `--json` prints the same fields as one object, and the plan file
-is the object `plan --json` prints.
+is the object `plan --json` prints after its `result_kind` and
+`tsdive_version`.
 
 ## Python and `tsdive run`
 

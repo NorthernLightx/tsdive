@@ -1667,7 +1667,8 @@ class Profile:
         """The document ``tsdive profile --json`` prints, ready for ``json.dumps``.
 
         Built by the same function the CLI calls, so the two are equal
-        key for key.
+        key for key. The command adds ``result_kind`` and
+        ``tsdive_version`` in front.
 
         Examples:
             >>> import tsdive

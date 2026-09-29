@@ -5,7 +5,8 @@ caller over MCP and a caller over the CLI read the same fields. Each tool
 builds the command line the CLI parser already validates, so option
 names, choices and defaults are declared once, in :mod:`tsdive.cli`.
 
-Every tool returns one JSON object carrying ``result_kind``. A typed
+Every tool returns one JSON object carrying ``result_kind`` and
+``tsdive_version``. A typed
 refusal (:class:`tsdive.errors.TSDiveError`) comes back as
 ``result_kind="refusal"`` with the class name and the message, and the
 call itself succeeds. Any other exception propagates, so a malformed
@@ -48,7 +49,7 @@ from tsdive.cli import (
     json_switchback_analyze,
 )
 from tsdive.errors import TSDiveError
-from tsdive.ui.jsonout import error_text, refusal_json, to_jsonable
+from tsdive.ui.jsonout import contract, error_text, refusal_json, to_jsonable
 
 RELEASE_WHEEL = (
     "https://github.com/NorthernLightx/tsdive/releases/download/"
@@ -61,12 +62,14 @@ MISSING_MCP = (
 )
 
 RESULT_CONTRACT = """\
-Returns one JSON object, discriminated on result_kind:
+Returns one JSON object, discriminated on result_kind, with the
+tsdive_version that wrote it:
 
-  {"result_kind": "evidence", ...}
+  {"result_kind": "evidence", "tsdive_version": "<version>", ...}
       the analysis, carrying the fields `tsdive <command> --json` prints.
 
-  {"result_kind": "refusal", "error_type": "<class>", "cause": "<message>"}
+  {"result_kind": "refusal", "tsdive_version": "<version>",
+   "error_type": "<class>", "cause": "<message>"}
       a check that has no answer on this data. error_type names a
       tsdive.errors class: SchemaError, InsufficientQuality,
       IncomparableSamplingError, NonMonotonicIndex, UnresolvedUnitError,
@@ -147,7 +150,7 @@ def _answer(
     """
     args = _namespace(parser, argv)
     try:
-        return {"result_kind": "evidence", **to_jsonable(to_json(args))}
+        return contract("evidence", to_jsonable(to_json(args)))
     except TSDiveError as e:
         return refusal_json(e)
 

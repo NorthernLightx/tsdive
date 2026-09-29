@@ -342,7 +342,10 @@ class SwitchbackAnalysis:
         return "\n".join(analysis_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive switchback analyze --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive switchback analyze --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         from tsdive.switchback.render import analysis_json
 
         return analysis_json(self)

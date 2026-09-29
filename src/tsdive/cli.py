@@ -80,7 +80,7 @@ from tsdive.store.tagstore import (
 from tsdive.switchback.archive import SwitchbackAnalysis
 from tsdive.switchback.plan import SwitchbackPlan
 from tsdive.switchback.render import plan_lines
-from tsdive.ui.jsonout import error_fields, error_text, refusal_json, to_jsonable
+from tsdive.ui.jsonout import contract, error_fields, error_text, refusal_json, to_jsonable
 from tsdive.ui.term import colour_enabled, colourise, red
 
 MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time series
@@ -125,7 +125,9 @@ commands, in the order an archive walks them:
 
 options, on every command:
   --json                                  one JSON object on stdout instead of
-                                          text (the analysis commands and ingest)
+                                          text (the analysis commands and ingest),
+                                          opening with result_kind and
+                                          tsdive_version
   --no-color                              plain text; NO_COLOR does the same
   --version                               print the tsdive version
 
@@ -274,7 +276,11 @@ def _print_lines(lines: Sequence[str], args: argparse.Namespace) -> None:
 
 
 def _report_and_exit(
-    fn: StepRunner, args: argparse.Namespace, *, to_json: StepJson | None = None
+    fn: StepRunner,
+    args: argparse.Namespace,
+    *,
+    to_json: StepJson | None = None,
+    kind: str = "evidence",
 ) -> int:
     """Print what a step returned, or map its refusal to an exit code.
 
@@ -284,13 +290,16 @@ def _report_and_exit(
     applied here and nowhere else, so every renderer stays plain text.
     Messages raised inside name CLI flags (``--rate-s``), not keywords.
 
+    Under ``--json`` the document opens with ``result_kind`` (``kind``)
+    and ``tsdive_version``.
+
     Returns ``OK``, ``REFUSED`` for a ``TSDiveError``, and ``USAGE`` for a
     malformed argument, an existing output or a path the OS cannot read.
     """
     try:
         with cli_names():
             if getattr(args, "json", False) and to_json is not None:
-                print(json.dumps(to_jsonable(to_json(args)), indent=2))
+                print(json.dumps(contract(kind, to_jsonable(to_json(args))), indent=2))
                 return OK
             _print_lines(fn(args), args)
         return OK
@@ -767,6 +776,7 @@ def cmd_switchback(argv: Sequence[str] | None = None) -> int:
             run_switchback_plan,
             _parser_switchback_plan().parse_args(tail),
             to_json=json_switchback_plan,
+            kind="plan",
         )
     if sub == "analyze":
         return _switchback_analyze_status(_parser_switchback_analyze().parse_args(tail))
@@ -1106,7 +1116,7 @@ def _templates_written(templates: Sequence[Path], args: argparse.Namespace) -> i
     """Print the metadata templates written: one ``wrote`` line each, or one JSON object."""
     if args.json:
         doc = {"form": _ingest_form(args), "templates": [p.as_posix() for p in templates]}
-        print(json.dumps(doc, indent=2))
+        print(json.dumps(contract("ingest", doc), indent=2))
     else:
         _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
     return OK
@@ -1121,7 +1131,7 @@ def _archives_written(
             "form": _ingest_form(args),
             "archives": [_archive_json(Path(p), args.assume_quality) for p in written],
         }
-        print(json.dumps(to_jsonable(doc), indent=2))
+        print(json.dumps(contract("ingest", to_jsonable(doc)), indent=2))
     else:
         default = [label_line("wrote", Path(path).as_posix()) for path in written]
         _print_lines(default if lines is None else lines, args)

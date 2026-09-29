@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 import tsdive
-from conftest import EngRange, Role, make_meta, write_archive
+from conftest import EngRange, Role, make_meta, without_contract, write_archive
 from tsdive.api import parse_window
 from tsdive.cli import cmd_profile, cmd_report_html, main
 from tsdive.errors import SchemaError
@@ -149,7 +149,7 @@ def _agrees_with_cli(analysis, cls, argv: list[str], capsys) -> None:
     assert isinstance(analysis, cls)
     assert analysis.render() + "\n" == _cli(capsys, argv)
     payload = json.loads(json.dumps(analysis.to_dict()))
-    assert payload == json.loads(_cli(capsys, [*argv, "--json"]))
+    assert payload == without_contract(json.loads(_cli(capsys, [*argv, "--json"])))
 
 
 def test_segment_agrees_with_the_cli(demo_archives, capsys):

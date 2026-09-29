@@ -35,14 +35,15 @@ under `scripts/` download on request and print their size first.
 
 Commands in the order you run them on an archive. A window is `START/END`,
 `START/PT5H`, `PT5H/END`, or a date for one UTC day. Every analysis
-command and `ingest` take `--json` and print one JSON object instead of text.
-`--no-color` and the `NO_COLOR` environment variable turn colour off.
-Transcripts are trimmed to the lines the text reads.
+command and `ingest` take `--json` and print one JSON object instead of
+text, opening with `result_kind` and `tsdive_version`. `--no-color` and
+the `NO_COLOR` environment variable turn colour off. Transcripts are
+trimmed to the lines the text reads.
 
 ### profile
 
 Data checks and statistics for one window. The headline carries the numbers
-you read first, then one section per finding group.
+you read first.
 
 ```console
 $ tsdive profile data/demo/fic101_demo.parquet \
