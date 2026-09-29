@@ -5,7 +5,8 @@ caller over MCP and a caller over the CLI read the same fields. Each tool
 builds the command line the CLI parser already validates, so option
 names, choices and defaults are declared once, in :mod:`tsdive.cli`.
 
-Every tool returns one JSON object carrying ``result_kind``. A typed
+Every tool returns one JSON object carrying ``result_kind`` and
+``tsdive_version``. A typed
 refusal (:class:`tsdive.errors.TSDiveError`) comes back as
 ``result_kind="refusal"`` with the class name and the message, and the
 call itself succeeds. Any other exception propagates, so a malformed
@@ -48,7 +49,7 @@ from tsdive.cli import (
     json_switchback_analyze,
 )
 from tsdive.errors import TSDiveError
-from tsdive.ui.jsonout import refusal_json, to_jsonable
+from tsdive.ui.jsonout import contract, error_text, refusal_json, to_jsonable
 
 RELEASE_WHEEL = (
     "https://github.com/NorthernLightx/tsdive/releases/download/"
@@ -61,12 +62,14 @@ MISSING_MCP = (
 )
 
 RESULT_CONTRACT = """\
-Returns one JSON object, discriminated on result_kind:
+Returns one JSON object, discriminated on result_kind, with the
+tsdive_version that wrote it:
 
-  {"result_kind": "evidence", ...}
+  {"result_kind": "evidence", "tsdive_version": "<version>", ...}
       the analysis, carrying the fields `tsdive <command> --json` prints.
 
-  {"result_kind": "refusal", "error_type": "<class>", "cause": "<message>"}
+  {"result_kind": "refusal", "tsdive_version": "<version>",
+   "error_type": "<class>", "cause": "<message>"}
       a check that has no answer on this data. error_type names a
       tsdive.errors class: SchemaError, InsufficientQuality,
       IncomparableSamplingError, NonMonotonicIndex, UnresolvedUnitError,
@@ -147,9 +150,24 @@ def _answer(
     """
     args = _namespace(parser, argv)
     try:
-        return {"result_kind": "evidence", **to_jsonable(to_json(args))}
+        return contract("evidence", to_jsonable(to_json(args)))
     except TSDiveError as e:
         return refusal_json(e)
+
+
+def _events_kept(max_events: int | None) -> int:
+    """The per-sample entries a list keeps: ``max_events``, 0 when omitted."""
+    kept = 0 if max_events is None else max_events
+    if kept < 0:
+        raise ValueError(f"max_events must be 0 or more, not {kept}")
+    return kept
+
+
+def _trim(entry: dict[str, Any], key: str, kept: int) -> None:
+    """Cut the list ``entry[key]`` to ``kept`` items and state how many it dropped."""
+    events = entry[key]
+    entry[key] = events[:kept]
+    entry[f"{key}_dropped"] = len(events) - len(entry[key])
 
 
 def profile(
@@ -224,11 +242,15 @@ def screen(
     mode: str | None = None,
     basis: str | None = None,
     stepped: bool = False,
+    max_events: int | None = None,
 ) -> dict[str, Any]:
     """Flag samples outside a baseline built from a separate window.
 
     A censored baseline returns an InsufficientQuality refusal. A
-    baseline overlapping the screened window raises a tool error.
+    baseline overlapping the screened window raises a tool error. The
+    answer carries n_flagged and the runs of consecutive flagged samples.
+    The flagged list keeps max_events timestamps, and flagged_dropped
+    counts the rest.
 
     Args:
         archive: single-tag parquet archive carrying tsdive.meta.
@@ -242,7 +264,10 @@ def screen(
             for the window.
         basis: TIME_WEIGHTED or EVENT_WEIGHTED. Omitted, TIME_WEIGHTED.
         stepped: stepped interpolation between samples.
+        max_events: flagged timestamps to list. Omitted, 0: the runs and
+            the counts only.
     """
+    kept = _events_kept(max_events)
     argv = [
         "--baseline",
         baseline,
@@ -254,7 +279,10 @@ def screen(
         *_flag("--basis", basis),
         *_switch("--stepped", stepped),
     ]
-    return _answer(json_screen, _parser_screen(), [*argv, "--", archive])
+    payload = _answer(json_screen, _parser_screen(), [*argv, "--", archive])
+    if payload["result_kind"] == "evidence":
+        _trim(payload, "flagged", kept)
+    return payload
 
 
 def spc(
@@ -263,11 +291,14 @@ def spc(
     window: str,
     basis: str | None = None,
     stepped: bool = False,
+    max_events: int | None = None,
 ) -> dict[str, Any]:
     """Chart a window against individuals limits fitted on a baseline.
 
-    Reports the limits and the hits of each rule: BEYOND_3SIGMA,
-    RUN_9_SAMESIDE and TREND_6.
+    Reports the limits and, for each rule (BEYOND_3SIGMA, RUN_9_SAMESIDE
+    and TREND_6), its hit count n and the runs of consecutive hits. The
+    hits list of a rule keeps max_events entries, and hits_dropped counts
+    the rest.
 
     Args:
         archive: single-tag parquet archive carrying tsdive.meta.
@@ -277,7 +308,10 @@ def spc(
             ISO 8601 UTC to chart.
         basis: TIME_WEIGHTED or EVENT_WEIGHTED. Omitted, TIME_WEIGHTED.
         stepped: stepped interpolation between samples.
+        max_events: hits to list per rule. Omitted, 0: the runs and the
+            counts only.
     """
+    kept = _events_kept(max_events)
     argv = [
         "--baseline",
         baseline,
@@ -286,7 +320,11 @@ def spc(
         *_flag("--basis", basis),
         *_switch("--stepped", stepped),
     ]
-    return _answer(json_spc, _parser_spc(), [*argv, "--", archive])
+    payload = _answer(json_spc, _parser_spc(), [*argv, "--", archive])
+    if payload["result_kind"] == "evidence":
+        for entry in payload["rules"]:
+            _trim(entry, "hits", kept)
+    return payload
 
 
 def compare(
@@ -382,8 +420,8 @@ def _carrying_the_message(
     def call(*args: Any, **kwargs: Any) -> dict[str, Any]:
         try:
             return fn(*args, **kwargs)
-        except (ValueError, FileNotFoundError) as e:
-            raise tool_error(str(e)) from e
+        except (ValueError, OSError) as e:
+            raise tool_error(error_text(e)) from e
 
     return call
 

@@ -190,17 +190,24 @@ def test_static_report_without_figures_is_unchanged():
     assert drawn.index("<h2>Plots</h2>") < drawn.index("<h2>Window profiles</h2>")
 
 
+def _row(step: str, error_type: str, cause: str) -> dict[str, str]:
+    return {"step": step, "tags": "demo:x", "error_type": error_type, "cause": cause}
+
+
 def test_ledger_text_opens_with_the_header_it_is_given():
     """``tsdive run`` hands its own stdout in, so both say one thing."""
     ledger = EvidenceLedger(
         title="run demo.toml",
         profiles=["demo:x  a tag"],
         findings=[{"step": "spc", "tags": "demo:x", "text": "demo:x  0 rule hits"}],
-        refusals=["[MspcAlignmentError] mspc demo:x: aligned coverage 0.867"],
+        refusals=[_row("mspc", "MspcAlignmentError", "aligned coverage 0.867")],
     )
     printed = ["run demo.toml   1 archive   1 step", "", "wrote     out/ledger.json"]
     assert ledger.to_text(printed).splitlines() == [
         *printed,
+        "",
+        "PROFILE  demo:x",
+        "demo:x  a tag",
         "",
         "FINDING  spc   demo:x",
         "demo:x  0 rule hits",
@@ -208,15 +215,22 @@ def test_ledger_text_opens_with_the_header_it_is_given():
 
 
 def test_ledger_text_falls_back_to_its_own_counts():
-    ledger = EvidenceLedger(title="snapshot", refusals=["[SchemaError] no meta"])
+    ledger = EvidenceLedger(
+        title="snapshot",
+        refusals=[_row("profile", "SchemaError", "no meta")],
+        errors=[_row("screen", "ValueError", "baseline and window overlap")],
+    )
     assert ledger.to_text().splitlines() == [
-        "snapshot   profiles 0   findings 0   benchmark rows 0   refusals 1",
-        "REFUSAL  [SchemaError] no meta",
+        "snapshot   profiles 0   findings 0   benchmark rows 0   refusals 1   errors 1",
+        "REFUSAL  [SchemaError] profile demo:x: no meta",
+        "ERROR    [ValueError] screen demo:x: baseline and window overlap",
     ]
 
 
 def test_narrator_offline_and_gated():
-    ledger = EvidenceLedger(title="demo", refusals=["[InsufficientQuality] no GOOD samples"])
+    ledger = EvidenceLedger(
+        title="demo", refusals=[_row("profile", "InsufficientQuality", "no GOOD samples")]
+    )
     text = OfflineScriptedNarrator().narrate(ledger)
     assert "1 typed refusal(s)" in text
     # Remote without env var refuses (provoked in test_errors too):

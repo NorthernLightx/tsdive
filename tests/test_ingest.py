@@ -1570,3 +1570,85 @@ def test_an_unknown_retrieval_mode_is_refused(tmp_path):
     with pytest.raises(SchemaError, match="retrieval_mode 'interpolated' is not one of "
                        "RECORDED, INTERPOLATED"):
         tsdive.read_meta_json(_meta_file(tmp_path, retrieval_mode="interpolated"))
+
+
+# ------------------------------------------------------------- ingest --json
+
+
+def _json_out(capsys) -> dict:
+    return json.loads(capsys.readouterr().out)
+
+
+def test_ingest_json_lists_the_archive_it_wrote(tmp_path, capsys):
+    out = tmp_path / "FIC101.PV.parquet"
+    argv = [str(_csv(tmp_path, stamps=AWARE)), "--out", str(out), "--meta",
+            str(_meta_file(tmp_path)), "--timestamp-col", "ts", "--value-col", "v",
+            "--quality-col", "q", "--json"]
+    assert cmd_ingest(argv) == 0
+    assert _json_out(capsys) == {
+        "result_kind": "ingest",
+        "tsdive_version": tsdive.__version__,
+        "form": "single",
+        "archives": [
+            {
+                "path": out.as_posix(),
+                "tag": "plant1:FIC101.PV",
+                "identity": {"source_id": "plant1", "point_id": "FIC101.PV"},
+                "rows": 3,
+                "first": "2024-03-01T00:00:00+00:00",
+                "last": "2024-03-01T00:02:00+00:00",
+                "quality_source": "column",
+                "assumed_quality": None,
+            }
+        ],
+    }
+
+
+def test_ingest_json_on_a_wide_export_names_assumed_quality(tmp_path, capsys):
+    out_dir = tmp_path / "archive"
+    argv = [str(_wide_csv(tmp_path, quality=False)), "--wide", "--out", str(out_dir),
+            "--meta-dir", str(_wide_meta_dir(tmp_path)), "--timestamp-col", "ts",
+            "--tz", "Europe/London", "--assume-quality", "good", "--json"]
+    assert cmd_ingest(argv) == 0
+    captured = capsys.readouterr()
+    doc = json.loads(captured.out)
+    assert doc["form"] == "wide"
+    assert [a["identity"]["point_id"] for a in doc["archives"]] == list(WIDE_TAGS)
+    assert {(a["quality_source"], a["assumed_quality"]) for a in doc["archives"]} == {
+        ("assumed", "GOOD")
+    }
+    assert {a["rows"] for a in doc["archives"]} == {len(WIDE_INSTANTS)}
+    assert doc["archives"][0]["first"] == WIDE_INSTANTS[0].isoformat()
+    assert captured.err.startswith("warning: quality assumed GOOD")
+
+
+def test_ingest_json_on_a_long_export_and_its_templates(tmp_path, capsys):
+    src, meta_dir, out_dir = _long_csv(tmp_path), tmp_path / "meta", tmp_path / "archive"
+    init = [str(src), "--tag-col", "Tag", *LONG_ARGS, "--init-meta", str(meta_dir),
+            "--source-id", "plant1", "--json"]
+    assert cmd_ingest(init) == 0
+    assert _json_out(capsys) == {
+        "result_kind": "ingest",
+        "tsdive_version": tsdive.__version__,
+        "form": "long",
+        "templates": [(meta_dir / f"{tag}.json").as_posix() for tag in LONG_TAGS],
+    }
+    argv = [str(src), "--tag-col", "Tag", *LONG_ARGS, "--out", str(out_dir), "--meta-dir",
+            str(meta_dir), "--json"]
+    assert cmd_ingest(argv) == 0
+    doc = _json_out(capsys)
+    assert [a["path"] for a in doc["archives"]] == [
+        (out_dir / f"{tag}.parquet").as_posix() for tag in LONG_TAGS
+    ]
+    assert {a["quality_source"] for a in doc["archives"]} == {"column"}
+    assert {a["last"] for a in doc["archives"]} == {LONG_INSTANTS[-1].isoformat()}
+
+
+def test_ingest_json_prints_the_refusal_object_on_exit_3(tmp_path, capsys):
+    argv = [str(_long_csv(tmp_path)), "--out", str(tmp_path / "merged.parquet"), "--meta",
+            str(_meta_file(tmp_path)), "--timestamp-col", "Timestamp", "--value-col", "Value",
+            "--assume-quality", "GOOD", "--json"]
+    assert cmd_ingest(argv) == 3
+    doc = _json_out(capsys)
+    assert (doc["result_kind"], doc["error_type"]) == ("refusal", "SchemaError")
+    assert "pass --tag-col Tag" in doc["cause"]

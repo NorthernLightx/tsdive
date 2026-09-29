@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import KW_ONLY, dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -216,6 +216,8 @@ class SwitchbackEstimate:
 
     covariates: tuple[str, ...]
     kept_per_block: tuple[int, ...]
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     estimate: float | None = None
     p_value: float | None = None
     lo: float | None = None
@@ -279,6 +281,8 @@ class SwitchbackAnalysis:
     unused: tuple[str, ...]
     direct: SwitchbackEstimate
     adjusted: SwitchbackEstimate | None
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     assumptions: str = ASSUMPTIONS
     covariate_checks: tuple[CovariateCheck, ...] = ()
 
@@ -342,7 +346,10 @@ class SwitchbackAnalysis:
         return "\n".join(analysis_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive switchback analyze --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive switchback analyze --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         from tsdive.switchback.render import analysis_json
 
         return analysis_json(self)

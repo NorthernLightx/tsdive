@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 import tsdive
-from conftest import make_meta, write_archive
+from conftest import make_meta, without_contract, write_archive
 from tsdive.cli import cmd_run, main
 from tsdive.switchback.inference import lag_response
 
@@ -72,7 +72,8 @@ def test_plan_json_prints_the_plan_document(tmp_path, capsys):
     out = tmp_path / "plan.json"
     rc, text, _ = _run(capsys, ["switchback", "plan", *PLAN_ARGS, "-o", str(out), "--json"])
     assert rc == 0
-    assert json.loads(text) == json.loads(out.read_text(encoding="utf-8"))
+    printed = without_contract(json.loads(text), "plan")
+    assert printed == json.loads(out.read_text(encoding="utf-8"))
 
 
 def test_json_before_the_command_name_reaches_the_subcommand(tmp_path, capsys):
@@ -118,7 +119,7 @@ def test_analyze_prints_text_and_json(tmp_path, capsys):
     assert "Adjusted  (OLS on 1 covariate)" in text
     rc, payload, _ = _run(capsys, [*argv, "--json"])
     assert rc == 0
-    assert json.loads(payload) == json.loads(json.dumps(analysis.to_dict()))
+    assert without_contract(json.loads(payload)) == json.loads(json.dumps(analysis.to_dict()))
 
 
 def test_analyze_refusals_print_the_error_class(tmp_path, capsys):

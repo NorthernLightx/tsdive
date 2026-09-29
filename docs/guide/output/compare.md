@@ -53,6 +53,9 @@ Every tag is listed, ranked by the size of its level shift.
 - `SPE contributors   TIC101.PV 50%   FIC101.PV 50%`: with two tags and
   one component the residual falls on both tags equally, so the shares
   name neither. The tag table names the temperature.
+- When the model keeps every component, no residual is left: the
+  breach line reads `SPE NOT ASSESSED` and the next line gives the
+  reason in place of the contributors.
 
 ## What the demo says
 

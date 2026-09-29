@@ -8,13 +8,16 @@ command's own parser and rendered by its own ``render()``, so a plan can
 say nothing a command line cannot and the same validators refuse the
 same values.
 
-Two kinds of refusal, kept apart:
+Three kinds of failure, kept apart:
 
-- the plan itself (an unknown step, a glob matching no archive) refuses
+- the plan itself (an unknown step, a glob matching no archive) fails
   before any step runs, and nothing is written;
-- a step refusing for one archive becomes a ledger row and the run
-  carries on, because a refusal is evidence about that tag, not a reason
-  to abandon the other nine.
+- a step raising a typed tsdive error for one archive becomes a refusal
+  row and the run carries on, because a refusal is evidence about that
+  tag, not a reason to abandon the other nine;
+- a step raising any other error (a rejected option, overlapping windows,
+  a file the OS cannot read) becomes an error row, the same input that
+  exits 2 on the command line.
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import pandas as pd
 
@@ -43,8 +46,10 @@ from tsdive.cli import (
 )
 from tsdive.errors import TSDiveError
 from tsdive.narrate import EvidenceLedger
+from tsdive.narrate.ledger import row_text, tag_table
 from tsdive.report import SEP, continued, label_line, plural, wrapped
 from tsdive.store.tagstore import Window, meta_from_parquet
+from tsdive.ui.jsonout import error_fields, to_jsonable
 from tsdive.ui.static_report import render_static_report, write_static_report
 from tsdive.ui.svg import window_figure
 
@@ -230,17 +235,61 @@ def _identity(path: str) -> str:
         return path
 
 
-def refusal_text(row: Mapping[str, str]) -> str:
-    """The one-line form the ledger keeps: ``[Error] step tags: message``."""
-    return f"[{row['error']}] {row['step']} {row['tags']}: {row['message']}"
-
-
-def _refusal_lines(row: Mapping[str, str]) -> list[str]:
-    """A refusal on stdout: what refused, then why, folded to the page."""
+def _row_lines(marker: str, row: Mapping[str, str]) -> list[str]:
+    """A refusal or error on stdout: what failed, then why, folded to the page."""
     return [
-        f"REFUSAL  {row['step']}{SEP}{row['tags']}",
-        *wrapped(f"[{row['error']}] {row['message']}"),
+        f"{marker:<7}  {row['step']}{SEP}{row['tags']}",
+        *wrapped(f"[{row['error_type']}] {row['cause']}"),
     ]
+
+
+def _tag_row(tag: str, doc: Mapping[str, Any] | None, refused: list[str]) -> dict[str, object]:
+    """One row of the per-tag table, read off ``Profile.to_dict()``.
+
+    A tag without a profile document carries None in every profile field.
+    """
+    if doc is None:
+        return {
+            "tag": tag,
+            "coverage": None,
+            "good_share": None,
+            "censored": None,
+            "gaps": None,
+            "longest_gap_s": None,
+            "flatline": None,
+            "refused": refused,
+        }
+    values = doc["values"]
+    coverage = doc["coverage"]
+    return {
+        "tag": tag,
+        "coverage": coverage["coverage"],
+        "good_share": (
+            values["n_good"] / values["n_samples"] if values["n_samples"] else None
+        ),
+        "censored": doc["range"]["censored"],
+        "gaps": coverage["n_gaps"],
+        "longest_gap_s": coverage["longest_gap_s"],
+        "flatline": None if doc["flatline"] is None else doc["flatline"]["verdict"],
+        "refused": refused,
+    }
+
+
+@dataclass
+class Walk:
+    """What walking a plan produced, each list in step order.
+
+    ``profiles`` holds the rendered profile of each archive the profile
+    step read; ``tags`` one row per archive in plan order; ``figures`` the
+    report's plots.
+    """
+
+    profiles: list[str] = field(default_factory=list)
+    findings: list[dict[str, object]] = field(default_factory=list)
+    refusals: list[dict[str, str]] = field(default_factory=list)
+    errors: list[dict[str, str]] = field(default_factory=list)
+    tags: list[dict[str, object]] = field(default_factory=list)
+    figures: list[str] = field(default_factory=list)
 
 
 def _figures(
@@ -277,23 +326,24 @@ def _figures(
     return figures
 
 
-def execute(
-    plan: Plan,
-) -> tuple[list[str], list[dict[str, str]], list[dict[str, str]], list[str]]:
-    """Walk the plan, returning its profiles, findings, refusals and figures.
+def execute(plan: Plan) -> Walk:
+    """Walk the plan into profiles, findings, refusals, errors, tag rows and figures.
 
     ``profile`` fills the ledger's profiles because a profile describes a
     window; every other step files a finding, which is a verdict about
-    one. Neither ever raises past here. A refusal row keeps its error
-    name, step, tags and message apart, so the report can lay them out
-    without parsing a sentence back into fields. The figures are the
-    report's plots, one per profiled archive, with the screen and spc
-    results of that archive drawn over it.
+    one, with the result's ``to_dict()`` document as its ``data``.
+    Nothing raises past here. A typed tsdive error becomes a refusal row;
+    any other error (a rejected option, overlapping windows, a file the OS
+    cannot read) becomes an error row. Both keep step, tags, error type
+    and cause apart, so the report lays them out without parsing a
+    sentence back into fields. The figures are the report's plots, one per
+    profiled archive, with the screen and spc results of that archive
+    drawn over it.
     """
     labels = {path: _identity(path) for path in plan.archives}
-    profiles: list[str] = []
-    findings: list[dict[str, str]] = []
-    refusals: list[dict[str, str]] = []
+    walk = Walk()
+    documents: dict[str, dict[str, Any]] = {}
+    refused: dict[str, list[str]] = {path: [] for path in plan.archives}
     windows: dict[str, Window] = {}
     screens: dict[str, ScreenAnalysis] = {}
     spcs: dict[str, SpcAnalysis] = {}
@@ -311,49 +361,54 @@ def execute(
                 args = _parse_step(make_parser(), _step_argv(plan, step, paths))
                 result = analyse(args)
                 lines = render_lines(result.render())
-            except (TSDiveError, ValueError, OSError) as e:
-                refusals.append(
-                    {
-                        "error": type(e).__name__,
-                        "step": step,
-                        "tags": tags,
-                        "message": str(e),
-                    }
-                )
+                data = to_jsonable(result.to_dict())
+            except TSDiveError as e:
+                walk.refusals.append({"step": step, "tags": tags, **error_fields(e)})
+                for path in paths:
+                    refused[path].append(step)
+                continue
+            except (ValueError, OSError) as e:
+                walk.errors.append({"step": step, "tags": tags, **error_fields(e)})
                 continue
             if isinstance(result, Profile):
                 windows[paths[0]] = result.window
+                documents[paths[0]] = data
             elif isinstance(result, ScreenAnalysis):
                 screens[paths[0]] = result
             elif isinstance(result, SpcAnalysis):
                 spcs[paths[0]] = result
             if step == "profile":
-                profiles.append("\n".join(lines))
+                walk.profiles.append("\n".join(lines))
             else:
-                findings.append(
-                    {"step": step, "tags": tags, "text": "\n".join(lines)}
+                walk.findings.append(
+                    {"step": step, "tags": tags, "text": "\n".join(lines), "data": data}
                 )
-    return profiles, findings, refusals, _figures(plan.archives, windows, screens, spcs)
+    walk.tags = [
+        _tag_row(labels[path], documents.get(path), refused[path]) for path in plan.archives
+    ]
+    walk.figures = _figures(plan.archives, windows, screens, spcs)
+    return walk
 
 
-def render_run(
-    plan: Plan,
-    ledger: EvidenceLedger,
-    refusals: list[dict[str, str]],
-    written: tuple[Path, ...],
-) -> list[str]:
-    """What ``tsdive run`` prints: the counts, the refusals, the files.
+def render_run(plan: Plan, ledger: EvidenceLedger, written: tuple[Path, ...]) -> list[str]:
+    """What ``tsdive run`` prints: the counts, the refusals, the errors, the files.
 
     Findings are not listed here; they are in the files this names, and
-    ledger.txt is this text with each finding's rendering appended.
+    ledger.txt is this text followed by the tag table, every profile and
+    every finding. The error count shows only when an error was filed.
     """
-    lines = [
+    headline = (
         f"run {plan.path.name}{SEP}{plural(len(plan.archives), 'archive')}{SEP}"
         f"{plural(len(plan.steps), 'step')}{SEP}profiles {len(ledger.profiles)}{SEP}"
         f"findings {len(ledger.findings)}{SEP}refusals {len(ledger.refusals)}"
-    ]
-    for row in refusals:
-        lines.extend(["", *_refusal_lines(row)])
+    )
+    if ledger.errors:
+        headline += f"{SEP}errors {len(ledger.errors)}"
+    lines = [headline]
+    for row in ledger.refusals:
+        lines.extend(["", *_row_lines("REFUSAL", row)])
+    for row in ledger.errors:
+        lines.extend(["", *_row_lines("ERROR", row)])
     # as_posix, so the same run prints the same paths on every platform and
     # ledger.txt stays byte-identical between them.
     lines.extend(["", label_line("wrote", written[0].as_posix())])
@@ -362,41 +417,40 @@ def render_run(
 
 
 def write_run(
-    plan: Plan,
-    out_dir: Path,
-    profiles: list[str],
-    findings: list[dict[str, str]],
-    refusals: list[dict[str, str]],
-    figures: Sequence[str] = (),
+    plan: Plan, out_dir: Path, walk: Walk
 ) -> tuple[EvidenceLedger, tuple[Path, Path, Path], list[str]]:
     """Write ledger.json, ledger.txt and report.html into ``out_dir``.
 
     Returns the ledger, the files written, and the lines the command
     prints. ledger.txt opens with those same lines, so the file and the
-    terminal say one thing. ``figures`` go into report.html only; the
+    terminal say one thing. The figures go into report.html only; the
     ledger files carry text and never change with a plot.
 
     The ledger is titled after the plan file, never after the clock, so
     two runs of the same plan over the same archives write the same bytes.
     """
-    logged = [refusal_text(row) for row in refusals]
     ledger = EvidenceLedger(
         title=f"run {plan.path.name}",
-        profiles=profiles,
-        findings=findings,
-        refusals=logged,
+        profiles=walk.profiles,
+        findings=walk.findings,
+        refusals=walk.refusals,
+        errors=walk.errors,
+        tags=walk.tags,
     )
     html_text = render_static_report(
         title=f"tsdive run {plan.path.name}",
-        profiles=profiles,
+        profiles=walk.profiles,
         benchmarks_markdown_rows=[
-            ("profiles rendered", str(len(profiles))),
-            ("findings recorded", str(len(findings))),
-            ("refusals recorded", str(len(refusals))),
+            ("profiles rendered", str(len(walk.profiles))),
+            ("findings recorded", str(len(walk.findings))),
+            ("refusals recorded", str(len(walk.refusals))),
+            ("errors recorded", str(len(walk.errors))),
         ],
-        refusal_log=logged,
-        findings=[(f["step"], f["tags"], f["text"]) for f in findings],
-        figures=figures,
+        refusal_log=[row_text(row) for row in walk.refusals],
+        error_log=[row_text(row) for row in walk.errors],
+        findings=[(str(f["step"]), str(f["tags"]), str(f["text"])) for f in walk.findings],
+        figures=walk.figures,
+        tag_table=tag_table(walk.tags) if walk.tags else None,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     written = (
@@ -404,7 +458,7 @@ def write_run(
         out_dir / "ledger.txt",
         out_dir / "report.html",
     )
-    lines = render_run(plan, ledger, refusals, written)
+    lines = render_run(plan, ledger, written)
     written[0].write_text(ledger.to_json(), encoding="utf-8", newline="\n")
     written[1].write_text(ledger.to_text(lines), encoding="utf-8", newline="\n")
     write_static_report(html_text, written[2])

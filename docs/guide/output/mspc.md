@@ -32,6 +32,12 @@ tsdive mspc data/demo/fic101_demo.parquet data/demo/tic101_demo.parquet \
 - `T2 breaches  70` and `SPE breaches  108`: the first breach
   timestamps of each statistic.
 
+A model that keeps as many components as there are tags leaves no
+residual. `mspc` then prints `SPE  NOT ASSESSED` with the `--variance`
+value that keeps one component fewer, `SPE n/a` as the limit, and no
+contributors. The JSON carries `spe_breaches: null` and the reason in
+`spe_not_assessed`.
+
 ## What the demo says
 
 Before 04:00 one component carries 98% of the variance: the temperature

@@ -28,6 +28,16 @@ from tsdive.store.tagstore import (
 UTC = pd.Timestamp.now(tz="UTC").tz
 
 
+def without_contract(doc: dict, kind: str = "evidence") -> dict:
+    """``doc`` without ``result_kind`` and ``tsdive_version``, both checked first."""
+    import tsdive
+
+    rest = dict(doc)
+    assert rest.pop("result_kind") == kind
+    assert rest.pop("tsdive_version") == tsdive.__version__
+    return rest
+
+
 def stepped_contract() -> SamplingContract:
     return SamplingContract(
         calculation_basis=CalculationBasis.TIME_WEIGHTED,
@@ -184,5 +194,6 @@ __all__ = [
     "make_meta",
     "meta_from_parquet",
     "stepped_contract",
+    "without_contract",
     "write_archive",
 ]

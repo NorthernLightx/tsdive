@@ -9,11 +9,12 @@ else, so every renderer here stays plain text.
 from __future__ import annotations
 
 import textwrap
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import pandas as pd
 
+from tsdive._naming import argname
 from tsdive.changepoints import DEFAULT_PENALTY_MULTIPLIER
 from tsdive.changepoints.pelt import Segmentation
 from tsdive.compare import (
@@ -65,9 +66,9 @@ def render_lines(text: str) -> list[str]:
     return text.split("\n")
 
 
-# Enough flagged timestamps to see where the screen fired without pasting
-# a monitored window back at the caller.
-FLAGGED_SHOWN = 3
+# Enough runs, and mspc breach timestamps, to see where a check fired
+# without pasting a monitored window back at the caller.
+RUNS_SHOWN = 5
 HITS_SHOWN = 5
 
 # The rule set apply_rules emits, in report order. A rule with no hits
@@ -125,6 +126,67 @@ def _window_line(window: Window) -> str:
     return label_line("window", fmt_span(window.start, window.end))
 
 
+def flag_runs(
+    sequence: Sequence[pd.Timestamp], flagged: Iterable[pd.Timestamp]
+) -> list[tuple[pd.Timestamp, pd.Timestamp, int]]:
+    """``(start, end, n)`` of each stretch of consecutive ``sequence`` samples all in ``flagged``.
+
+    ``sequence`` is the window's GOOD samples in time order. A GOOD
+    sample without the flag ends a run. A stretch with no GOOD sample
+    (a gap, or rows of other quality) does not.
+    """
+    marked = set(flagged)
+    runs: list[tuple[pd.Timestamp, pd.Timestamp, int]] = []
+    start: pd.Timestamp | None = None
+    last: pd.Timestamp | None = None
+    n = 0
+    for stamp in sequence:
+        if stamp in marked:
+            if start is None:
+                start, n = stamp, 0
+            last, n = stamp, n + 1
+            continue
+        if start is not None and last is not None:
+            runs.append((start, last, n))
+        start = None
+    if start is not None and last is not None:
+        runs.append((start, last, n))
+    return runs
+
+
+def _good_stamps(window: Window) -> list[pd.Timestamp]:
+    """The timestamps of the window's GOOD samples, in time order."""
+    frame = window.frame
+    return sorted(pd.Timestamp(t) for t in frame.loc[frame["valid"].astype(bool), "timestamp"])
+
+
+def _run_lines(
+    runs: Sequence[tuple[pd.Timestamp, pd.Timestamp, int]],
+    details: Mapping[pd.Timestamp, str] | None = None,
+) -> list[str]:
+    """Up to RUNS_SHOWN runs, one line each, and a count of the rest.
+
+    A run of one sample prints its timestamp, followed by its entry in
+    ``details`` when there is one. A longer run prints its span and count.
+    """
+    details = details or {}
+    lines = [
+        SEP.join(filter(None, (fmt_ts(start), details.get(start))))
+        if n == 1
+        else f"{fmt_span(start, end)}{SEP}{plural(n, 'sample')}"
+        for start, end, n in runs[:RUNS_SHOWN]
+    ]
+    hidden = len(runs) - RUNS_SHOWN
+    more = [f"(+{plural(hidden, 'more run')})"] if hidden > 0 else []
+    return indent([*lines, *more])
+
+
+def _runs_json(
+    runs: Sequence[tuple[pd.Timestamp, pd.Timestamp, int]], **key: str
+) -> list[dict[str, object]]:
+    return [{**key, "start": start, "end": end, "n": n} for start, end, n in runs]
+
+
 def _baseline_json(window: Window) -> dict[str, object]:
     return {
         **window_json(window),
@@ -142,6 +204,11 @@ def _flagged_share(a: ScreenAnalysis) -> str:
     if not result.n_screened:
         return "n/a"
     return f"{100.0 * result.n_flagged / result.n_screened:.1f}%"
+
+
+def screen_runs(a: ScreenAnalysis) -> list[tuple[pd.Timestamp, pd.Timestamp, int]]:
+    """The runs of flagged samples over the window's GOOD samples."""
+    return flag_runs(_good_stamps(a.monitor), a.result.flagged_timestamps)
 
 
 def screen_lines(a: ScreenAnalysis) -> list[str]:
@@ -189,12 +256,8 @@ def screen_lines(a: ScreenAnalysis) -> list[str]:
         )
         lines.append(label_line("caveat", base.caveat))
     if result.flagged_timestamps:
-        # Regime screening walks regime by regime, so its timestamps come
-        # back grouped rather than in time order; "first" has to mean first.
-        stamps = sorted(result.flagged_timestamps)
         lines.extend(rule("Flagged"))
-        lines.extend(indent(fmt_ts(t) for t in stamps[:FLAGGED_SHOWN]))
-        lines.extend(more_line(len(stamps) - FLAGGED_SHOWN))
+        lines.extend(_run_lines(screen_runs(a)))
     return lines
 
 
@@ -244,6 +307,7 @@ def screen_json(a: ScreenAnalysis) -> dict[str, object]:
         "n_screened": result.n_screened,
         "n_flagged": result.n_flagged,
         "flagged": sorted(result.flagged_timestamps),
+        "runs": _runs_json(screen_runs(a)),
     }
 
 
@@ -339,6 +403,15 @@ def segment_json(a: SegmentAnalysis) -> dict[str, object]:
 # --- spc --------------------------------------------------------------------
 
 
+def spc_runs(a: SpcAnalysis) -> dict[str, list[tuple[pd.Timestamp, pd.Timestamp, int]]]:
+    """The runs of each rule's hits over the window's GOOD samples, keyed by rule."""
+    stamps = _good_stamps(a.monitor)
+    return {
+        name: flag_runs(stamps, (h.timestamp for h in a.hits if h.rule == name))
+        for name in SPC_RULES
+    }
+
+
 def spc_lines(a: SpcAnalysis) -> list[str]:
     """The ``tsdive spc`` report for one analysis."""
     limits = a.limits
@@ -355,13 +428,10 @@ def spc_lines(a: SpcAnalysis) -> list[str]:
         ),
         label_line("basis", limits.basis),
     ]
-    for name in SPC_RULES:
+    for name, runs in spc_runs(a).items():
         fired = [h for h in a.hits if h.rule == name]
         lines.extend(rule(name, str(len(fired))))
-        lines.extend(
-            indent(f"{fmt_ts(h.timestamp)}{SEP}{h.detail}" for h in fired[:HITS_SHOWN])
-        )
-        lines.extend(more_line(len(fired) - HITS_SHOWN))
+        lines.extend(_run_lines(runs, {h.timestamp: h.detail for h in fired}))
     return lines
 
 
@@ -392,10 +462,32 @@ def spc_json(a: SpcAnalysis) -> dict[str, object]:
             }
             for name in SPC_RULES
         ],
+        "runs": [
+            row
+            for name, runs in spc_runs(a).items()
+            for row in _runs_json(runs, rule=name)
+        ],
     }
 
 
 # --- mspc -------------------------------------------------------------------
+
+
+def _spe_count(breaches: Sequence[object] | int | None) -> str:
+    """``SPE breaches N``, or ``SPE NOT ASSESSED`` for a model with no residual."""
+    if breaches is None:
+        return "SPE NOT ASSESSED"
+    n = breaches if isinstance(breaches, int) else len(breaches)
+    return f"SPE breaches {n}"
+
+
+def _spe_not_assessed(a: MspcAnalysis) -> str | None:
+    """Why ``mspc`` assessed no SPE, with the option that leaves a residual."""
+    reason = a.model.spe_not_assessed
+    if reason is None:
+        return None
+    variance = argname("variance", "--variance")
+    return f"{reason}; pass {variance} below {a.model.variance_leaving_residual}"
 
 
 def _mspc_headline(a: MspcAnalysis) -> tuple[str, list[str]]:
@@ -403,7 +495,7 @@ def _mspc_headline(a: MspcAnalysis) -> tuple[str, list[str]]:
     found = a.found
     counts = (
         f"T2 breaches {len(found.t2_breaches)}{SEP}"
-        f"SPE breaches {len(found.spe_breaches)}{SEP}"
+        f"{_spe_count(found.spe_breaches)}{SEP}"
         f"of {plural(len(a.test.index), 'row')}"
     )
     listed = ", ".join(a.tags)
@@ -457,12 +549,15 @@ def mspc_lines(a: MspcAnalysis) -> list[str]:
             ),
             label_line(
                 "limits",
-                f"T2 {fmt_num(model.t2_limit)}{SEP}SPE {fmt_num(model.spe_limit)}"
+                f"T2 {fmt_num(model.t2_limit)}{SEP}"
+                f"SPE {fmt_num(model.spe_limit if model.spe_assessed else None)}"
                 f"{SEP}(empirical q{a.quantile})",
             ),
         ]
     )
-    if not a.ranked:
+    if not model.spe_assessed:
+        lines.append(label_line("contributors", "not ranked (no residual to rank them by)"))
+    elif not a.ranked:
         lines.append(
             label_line(
                 "contributors",
@@ -470,13 +565,25 @@ def mspc_lines(a: MspcAnalysis) -> list[str]:
                 f"top-{CONTRIBUTORS_KEPT} would list every one)",
             )
         )
-    for name, breaches in (
-        ("T2 breaches", a.found.t2_breaches),
-        ("SPE breaches", a.found.spe_breaches),
-    ):
-        lines.extend(rule(name, str(len(breaches))))
-        lines.extend(_breach_lines(a, breaches))
+    lines.extend(rule("T2 breaches", str(len(a.found.t2_breaches))))
+    lines.extend(_breach_lines(a, a.found.t2_breaches))
+    if a.found.spe_breaches is None:
+        lines.extend(["", *_not_assessed_lines("SPE", _spe_not_assessed(a) or "")])
+    else:
+        lines.extend(rule("SPE breaches", str(len(a.found.spe_breaches))))
+        lines.extend(_breach_lines(a, a.found.spe_breaches))
     return lines
+
+
+def _not_assessed_lines(label: str, reason: str) -> list[str]:
+    """``LABEL  NOT ASSESSED (reason)``, folded to the page."""
+    return textwrap.wrap(
+        f"{label}  NOT ASSESSED ({reason})",
+        width=WRAP_WIDTH,
+        subsequent_indent="  ",
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
 
 
 def mspc_json(a: MspcAnalysis) -> dict[str, object]:
@@ -509,6 +616,7 @@ def mspc_json(a: MspcAnalysis) -> dict[str, object]:
         "contributors_ranked": a.ranked,
         "t2_breaches": a.found.t2_breaches,
         "spe_breaches": a.found.spe_breaches,
+        "spe_not_assessed": _spe_not_assessed(a),
         "contributors": a.found.top_contributors if a.ranked else {},
     }
 
@@ -654,7 +762,7 @@ def _joint_section(joint: JointStructure) -> list[str]:
         f"explained {fmt_num(joint.explained_before)} -> "
         f"{fmt_num(joint.explained_after)} on after",
         f"rows {joint.rows}{SEP}T2 breaches {joint.t2_breaches}{SEP}"
-        f"SPE breaches {joint.spe_breaches}",
+        f"{_spe_count(joint.spe_breaches)}",
     ]
     named = SEP.join(f"{name} {_share(share)}" for name, share in joint.contributors)
     if joint.other_share is not None:
@@ -664,7 +772,9 @@ def _joint_section(joint: JointStructure) -> list[str]:
         f"(PCA fitted on before, {joint.n_aligned} of {joint.n_offered} tags aligned)",
     )
     lines = header + indent(body)
-    if named:
+    if joint.spe_not_assessed is not None:
+        lines.extend(indent(_not_assessed_lines("SPE", joint.spe_not_assessed)))
+    elif named:
         lines.extend(wrapped(f"SPE contributors{SEP}{named}"))
     else:
         lines.extend(indent(["SPE contributors   none (no SPE breach)"]))
@@ -820,6 +930,7 @@ def compare_json(a: CompareAnalysis) -> dict[str, object]:
                 "explained_after": joint.explained_after,
                 "t2_breaches": joint.t2_breaches,
                 "spe_breaches": joint.spe_breaches,
+                "spe_not_assessed": joint.spe_not_assessed,
                 "spe_contributors": [
                     {"tag": name, "share": share} for name, share in joint.contributors
                 ],

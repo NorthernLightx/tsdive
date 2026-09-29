@@ -77,7 +77,8 @@ Each result has a `.frame` whose rows depend on the analysis:
 ```
 
 `to_dict()` returns the document the command prints under `--json`,
-ready for `json.dumps`. It holds everything the text report shows:
+ready for `json.dumps`. It holds everything the text report shows. The
+command adds `result_kind` and `tsdive_version` in front:
 
 ```pycon
 >>> s = tsdive.screen("data/demo/fic101_demo.parquet",

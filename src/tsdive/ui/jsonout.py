@@ -5,6 +5,10 @@ timestamps and numpy scalars into values ``json.dumps`` accepts.
 ``None`` stays ``null``, and so does a non-finite float, because JSON has
 no NaN or Infinity. Timestamps come out as ISO 8601 in UTC, with the
 ``+00:00`` offset spelled out.
+
+Every document a JSON surface prints opens with ``result_kind``, the
+contract it follows, and ``tsdive_version``, the version that wrote it
+(:func:`contract`).
 """
 
 from __future__ import annotations
@@ -67,6 +71,38 @@ def to_jsonable(obj: Any) -> Any:
     return str(obj)
 
 
+def error_text(error: BaseException) -> str:
+    """The message of an error; an OSError comes out as one line naming its file.
+
+    Python's own OSError keeps the path in ``filename``. pyarrow writes it
+    into a message that can end in a line break.
+    """
+    if not isinstance(error, OSError):
+        return str(error)
+    text = " ".join(line.strip() for line in str(error).splitlines() if line.strip())
+    if error.filename is not None and str(error.filename) not in text:
+        text = f"{error.filename}: {text}"
+    return text
+
+
+def contract(result_kind: str, document: Mapping[str, Any]) -> dict[str, Any]:
+    """``document`` after ``result_kind`` and ``tsdive_version``, the keys naming its contract.
+
+    ``result_kind`` is ``evidence`` for an analysis, ``refusal`` for a
+    typed error, ``ingest``, ``plan`` or ``ledger`` for what those
+    commands write.
+
+    Examples:
+        >>> from tsdive.ui.jsonout import contract
+        >>> doc = contract("evidence", {"tag": "demo:FIC101.PV"})
+        >>> list(doc), doc["result_kind"]
+        (['result_kind', 'tsdive_version', 'tag'], 'evidence')
+    """
+    from tsdive import __version__
+
+    return {"result_kind": result_kind, "tsdive_version": __version__, **document}
+
+
 def refusal_json(error: BaseException) -> dict[str, str]:
     """The object a typed refusal becomes on a JSON surface.
 
@@ -77,11 +113,24 @@ def refusal_json(error: BaseException) -> dict[str, str]:
     Examples:
         >>> from tsdive.errors import InsufficientQuality
         >>> from tsdive.ui.jsonout import refusal_json
-        >>> refusal_json(InsufficientQuality("censored"))
-        {'result_kind': 'refusal', 'error_type': 'InsufficientQuality', 'cause': 'censored'}
+        >>> doc = refusal_json(InsufficientQuality("censored"))
+        >>> list(doc)
+        ['result_kind', 'tsdive_version', 'error_type', 'cause']
+        >>> doc["result_kind"], doc["error_type"], doc["cause"]
+        ('refusal', 'InsufficientQuality', 'censored')
     """
-    return {
-        "result_kind": "refusal",
-        "error_type": type(error).__name__,
-        "cause": str(error),
-    }
+    return contract("refusal", error_fields(error))
+
+
+def error_fields(error: BaseException) -> dict[str, str]:
+    """``error_type`` and ``cause`` of an error, the fields every JSON surface names it by.
+
+    :func:`refusal_json` and the refusal and error rows of a run ledger
+    share them, so a typed error reads the same wherever it lands.
+
+    Examples:
+        >>> from tsdive.ui.jsonout import error_fields
+        >>> error_fields(ValueError("baseline and window overlap"))
+        {'error_type': 'ValueError', 'cause': 'baseline and window overlap'}
+    """
+    return {"error_type": type(error).__name__, "cause": error_text(error)}

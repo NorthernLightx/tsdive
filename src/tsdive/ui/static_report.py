@@ -35,6 +35,8 @@ def render_static_report(
     benchmarks_header: tuple[str, ...] | None = None,
     findings: list[tuple[str, str, str]] | None = None,
     figures: Sequence[str] | None = None,
+    tag_table: Sequence[tuple[str, ...]] | None = None,
+    error_log: list[str] | None = None,
 ) -> str:
     """Render one self-contained HTML document.
 
@@ -44,9 +46,11 @@ def render_static_report(
 
     ``findings`` holds ``(step, tags, text)`` triples from a plan run.
     ``figures`` holds rendered ``<svg>`` elements, one per window, and
-    is the one input written unescaped. Omitted or empty, neither emits
-    a section, so a report built without them is byte-identical to one
-    from before they existed.
+    is the one input written unescaped. ``tag_table`` is a header row
+    and one row per tag, drawn first. ``error_log`` lists the errors of
+    a plan run after the refusal log. Omitted or empty, none of them
+    emits a section, so a report built without them is byte-identical
+    to one from before they existed.
     """
     parts: list[str] = [
         "<!DOCTYPE html><html><head><meta charset='utf-8'>",
@@ -57,6 +61,14 @@ def render_static_report(
         f"<p>tsdive {html.escape(__version__)}: "
         "static evidence snapshot; regenerate it after the archive changes.</p>"
     )
+
+    if tag_table:
+        head, *rows = tag_table
+        parts.append("<h2>Tags</h2><table>")
+        parts.append("<tr>" + "".join(f"<th>{_esc(c)}</th>" for c in head) + "</tr>")
+        for row in rows:
+            parts.append("<tr>" + "".join(f"<td>{_esc(c)}</td>" for c in row) + "</tr>")
+        parts.append("</table>")
 
     if figures:
         parts.append("<h2>Plots</h2>")
@@ -85,6 +97,12 @@ def render_static_report(
     if refusal_log:
         parts.append("<h2>Refusal log</h2><ul>")
         for r in refusal_log:
+            parts.append(f"<li class='refused'>{_esc(r)}</li>")
+        parts.append("</ul>")
+
+    if error_log:
+        parts.append("<h2>Error log</h2><ul>")
+        for r in error_log:
             parts.append(f"<li class='refused'>{_esc(r)}</li>")
         parts.append("</ul>")
 

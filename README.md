@@ -35,14 +35,15 @@ under `scripts/` download on request and print their size first.
 
 Commands in the order you run them on an archive. A window is `START/END`,
 `START/PT5H`, `PT5H/END`, or a date for one UTC day. Every analysis
-command takes `--json` and prints one JSON object instead of text.
-`--no-color` and the `NO_COLOR` environment variable turn colour off. The
-transcripts below are trimmed to the lines the text reads.
+command and `ingest` take `--json` and print one JSON object instead of
+text, opening with `result_kind` and `tsdive_version`. `--no-color` and
+the `NO_COLOR` environment variable turn colour off. Transcripts are
+trimmed to the lines the text reads.
 
 ### profile
 
 Data checks and statistics for one window. The headline carries the numbers
-you read first, then one section per finding group.
+you read first.
 
 ```console
 $ tsdive profile data/demo/fic101_demo.parquet \
@@ -112,10 +113,7 @@ window    2024-03-31 01:00:00Z -> 06:00:00Z
 method    MAD   center 62.32   scale 0.5488   k 3.0   limits [60.67, 63.97]
 
 Flagged
-  2024-03-31 02:01:00Z
-  2024-03-31 02:02:00Z
-  2024-03-31 02:03:00Z
-  (+26 more)
+  2024-03-31 02:01:00Z -> 02:29:00Z   29 samples
 ```
 
 `--mode <parquet>` computes one baseline per regime of a MODE tag, such as
@@ -140,7 +138,7 @@ limits    center 62.32   sigma 0.5488   lcl 60.67   ucl 63.97
 basis     individuals 3-sigma
 
 BEYOND_3SIGMA  29
-  2024-03-31 02:01:00Z   value 100 outside [60.67, 63.97]
+  2024-03-31 02:01:00Z -> 02:29:00Z   29 samples
 
 RUN_9_SAMESIDE  6
   2024-03-31 01:08:00Z   9 consecutive points on one side of center 62.32
@@ -212,15 +210,15 @@ fall outside its before-period baseline, and its coupling to the flow drops
 from 0.69 to 0.17 with an interval excluding 0. The PCA model fitted on the
 before period keeps 51% of the after period's variance. With two tags the
 residual splits evenly between them. `--top N` sets how many rows each table
-prints; `--json` carries every column and pair.
+prints.
 
 ### run
 
 Runs one TOML plan over many archives and writes `ledger.json`,
 `ledger.txt` and `report.html` (tables and one plot per tag) to
 `-o DIR` (default `tsdive-run/` beside the plan). Options are the
-step's own flags: a list repeats the flag, `true` is the bare flag.
-Globs resolve against the plan file. `examples/plans/demo.toml`, in a clone:
+step's own flags. Globs resolve against the plan file.
+`examples/plans/demo.toml`, in a clone:
 
 ```toml
 archives = ["../../data/demo/*.parquet"]
@@ -248,10 +246,10 @@ wrote     examples/plans/tsdive-run/ledger.json
 ```
 
 The baseline holds the 40-minute outage, so the aligned grid covers 0.867
-and `mspc` raises `MspcAlignmentError`. `compare` reads `before` and
-`after`. `ledger.txt` opens with this text, then every finding in full.
-`tsdive report-html <parquet...> --window START/END -o report.html` writes
-the same page without a plan.
+and `mspc` raises `MspcAlignmentError`. `ledger.txt` opens with this text,
+then one row per tag, every profile and every finding. `--strict` exits 2
+on an error row and 3 on a refusal row. `tsdive report-html <parquet...>
+--window START/END -o report.html` writes the same page without a plan.
 
 ### ingest
 
@@ -361,6 +359,7 @@ make lint        # uv run ruff check .
 make reference   # refusal cases, byte for byte
 make bench       # BENCHMARKS.md, byte for byte
 make check       # all of the above
+make api-diff    # API breaks since the last release tag
 ```
 
 ## License

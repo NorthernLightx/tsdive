@@ -14,7 +14,7 @@ import json
 import re
 import warnings
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import KW_ONLY, dataclass, replace
 from pathlib import Path
 from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -1647,6 +1647,8 @@ class Profile:
 
     window: Window
     stats: WindowStats
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     flatline: FlatlineVerdict | None = None
 
     def render(self) -> str:
@@ -1667,7 +1669,8 @@ class Profile:
         """The document ``tsdive profile --json`` prints, ready for ``json.dumps``.
 
         Built by the same function the CLI calls, so the two are equal
-        key for key.
+        key for key. The command adds ``result_kind`` and
+        ``tsdive_version`` in front.
 
         Examples:
             >>> import tsdive

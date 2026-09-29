@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, replace
+from dataclasses import KW_ONLY, dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -125,6 +125,8 @@ class SwitchbackPlan:
     enumerated: bool
     min_p: float
     digest: str
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     power: PowerReadout | None = None
 
     @property

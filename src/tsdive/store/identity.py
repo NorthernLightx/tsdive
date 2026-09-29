@@ -6,7 +6,7 @@ names get renamed by control engineers; identity does not.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from enum import StrEnum
 
 from tsdive.store.sampling_contract import RetrievalMode
@@ -54,6 +54,8 @@ class TagMeta:
 
     identity: TagIdentity
     name: str
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     unit_raw: str | None = None
     unit_canonical: str | None = None
     eng_range: EngRange | None = None

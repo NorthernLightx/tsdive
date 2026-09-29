@@ -65,8 +65,16 @@ against 20:00 to 01:00", and the assistant calls:
 ...                 window="2024-03-31T01:00:00Z/2024-03-31T06:00:00Z")
 >>> answer["result_kind"], answer["n_flagged"], answer["n_screened"]
 ('evidence', 29, 300)
+>>> answer["runs"]
+[{'start': '2024-03-31T02:01:00+00:00', 'end': '2024-03-31T02:29:00+00:00', 'n': 29}]
+>>> answer["flagged"], answer["flagged_dropped"]
+([], 29)
 
 ```
+
+`screen` and `spc` answer with counts and runs of consecutive flagged
+samples, so a two-day window stays a short answer. `max_events` lists
+that many flagged timestamps or rule hits as well.
 
 A question the data cannot answer returns a refusal, not a tool error,
 so the assistant can explain it instead of retrying:

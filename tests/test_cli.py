@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 import tsdive
-from conftest import EngRange, Role, make_meta, write_archive
+from conftest import EngRange, Role, make_meta, without_contract, write_archive
 from tsdive.cli import (
     _parser_compare,
     _parser_mspc,
@@ -173,7 +173,7 @@ def test_profile_to_dict_equals_the_cli_json(tmp_path, capsys):
     path, _ = _demo_archive(tmp_path)
     argv = [str(path), "--window", WINDOW, "--flatline", "--tz", "Europe/London", "--json"]
     assert cmd_profile(argv) == 0
-    printed = json.loads(capsys.readouterr().out)
+    printed = without_contract(json.loads(capsys.readouterr().out))
     result = tsdive.profile(path, WINDOW, flatline=True, tz="Europe/London")
     assert result.to_dict() == printed
     assert printed["flatline"] is not None
@@ -313,6 +313,18 @@ def test_profile_rejects_unknown_tz(tmp_path, capsys):
     assert "Mars/Olympus_Mons" in captured.err
     assert "IANA" in captured.err
     assert "Traceback" not in captured.err
+
+
+def test_profile_of_a_directory_exits_2_with_one_line_naming_it(tmp_path, capsys):
+    folder = tmp_path / "exports"
+    folder.mkdir()
+    rc = cmd_profile([str(folder)])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert captured.err.startswith("error: ")
+    assert captured.err.strip().count("\n") == 0
+    assert "exports" in captured.err
 
 
 def test_profile_accepts_known_tz(tmp_path, capsys):
@@ -812,6 +824,50 @@ def test_spc_reports_each_rule_separately(archive_factory, capsys):
         "TREND_6  1",
         "  2024-03-01 01:20:00Z   6 consecutively increasing/decreasing points",
     ]
+
+
+def test_screen_and_spc_report_runs_of_consecutive_flags(archive_factory, capsys):
+    path = _screen_archive(archive_factory, [*((i, 100.0) for i in range(70, 75)), (90, 100.0)])
+    argv = [str(path), "--baseline", BASELINE_SPAN, "--window", MONITOR_SPAN]
+    runs = [
+        {"start": "2024-03-01T01:10:00+00:00", "end": "2024-03-01T01:14:00+00:00", "n": 5},
+        {"start": "2024-03-01T01:30:00+00:00", "end": "2024-03-01T01:30:00+00:00", "n": 1},
+    ]
+    assert cmd_screen([*argv, "--json"]) == 0
+    screened = json.loads(capsys.readouterr().out)
+    assert screened["runs"] == runs
+    assert sum(r["n"] for r in screened["runs"]) == screened["n_flagged"]
+    assert cmd_screen(argv) == 0
+    assert capsys.readouterr().out.splitlines()[-3:] == [
+        "Flagged",
+        "  2024-03-01 01:10:00Z -> 01:14:00Z   5 samples",
+        "  2024-03-01 01:30:00Z",
+    ]
+    assert cmd_spc([*argv, "--json"]) == 0
+    charted = json.loads(capsys.readouterr().out)
+    assert [r for r in charted["runs"] if r["rule"] == "BEYOND_3SIGMA"] == [
+        {"rule": "BEYOND_3SIGMA", **r} for r in runs
+    ]
+    for entry in charted["rules"]:
+        in_runs = sum(r["n"] for r in charted["runs"] if r["rule"] == entry["rule"])
+        assert in_runs == entry["n"] == len(entry["hits"])
+
+
+def test_flag_runs_end_at_a_good_sample_without_the_flag():
+    from tsdive.analyses_render import flag_runs
+
+    stamps = list(pd.date_range("2024-03-01", periods=8, freq="60s", tz="UTC"))
+    flagged = [stamps[i] for i in (0, 1, 2, 4, 6, 7)]
+    assert flag_runs(stamps, flagged) == [
+        (stamps[0], stamps[2], 3),
+        (stamps[4], stamps[4], 1),
+        (stamps[6], stamps[7], 2),
+    ]
+    # A sample missing from the GOOD sequence does not end a run.
+    assert flag_runs([stamps[0], stamps[2]], [stamps[0], stamps[2]]) == [
+        (stamps[0], stamps[2], 2)
+    ]
+    assert flag_runs(stamps, []) == []
 
 
 def test_spc_prints_a_rule_that_never_fired(archive_factory, capsys):

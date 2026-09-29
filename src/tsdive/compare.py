@@ -175,10 +175,13 @@ class JointStructure:
     explained_before: float | None = None
     explained_after: float | None = None
     t2_breaches: int = 0
-    spe_breaches: int = 0
+    # None, with the reason in spe_not_assessed, when the model keeps
+    # every component and leaves no residual.
+    spe_breaches: int | None = 0
     contributors: tuple[tuple[str, float], ...] = ()
     other_share: float | None = None
     reason: str | None = None
+    spe_not_assessed: str | None = None
 
 
 @dataclass(frozen=True)
@@ -740,7 +743,7 @@ def joint_structure(
 
     labels = {p.tag: (p.point_id if shared_source else p.tag) for p in usable}
     breached = np.zeros(len(test.index), dtype=bool)
-    if found.spe_breaches:
+    if found.spe_breaches is not None and found.spe_breaches:
         breached = np.isin(test.index, pd.DatetimeIndex(found.spe_breaches))
     per_column = (resid[breached] ** 2).sum(axis=0)
     total = float(per_column.sum())
@@ -765,9 +768,10 @@ def joint_structure(
         explained_before=float(sum(model.explained_variance)),
         explained_after=explained_after,
         t2_breaches=len(found.t2_breaches),
-        spe_breaches=len(found.spe_breaches),
+        spe_breaches=None if found.spe_breaches is None else len(found.spe_breaches),
         contributors=tuple(shares),
         other_share=other,
+        spe_not_assessed=model.spe_not_assessed,
     )
 
 

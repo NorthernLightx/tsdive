@@ -19,21 +19,22 @@ tsdive spc data/demo/fic101_demo.parquet \
   in m3/h.
 - `basis     individuals 3-sigma`: an individuals chart, one point per
   sample.
-- `BEYOND_3SIGMA  29`: samples outside the limits. Each line gives the
-  time, the value and the limits it broke: `value 100 outside [60.67,
-  63.97]`.
+- `BEYOND_3SIGMA  29`: samples outside the limits. A lone hit gives the
+  time, the value and the limits it broke, such as `value 100 outside
+  [60.67, 63.97]`. Consecutive hits print as one run, here
+  `2024-03-31 02:01:00Z -> 02:29:00Z   29 samples`.
 - `RUN_9_SAMESIDE  6`: runs of 9 samples on one side of the center, each
   reported at its ninth sample.
 - `TREND_6  2`: runs of 6 samples rising or falling, reported from the
   sixth sample on.
 
-Each section lists its first five hits and counts the rest, such as
-`(+24 more)`. A rule that found nothing prints its name and 0.
+Each section lists its first five runs and counts the rest, such as
+`(+1 more run)`. A rule that found nothing prints its name and 0.
 
 ## What to do next
 
-- `BEYOND_3SIGMA` hits bunched at one value, here 100: the transmitter
-  is clipped; see
+- `BEYOND_3SIGMA` hits in one long run, here 29 samples from 02:01:
+  profile that stretch and read its Range section for clipping; see
   [clipping and censoring](../concepts/clipping-and-censoring.md).
 - `RUN_9_SAMESIDE` hits with few `BEYOND_3SIGMA`: a small shift of the
   operating point. `compare` measures its size in sigmas.

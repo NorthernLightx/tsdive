@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass, fields, replace
+from dataclasses import KW_ONLY, dataclass, fields, replace
 from pathlib import Path
 from typing import cast
 
@@ -206,7 +206,10 @@ class SegmentAnalysis:
         return "\n".join(segment_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive segment --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive segment --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(segment_json(self))
 
     def write_mode_archive(self, path: str | Path, *, overwrite: bool = False) -> Path:
@@ -307,6 +310,8 @@ class ScreenAnalysis:
     monitor: Window
     result: ScreenResult
     k: float
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     mode_path: str | None = None
     provisional: ProvisionalBaseline | None = None
     regimes: dict[str, RegimeBaseline] | None = None
@@ -336,7 +341,10 @@ class ScreenAnalysis:
         return "\n".join(screen_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive screen --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive screen --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(screen_json(self))
 
 
@@ -461,7 +469,10 @@ class SpcAnalysis:
         return "\n".join(spc_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive spc --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive spc --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(spc_json(self))
 
 
@@ -542,19 +553,28 @@ class MspcAnalysis:
 
     @property
     def ranked(self) -> bool:
-        """True when the model holds more tags than a top-N list would name."""
-        return len(self.model.columns) > CONTRIBUTORS_KEPT
+        """True when the model holds more tags than a top-N list would name.
+
+        Contributors rank the residual, so a model that keeps every
+        component ranks none.
+        """
+        return len(self.model.columns) > CONTRIBUTORS_KEPT and self.model.spe_assessed
 
     @property
     def frame(self) -> pd.DataFrame:
         stamps = self.found.timestamps
+        spe_breaches = self.found.spe_breaches
         return pd.DataFrame(
             {
                 "timestamp": stamps,
                 "t2": self.found.t2,
-                "spe": self.found.spe,
+                "spe": self.found.spe if spe_breaches is not None else float("nan"),
                 "t2_breach": stamps.isin(self.found.t2_breaches),
-                "spe_breach": stamps.isin(self.found.spe_breaches),
+                "spe_breach": (
+                    stamps.isin(spe_breaches)
+                    if spe_breaches is not None
+                    else pd.array([pd.NA] * len(stamps), dtype="boolean")
+                ),
             }
         )
 
@@ -573,7 +593,10 @@ class MspcAnalysis:
         return "\n".join(mspc_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive mspc --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive mspc --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(mspc_json(self))
 
 
@@ -656,6 +679,8 @@ class CompareAnalysis(CompareResult):
     per tag with the columns ``to_dict()`` lists under ``tags``.
     """
 
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     top: int = 10
 
     @property
@@ -677,7 +702,10 @@ class CompareAnalysis(CompareResult):
         return "\n".join(compare_lines(self))
 
     def to_dict(self) -> dict[str, object]:
-        """The document ``tsdive compare --json`` prints, ready for ``json.dumps``."""
+        """The document ``tsdive compare --json`` prints, ready for ``json.dumps``.
+
+        The command adds ``result_kind`` and ``tsdive_version`` in front.
+        """
         return to_jsonable(compare_json(self))
 
 

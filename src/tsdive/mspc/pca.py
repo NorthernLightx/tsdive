@@ -11,11 +11,15 @@ Rules enforced here:
   raises ``ZeroSpreadBaseline``.
 - Control limits are EMPIRICAL percentiles of training statistics. They
   carry no chi-square or F distributional claim.
+- A model that keeps as many components as columns leaves no residual,
+  so SPE is not assessed: no SPE limit, no SPE breaches. The test counts
+  components, so rounding error in a zero residual never decides it.
 - SVD signs are fixed deterministically so models replay identically.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
@@ -133,8 +137,31 @@ class PcaModel:
     components: np.ndarray  # (k, n_tags), rows unit-norm, sign-fixed
     score_var: np.ndarray  # training variance of each score axis (for T2)
     t2_limit: float
-    spe_limit: float
+    spe_limit: float  # NaN when the model keeps every component
     explained_variance: tuple[float, ...]
+
+    @property
+    def spe_assessed(self) -> bool:
+        """True when the model keeps fewer components than columns, so a residual is left."""
+        return len(self.components) < len(self.columns)
+
+    @property
+    def spe_not_assessed(self) -> str | None:
+        """Why SPE has no answer for this model, or None when it has one."""
+        if self.spe_assessed:
+            return None
+        n = len(self.columns)
+        return f"the model keeps {n} of {n} components, so no residual is left"
+
+    @property
+    def variance_leaving_residual(self) -> float:
+        """A variance threshold that keeps one component fewer than this model.
+
+        The cumulative share of every kept component but the last, cut (not
+        rounded) to 4 decimals, so a threshold below it keeps a residual.
+        """
+        share = sum(self.explained_variance[:-1])
+        return math.floor(share * 10_000) / 10_000
 
 
 def _fix_signs(components: np.ndarray) -> np.ndarray:
@@ -186,6 +213,7 @@ def fit_pca(
     t2 = np.einsum("ij,ij->i", scores / np.maximum(var[:k], 1e-12), scores)
     resid = xc - scores @ comps
     spe = (resid**2).sum(axis=1)
+    spe_limit = float(np.quantile(spe, limit_quantile)) if k < xc.shape[1] else math.nan
 
     return PcaModel(
         columns=list(train.columns),
@@ -194,7 +222,7 @@ def fit_pca(
         components=comps,
         score_var=var[:k].copy(),
         t2_limit=float(np.quantile(t2, limit_quantile)),
-        spe_limit=float(np.quantile(spe, limit_quantile)),
+        spe_limit=spe_limit,
         explained_variance=tuple(float(r) for r in ratio[:k]),
     )
 
@@ -205,11 +233,17 @@ class MspcDetection:
     t2: np.ndarray
     spe: np.ndarray
     t2_breaches: list[pd.Timestamp]
-    spe_breaches: list[pd.Timestamp]
+    spe_breaches: list[pd.Timestamp] | None  # None when the model leaves no residual
     top_contributors: dict[str, list[str]]  # breach ts iso -> contributing tags (max 3)
 
 
 def detect(model: PcaModel, monitor: AlignedMatrix) -> MspcDetection:
+    """T2 and SPE of every monitored row, and the rows past each limit.
+
+    Contributors rank the residual of a breach row. A model that keeps
+    every component leaves no residual, so its SPE breaches are None and
+    it names no contributors.
+    """
     if list(monitor.columns) != model.columns:
         raise MspcAlignmentError("monitor matrix columns differ from trained model")
     xc = (monitor.matrix - model.mean) / model.scale
@@ -219,18 +253,23 @@ def detect(model: PcaModel, monitor: AlignedMatrix) -> MspcDetection:
     spe = (resid**2).sum(axis=1)
 
     t2_mask = t2 > model.t2_limit
-    spe_mask = spe > model.spe_limit
+    spe_mask = spe > model.spe_limit if model.spe_assessed else np.zeros(len(spe), dtype=bool)
     contributors: dict[str, list[str]] = {}
-    for idx in np.where(t2_mask | spe_mask)[0]:
-        contrib = np.abs(resid[idx]) * np.abs(model.components).sum(axis=0)
-        top = [model.columns[j] for j in np.argsort(contrib)[::-1][:3]]
-        contributors[monitor.index[idx].isoformat()] = top
+    if model.spe_assessed:
+        for idx in np.where(t2_mask | spe_mask)[0]:
+            contrib = np.abs(resid[idx]) * np.abs(model.components).sum(axis=0)
+            top = [model.columns[j] for j in np.argsort(contrib)[::-1][:3]]
+            contributors[monitor.index[idx].isoformat()] = top
 
     return MspcDetection(
         timestamps=monitor.index,
         t2=t2,
         spe=spe,
         t2_breaches=[cast(pd.Timestamp, monitor.index[i]) for i in np.where(t2_mask)[0]],
-        spe_breaches=[cast(pd.Timestamp, monitor.index[i]) for i in np.where(spe_mask)[0]],
+        spe_breaches=(
+            [cast(pd.Timestamp, monitor.index[i]) for i in np.where(spe_mask)[0]]
+            if model.spe_assessed
+            else None
+        ),
         top_contributors=contributors,
     )
