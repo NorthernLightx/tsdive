@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass, fields, replace
+from dataclasses import KW_ONLY, dataclass, fields, replace
 from pathlib import Path
 from typing import cast
 
@@ -310,6 +310,8 @@ class ScreenAnalysis:
     monitor: Window
     result: ScreenResult
     k: float
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     mode_path: str | None = None
     provisional: ProvisionalBaseline | None = None
     regimes: dict[str, RegimeBaseline] | None = None
@@ -677,6 +679,8 @@ class CompareAnalysis(CompareResult):
     per tag with the columns ``to_dict()`` lists under ``tags``.
     """
 
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     top: int = 10
 
     @property

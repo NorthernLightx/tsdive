@@ -14,7 +14,7 @@ import json
 import re
 import warnings
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import KW_ONLY, dataclass, replace
 from pathlib import Path
 from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -1647,6 +1647,8 @@ class Profile:
 
     window: Window
     stats: WindowStats
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     flatline: FlatlineVerdict | None = None
 
     def render(self) -> str:

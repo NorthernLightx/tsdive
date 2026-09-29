@@ -46,10 +46,31 @@ def test_frozen():
         c.stepped = False  # type: ignore[misc]
 
 
+def test_optional_fields_of_the_public_dataclasses_are_keyword_only():
+    import tsdive
+
+    for name in tsdive.__all__:
+        cls = getattr(tsdive, name)
+        if not (isinstance(cls, type) and dataclasses.is_dataclass(cls)):
+            continue
+        for f in dataclasses.fields(cls):
+            has_default = (
+                f.default is not dataclasses.MISSING
+                or f.default_factory is not dataclasses.MISSING
+            )
+            assert f.kw_only or not has_default, f"{name}.{f.name} is positional"
+    with pytest.raises(TypeError):
+        SamplingContract(  # type: ignore[misc]
+            CalculationBasis.TIME_WEIGHTED, RetrievalMode.RECORDED, AggregateType.NONE
+        )
+
+
 def test_comparable_only_on_calculation_basis():
     a = SamplingContract(CalculationBasis.TIME_WEIGHTED, RetrievalMode.RECORDED)
     b = SamplingContract(
-        CalculationBasis.TIME_WEIGHTED, RetrievalMode.INTERPOLATED, AggregateType.OPC_UA_AVERAGE
+        CalculationBasis.TIME_WEIGHTED,
+        RetrievalMode.INTERPOLATED,
+        aggregate_type=AggregateType.OPC_UA_AVERAGE,
     )
     c = SamplingContract(CalculationBasis.EVENT_WEIGHTED, RetrievalMode.RECORDED)
     assert a.comparable_with(b)

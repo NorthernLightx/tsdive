@@ -359,6 +359,7 @@ make lint        # uv run ruff check .
 make reference   # refusal cases, byte for byte
 make bench       # BENCHMARKS.md, byte for byte
 make check       # all of the above
+make api-diff    # API breaks since the last release tag
 ```
 
 ## License

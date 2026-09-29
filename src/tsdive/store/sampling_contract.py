@@ -15,7 +15,7 @@ them is refused with :class:`~tsdive.errors.IncomparableSamplingError`.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from enum import StrEnum
 
 
@@ -51,6 +51,8 @@ class SamplingContract:
 
     calculation_basis: CalculationBasis
     retrieval_mode: RetrievalMode
+    # Optional fields are keyword-only, so adding one never moves another.
+    _: KW_ONLY
     aggregate_type: AggregateType = AggregateType.NONE
     stepped: bool = False
 
