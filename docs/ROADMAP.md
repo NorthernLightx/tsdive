@@ -213,7 +213,7 @@ pinned. Shipped: `tsdive report-html`, a self-contained static HTML
 evidence viewer with no server and no JavaScript dependencies. Studied,
 not shipped: a zero-shot time-series foundation model (Chronos-Bolt) as a
 benchmark subject on the onset-aligned 3W windows, under the same
-protocol as the detectors (`examples/studies/3w_chronos`, extra `tsfm`).
+protocol as the detectors (`examples/studies/3w_chronos`, group `tsfm`).
 
 ## Stage 8, LLM narration
 

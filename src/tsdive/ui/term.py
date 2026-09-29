@@ -77,20 +77,8 @@ def bold(text: str, on: bool = True) -> str:
     return _sgr("bold", text, on)
 
 
-def dim(text: str, on: bool = True) -> str:
-    return _sgr("dim", text, on)
-
-
 def red(text: str, on: bool = True) -> str:
     return _sgr("red", text, on)
-
-
-def green(text: str, on: bool = True) -> str:
-    return _sgr("green", text, on)
-
-
-def yellow(text: str, on: bool = True) -> str:
-    return _sgr("yellow", text, on)
 
 
 def colour_enabled(stream: TextIO, *, no_color: bool = False) -> bool:

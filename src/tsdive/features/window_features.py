@@ -18,7 +18,6 @@ import pandas as pd
 
 from tsdive.store.averaging import weighted_mean
 from tsdive.store.identity import Role
-from tsdive.store.quality import Severity
 from tsdive.store.tagstore import Window
 
 
@@ -252,7 +251,3 @@ def compute_stats(window: Window, *, window_end: pd.Timestamp | None = None) -> 
         interval_differs_from_declared=differs,
         state_valued=state_valued,
     )
-
-
-def severity_floor_note(counts: dict[Severity, int]) -> str:
-    return f"GOOD={counts.get(Severity.GOOD, 0)}"

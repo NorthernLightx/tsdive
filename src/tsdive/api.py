@@ -196,11 +196,12 @@ def reference_history(
     # the last boundary sit between the references and the assessed
     # window; searchsorted puts them out of range and they are dropped.
     # Compared as UTC nanoseconds: searchsorted over boxed Timestamps
-    # would be a Python compare per sample.
+    # would be a Python compare per sample. An archive reads back in its
+    # stored unit (ms, us or ns), so both sides go to ns first.
     window_of = (
         np.searchsorted(
-            pd.Series(boundaries).astype("int64").to_numpy(),
-            good["timestamp"].astype("int64").to_numpy(),
+            boundaries.as_unit("ns").asi8,
+            good["timestamp"].dt.as_unit("ns").to_numpy(dtype="int64"),
             side="right",
         )
         - 1
@@ -237,7 +238,7 @@ def reference_history(
     # every second that moves every second has a 1 s interval, and one
     # that moves every tenth sample has a 10 s interval, where the
     # spacing would call both of them 1 s.
-    stamps = good["timestamp"].astype("int64").to_numpy()[at]
+    stamps = good["timestamp"].dt.as_unit("ns").to_numpy(dtype="int64")[at]
     in_window = window_of[at]
     gaps = np.diff(stamps)
     same_window = in_window[1:] == in_window[:-1]
@@ -323,7 +324,7 @@ def _read_source(
         _check_separator(frame, path.name, sep)
         if decimal is not None and decimal != ".":
             for column in frame.columns:
-                if frame[column].dtype == object:
+                if _is_text(frame[column]):
                     frame[column] = frame[column].map(lambda v: _point_decimal(v, decimal))
         return frame
     if path.suffix.lower() in {".parquet", ".pq"}:
@@ -339,6 +340,14 @@ def _read_source(
     raise SchemaError(
         f"{path.name}: unsupported input {path.suffix!r}; ingest reads .csv and .parquet"
     )
+
+
+def _is_text(values: pd.Series) -> bool:
+    """True for a column of Python objects or strings.
+
+    pandas 2 reads CSV text as ``object``, pandas 3 as its ``str`` dtype.
+    """
+    return values.dtype == object or isinstance(values.dtype, pd.StringDtype)
 
 
 def _check_separator(frame: pd.DataFrame, name: str, sep: str | None) -> None:
@@ -531,7 +540,7 @@ def _parse_timestamps(
         )
     order = False
     prepared = raw
-    if timestamp_format is None and raw.dtype == object:
+    if timestamp_format is None and _is_text(raw):
         order = _date_order(raw, column, dayfirst=dayfirst)
         prepared = raw.map(lambda v: _month_first(v, dayfirst=order))
     whole = _parse_column(prepared, timestamp_format)
@@ -1191,7 +1200,7 @@ def _tag_values(values: pd.Series) -> pd.Series:
     tag. Each tag's values are typed the way a single-tag export of that
     tag would be.
     """
-    if values.dtype != object:
+    if not _is_text(values):
         return values
     numbers = pd.to_numeric(values, errors="coerce")
     if int(numbers.notna().sum()) == int(values.notna().sum()):

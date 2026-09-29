@@ -322,13 +322,13 @@ def _change_intervals_s(frame: pd.DataFrame) -> list[float]:
         return []
     values = cast(pd.Series, good["value"].reset_index(drop=True))
     stamps = cast(pd.Series, good["timestamp"].reset_index(drop=True))
-    changed = values.ne(values.shift()).to_numpy(dtype=bool, na_value=False)
+    changed = values.ne(values.shift()).to_numpy(dtype=bool, na_value=False, copy=True)
     # The first row compares against nothing, so it is not a change.
     changed[0] = False
     at = np.flatnonzero(changed)
     if at.size < 2:
         return []
-    seconds = stamps.iloc[at].astype("int64").to_numpy() / 1e9
+    seconds = stamps.iloc[at].dt.as_unit("ns").to_numpy(dtype="int64") / 1e9
     return [float(v) for v in np.diff(seconds)]
 
 

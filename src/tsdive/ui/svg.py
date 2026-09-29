@@ -132,6 +132,8 @@ def window_figure(
     frame = window.frame
     stamps = pd.DatetimeIndex(pd.to_datetime(frame["timestamp"]))
     stamps = stamps.tz_localize("UTC") if stamps.tz is None else stamps.tz_convert("UTC")
+    # asi8 counts in the index's own unit; start.value counts nanoseconds.
+    stamps = stamps.as_unit("ns")
     order = np.argsort(stamps.asi8, kind="stable")
     stamps = stamps[order]
     values = pd.to_numeric(frame["value"].iloc[order], errors="coerce").to_numpy(dtype=float)

@@ -436,7 +436,7 @@ def render_report(data: dict) -> str:
     p("Commands:")
     p("")
     p("```")
-    p("uv sync --extra tsfm")
+    p("uv sync --group tsfm")
     p("uv run python examples/studies/3w_chronos/run_chronos.py")
     p("uv run python examples/studies/3w_chronos/make_report.py")
     p("```")

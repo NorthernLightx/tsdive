@@ -131,7 +131,7 @@ def read_rdata(path: Path) -> pd.DataFrame:
     """Read one TEP ``.RData`` into its single data frame.
 
     ``pyreadr`` is imported here rather than at module scope: it is an
-    optional dependency (``uv sync --extra tep``) and nothing else in
+    optional dependency (``uv sync --group tep``) and nothing else in
     this repository needs it.
     """
     try:
@@ -139,7 +139,7 @@ def read_rdata(path: Path) -> pd.DataFrame:
     except ImportError as e:  # pragma: no cover - exercised by hand, not in CI
         raise ImportError(
             "reading TEP .RData needs pyreadr, which is an optional dependency: "
-            "run `uv sync --extra tep` (or `pip install 'tsdive[tep]'`) and retry"
+            "run `uv sync --group tep` (or `pip install pyreadr`) and retry"
         ) from e
     result = pyreadr.read_r(str(path))
     if len(result) != 1:

@@ -1,0 +1,30 @@
+name: newest dependencies
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (ubuntu-latest, 3.12, newest allowed dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: "3.12"
+      # The upgraded lock stays in the runner. A failed step is the report.
+      - name: Lock the newest versions pyproject.toml allows
+        run: uv lock --upgrade
+      - name: Install
+        run: uv sync --locked
+      - name: Test (offline)
+        run: uv run --locked pytest
+      - name: Reference cases byte-identical
+        run: uv run --locked python examples/reference_case/run_reference.py
+      - name: Benchmarks byte-identical
+        run: uv run --locked python examples/benchmarks/run_benchmarks.py

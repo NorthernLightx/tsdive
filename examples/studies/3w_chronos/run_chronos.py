@@ -28,7 +28,7 @@ Outputs (``--out``, default ``results/`` beside this file):
   ``aligned_summary.csv`` columns plus the false-alarm floor.
 - ``run.json``: provenance, parameters and refusal counts.
 
-Run: ``uv sync --extra tsfm`` then
+Run: ``uv sync --group tsfm`` then
 ``uv run python examples/studies/3w_chronos/run_chronos.py``.
 """
 
