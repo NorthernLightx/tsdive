@@ -42,7 +42,9 @@ from tsdive.analyses_render import render_lines
 from tsdive.api import (
     Profile,
     ingest,
+    ingest_long,
     ingest_wide,
+    init_long_meta,
     init_meta,
     init_tag_meta,
     parse_window,
@@ -91,6 +93,9 @@ commands, in the order an archive walks them:
                                           metadata template first
   ingest <csv|parquet> --wide --out DIR --meta-dir DIR
                                           one archive per column of a wide export
+  ingest <csv|parquet> --tag-col COL --out DIR --meta-dir DIR
+                                          one archive per tag of a long export,
+                                          the tag of each row in column COL
   profile <parquet> [--window START/END]  data physics and statistics for a window
   segment <parquet> [--window START/END]  regimes read off the samples themselves,
                                           for a tag with no MODE tag to key them
@@ -845,12 +850,14 @@ def _warn_assumed_quality(assume_quality: str | None) -> None:
 def _parser_ingest() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tsdive ingest")
     parser.add_argument(
-        "source", help="CSV or parquet export: one tag, or one column per tag with --wide"
+        "source",
+        help="CSV or parquet export: one tag, one column per tag with --wide, or one row "
+        "per tag and timestamp with --tag-col",
     )
     parser.add_argument(
         "--out",
         default=None,
-        help="archive to create; with --wide, directory for one archive per tag",
+        help="archive to create; with --wide or --tag-col, directory for one archive per tag",
     )
     parser.add_argument(
         "--meta",
@@ -874,47 +881,57 @@ def _parser_ingest() -> argparse.ArgumentParser:
         "or --timestamp-format a date that reads both ways raises SchemaError",
     )
     parser.add_argument(
-        "--value-col", default=None, help="value column of a single-tag export (default value)"
+        "--value-col",
+        default=None,
+        help="value column of a single-tag or --tag-col export (default value)",
     )
     parser.add_argument(
         "--quality-col",
         default=None,
-        help="quality column of a single-tag export (default quality)",
+        help="quality column of a single-tag or --tag-col export (default quality)",
     )
     parser.add_argument(
         "--init-meta",
         default=None,
         metavar="FILE|DIR",
         help="write a metadata template to FILE and stop, then fill it in and ingest "
-        "with --meta FILE; with --wide, write a <tag>.json template per tag column "
-        "into DIR, then ingest with --meta-dir DIR",
+        "with --meta FILE; with --wide or --tag-col, write a <tag>.json template per "
+        "tag into DIR, then ingest with --meta-dir DIR",
     )
-    wide = parser.add_argument_group("wide exports, one column per tag")
-    wide.add_argument(
+    several = parser.add_argument_group("exports of several tags")
+    several.add_argument(
         "--wide",
         action="store_true",
-        help="write one archive per tag column into --out, named by point_id",
+        help="read one column per tag and write one archive per tag into --out, named "
+        "by point_id",
     )
-    wide.add_argument(
+    several.add_argument(
+        "--tag-col",
+        default=None,
+        metavar="COL",
+        help="read the tag of each row from COL and write one archive per tag into "
+        "--out, named by point_id",
+    )
+    several.add_argument(
         "--meta-dir",
         default=None,
         metavar="DIR",
-        help="directory of <tag>.json metadata files, one per tag column",
+        help="directory of <tag>.json metadata files, one per tag",
     )
-    wide.add_argument(
+    several.add_argument(
         "--tags",
         default=None,
         metavar="A,B,...",
-        help="tag columns to ingest; omitted, every column that is not the "
-        "timestamp or a quality column",
+        help="tags to ingest; omitted, every column that is not the timestamp or a "
+        "quality column (--wide), or every value of --tag-col",
     )
-    wide.add_argument(
+    several.add_argument(
         "--quality-suffix",
         default=None,
         metavar="S",
-        help="each tag's quality column is <tag><S>",
+        help="with --wide, each tag's quality column is <tag><S>",
     )
-    wide.add_argument(
+    several.add_argument(
         "--source-id",
         default=None,
         metavar="ID",
@@ -942,17 +959,13 @@ def _parser_ingest() -> argparse.ArgumentParser:
 
 
 def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    """Reject flags that belong to the other ingest form."""
-    single_only = (
-        ("--meta", args.meta),
-        ("--value-col", args.value_col),
-        ("--quality-col", args.quality_col),
-    )
-    wide_only = (
-        ("--meta-dir", args.meta_dir),
-        ("--tags", args.tags),
-        ("--quality-suffix", args.quality_suffix),
-    )
+    """Reject flags that belong to another ingest form."""
+    long = args.tag_col is not None
+    # A long export names its value and quality columns as a single-tag one does.
+    single_only = [("--meta", args.meta)]
+    if not long:
+        single_only += [("--value-col", args.value_col), ("--quality-col", args.quality_col)]
+    several_only = (("--meta-dir", args.meta_dir), ("--tags", args.tags))
     init_only = (("--source-id", args.source_id),)
     ingest_only = (
         ("--out", args.out),
@@ -964,10 +977,15 @@ def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespac
     )
     if args.timestamp_format is not None and args.dayfirst:
         parser.error("--timestamp-format and --dayfirst both state the date order; pass one")
-    if args.wide:
+    if args.wide and long:
+        parser.error("--tag-col does not apply with --wide; pass one")
+    if long and args.quality_suffix is not None:
+        parser.error("--quality-suffix requires --wide")
+    if args.wide or long:
+        form = "--wide" if args.wide else "--tag-col"
         for flag, value in single_only:
             if value is not None:
-                parser.error(f"{flag} does not apply with --wide; use --meta-dir")
+                parser.error(f"{flag} does not apply with {form}; use --meta-dir")
         if args.init_meta is not None:
             for flag, value in ingest_only:
                 if value is not None:
@@ -981,11 +999,13 @@ def _check_ingest_flags(parser: argparse.ArgumentParser, args: argparse.Namespac
             if args.out is None:
                 parser.error("the following arguments are required: --out")
             if args.meta_dir is None:
-                parser.error("--wide requires --meta-dir")
+                parser.error(f"{form} requires --meta-dir")
     else:
-        for flag, value in (*wide_only, *init_only):
+        if args.quality_suffix is not None:
+            parser.error("--quality-suffix requires --wide")
+        for flag, value in (*several_only, *init_only):
             if value is not None:
-                parser.error(f"{flag} requires --wide")
+                parser.error(f"{flag} requires --wide or --tag-col")
         if args.init_meta is not None:
             for flag, value in (*ingest_only, ("--meta", args.meta)):
                 if value is not None:
@@ -1038,7 +1058,7 @@ def cmd_ingest(argv: Sequence[str] | None = None) -> int:
 
 def _ingest(args: argparse.Namespace) -> int:
     try:
-        if args.init_meta is not None and not args.wide:
+        if args.init_meta is not None and not args.wide and args.tag_col is None:
             template = init_tag_meta(
                 args.source,
                 out=args.init_meta,
@@ -1048,6 +1068,20 @@ def _ingest(args: argparse.Namespace) -> int:
                 overwrite=args.overwrite,
             )
             _print_lines([label_line("wrote", template.as_posix())], args)
+            return OK
+        if args.init_meta is not None and args.tag_col is not None:
+            templates = init_long_meta(
+                args.source,
+                out_dir=args.init_meta,
+                source_id=args.source_id,
+                tag_col=args.tag_col,
+                timestamp_col=args.timestamp_col,
+                value_col=args.value_col or "value",
+                quality_col=args.quality_col or "quality",
+                tags=_split_tags(args.tags),
+                overwrite=args.overwrite,
+            )
+            _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
             return OK
         if args.init_meta is not None:
             templates = init_meta(
@@ -1061,6 +1095,25 @@ def _ingest(args: argparse.Namespace) -> int:
             )
             _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
             return 0
+        if args.tag_col is not None:
+            written = ingest_long(
+                args.source,
+                out_dir=args.out,
+                meta_dir=args.meta_dir,
+                tag_col=args.tag_col,
+                timestamp_col=args.timestamp_col,
+                value_col=args.value_col or "value",
+                quality_col=args.quality_col or "quality",
+                tags=_split_tags(args.tags),
+                tz=args.tz,
+                assume_quality=args.assume_quality,
+                overwrite=args.overwrite,
+                timestamp_format=args.timestamp_format,
+                dayfirst=args.dayfirst,
+            )
+            _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
+            _warn_assumed_quality(args.assume_quality)
+            return OK
         if args.wide:
             written = ingest_wide(
                 args.source,

@@ -2,8 +2,8 @@
 
 This guide turns the CSV files a historian exports into archives. It
 covers local time, day-first dates, digital states in the value column,
-quality codes, interpolated exports and wide files. Each step runs the
-real command on a small export.
+quality codes, interpolated exports, and wide and long files. Each step
+runs the real command on a small export.
 
 ## The recipe
 
@@ -169,6 +169,43 @@ suffix such as `_q`. Two commands handle it, as the
 DIR` writes one template per tag, and `--wide --out DIR --meta-dir DIR`
 writes one archive per tag.
 
+## A long export
+
+A long export has one row per tag and timestamp, and a column that names
+the tag of each row:
+
+```csv file=plant.csv
+Tag,Timestamp,Value,Status
+FI102.PV,2026-10-28T05:00:00Z,40.06,Good
+TI103.PV,2026-10-28T05:00:00Z,181.2,Good
+FI102.PV,2026-10-28T05:01:00Z,40.11,Good
+TI103.PV,2026-10-28T05:01:00Z,181.4,Good
+FI102.PV,2026-10-28T05:02:00Z,40.02,Good
+TI103.PV,2026-10-28T05:02:00Z,181.3,Good
+```
+
+A single-tag ingest of this file raises `SchemaError`, because two rows
+share each timestamp and `Tag` splits them into two series. `--tag-col`
+names the tag column. With `--init-meta DIR` ingest writes one template
+per tag:
+
+```tsdive
+tsdive ingest plant.csv --tag-col Tag --timestamp-col Timestamp \
+    --value-col Value --quality-col Status --init-meta meta --source-id plant1
+```
+
+```json show=meta/FI102.PV.json
+```
+
+Fill in the unit, range and sample rate of each template. With
+`--out DIR --meta-dir DIR` ingest writes one archive per tag, named by
+`point_id`:
+
+```tsdive
+tsdive ingest plant.csv --tag-col Tag --timestamp-col Timestamp \
+    --value-col Value --quality-col Status --out archive --meta-dir meta
+```
+
 ## When ingest refuses
 
 | message says | do |
@@ -179,6 +216,7 @@ writes one archive per tag.
 | `no quality column` | name it with `--quality-col`, or pass `--assume-quality` |
 | `unknown key` | fix the metadata key it names; the message suggests the right one |
 | `is not numeric and no digital state explains it` | name the string in `quality_codes` |
+| `the export holds several tags` | pass `--tag-col` with the column the message names |
 | `precedes the row before it` | fix the row order in the export; tsdive does not sort it |
 
 The [errors page](../../reference/errors.md#schemaerror) lists every

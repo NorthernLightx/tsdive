@@ -474,6 +474,15 @@ def _to_utc(
     stamps = _parse_timestamps(
         raw, column, timestamp_format=timestamp_format, dayfirst=dayfirst
     )
+    return _localise(stamps, raw.index, tz, column)
+
+
+def _all_aware(stamps: Sequence[pd.Timestamp], column: str) -> bool:
+    """True when every stamp carries a UTC offset, False when none does.
+
+    A column that mixes naive and offset-bearing rows raises
+    ``SchemaError``: ``tz`` would apply to some rows and not others.
+    """
     aware = [ts.tz is not None for ts in stamps]
     if any(aware) and not all(aware):
         raise SchemaError(
@@ -481,9 +490,16 @@ def _to_utc(
             "name no instant tsdive can place next to the aware ones - export "
             "the whole column with UTC offsets"
         )
-    if stamps and all(aware):
+    return bool(stamps) and all(aware)
+
+
+def _localise(
+    stamps: Sequence[pd.Timestamp], index: pd.Index, tz: str | None, column: str
+) -> pd.Series:
+    """Parsed timestamps as a UTC series on ``index``, or ``SchemaError`` (see ``_to_utc``)."""
+    if _all_aware(stamps, column):
         return pd.Series(
-            pd.DatetimeIndex([ts.tz_convert("UTC") for ts in stamps]), index=raw.index
+            pd.DatetimeIndex([ts.tz_convert("UTC") for ts in stamps]), index=index
         )
     if tz is None:
         raise SchemaError(
@@ -491,7 +507,7 @@ def _to_utc(
             "to state what zone the source is in - tsdive will not assume UTC"
         )
     validate_tz_names((tz,))
-    local = pd.Series(pd.DatetimeIndex(stamps), index=raw.index)
+    local = pd.Series(pd.DatetimeIndex(stamps), index=index)
     try:
         localised = local.dt.tz_localize(tz)
     except Exception as e:
@@ -579,6 +595,7 @@ def _check_one_series(
     *,
     label: str,
     read: set[str],
+    rows: np.ndarray | None = None,
 ) -> None:
     """Raise when the rows hold several tags or when their timestamps run backwards.
 
@@ -588,9 +605,16 @@ def _check_one_series(
     series that are each in time order (see ``_tag_column``). Otherwise a
     backwards step raises ``NonMonotonicIndex``, because every read of the
     archive would raise it.
+
+    ``rows`` holds the file position of each row when ``frame`` is a
+    subset of the export, so a message counts data rows of the file.
     """
     shared = int(timestamps.duplicated(keep=False).sum())
     positions = backwards_positions(timestamps.reset_index(drop=True))
+
+    def row_of(pos: int) -> int:
+        return (int(rows[pos]) if rows is not None else pos) + 1
+
     if shared or positions:
         found = _tag_column(frame, timestamps, read=read)
         if found is not None:
@@ -598,7 +622,7 @@ def _check_one_series(
             finding = (
                 f"{shared} rows share a timestamp"
                 if shared
-                else f"the timestamps run backwards at data row {positions[0] + 1}"
+                else f"the timestamps run backwards at data row {row_of(positions[0])}"
             )
             fix = (
                 f"pass --tag-col {column} to write one archive per tag"
@@ -613,7 +637,7 @@ def _check_one_series(
     if positions:
         first = positions[0]
         raise NonMonotonicIndex(
-            f"{label}: the timestamp of data row {first + 1} "
+            f"{label}: the timestamp of data row {row_of(first)} "
             f"({timestamps.iloc[first].isoformat()}) precedes the row before it "
             f"({timestamps.iloc[first - 1].isoformat()}); every read of the archive would "
             "raise NonMonotonicIndex, so fix the row order in the export",
@@ -666,7 +690,9 @@ def ingest(
     what its schema promises. A left-behind column that splits the rows
     into overlapping series, each in time order, marks an export of
     several tags. Such an export raises ``SchemaError`` when its
-    timestamps repeat or run backwards. Timestamps that run backwards
+    timestamps repeat or run backwards, and
+    [`ingest_long`][tsdive.ingest_long] writes one archive per tag from
+    it. Timestamps that run backwards
     otherwise raise ``NonMonotonicIndex``, because every read of the
     archive would.
 
@@ -815,6 +841,50 @@ def _check_distinct_filenames(names: Sequence[str], *, what: str) -> None:
         seen[key] = name
 
 
+def _tag_metas(chosen: Sequence[str], meta_dir: str | Path, *, init: str) -> dict[str, TagMeta]:
+    """Each tag's metadata, read from ``meta_dir / f"{safe_filename(tag)}.json"``.
+
+    Raises ``SchemaError`` naming the tag and the path when a file is
+    missing, and ``ValueError`` when two point ids share one file name.
+    """
+    meta_root = Path(meta_dir)
+    metas: dict[str, TagMeta] = {}
+    for tag in chosen:
+        meta_path = meta_root / f"{safe_filename(tag)}.json"
+        if not meta_path.exists():
+            raise SchemaError(
+                f"tag {tag!r}: no metadata file {meta_path.as_posix()}; write it by "
+                f"hand or with {argname(init, '--init-meta')}"
+            )
+        metas[tag] = read_meta_json(meta_path)
+    _check_distinct_filenames(
+        [m.identity.point_id for m in metas.values()], what="point ids"
+    )
+    return metas
+
+
+def _archive_targets(
+    metas: dict[str, TagMeta], out_dir: str | Path, *, overwrite: bool
+) -> dict[str, Path]:
+    """Each tag's archive path under ``out_dir``, named by point id.
+
+    Raises ``FileExistsError`` for the first path that exists unless
+    ``overwrite``.
+    """
+    root = Path(out_dir)
+    targets = {
+        tag: root / f"{safe_filename(meta.identity.point_id)}.parquet"
+        for tag, meta in metas.items()
+    }
+    if not overwrite:
+        for target in targets.values():
+            if target.exists():
+                raise FileExistsError(
+                    f"{target} already exists; pass {_overwrite_option()} to replace it"
+                )
+    return targets
+
+
 def ingest_wide(
     source: str | Path,
     *,
@@ -898,30 +968,8 @@ def ingest_wide(
     quality_cols = _wide_quality_columns(
         frame, chosen, label=label, quality_suffix=quality_suffix
     )
-    meta_root = Path(meta_dir)
-    metas: dict[str, TagMeta] = {}
-    for tag in chosen:
-        meta_path = meta_root / f"{safe_filename(tag)}.json"
-        if not meta_path.exists():
-            raise SchemaError(
-                f"tag {tag!r}: no metadata file {meta_path.as_posix()}; write it by "
-                f"hand or with {argname('init_meta', '--init-meta')}"
-            )
-        metas[tag] = read_meta_json(meta_path)
-    _check_distinct_filenames(
-        [m.identity.point_id for m in metas.values()], what="point ids"
-    )
-    root = Path(out_dir)
-    targets = {
-        tag: root / f"{safe_filename(metas[tag].identity.point_id)}.parquet"
-        for tag in chosen
-    }
-    if not overwrite:
-        for target in targets.values():
-            if target.exists():
-                raise FileExistsError(
-                    f"{target} already exists; pass {_overwrite_option()} to replace it"
-                )
+    metas = _tag_metas(chosen, meta_dir, init="init_meta")
+    targets = _archive_targets(metas, out_dir, overwrite=overwrite)
     timestamps = _to_utc(
         frame[timestamp_col],
         tz,
@@ -939,6 +987,156 @@ def ingest_wide(
             timestamps=timestamps,
             values=frame[tag],
             quality=quality,
+            assumed=assumed,
+            meta=metas[tag],
+        )
+        prepared.append((targets[tag], out_frame, stamped))
+    return [
+        write_tag(target, out_frame, stamped, overwrite=overwrite)
+        for target, out_frame, stamped in prepared
+    ]
+
+
+def _long_tags(
+    frame: pd.DataFrame,
+    *,
+    label: str,
+    tag_col: str,
+    tags: Sequence[str] | None,
+) -> list[str]:
+    """The tags of a long export in order of first appearance, or ``tags`` checked to exist."""
+    columns = [str(c) for c in frame.columns]
+    if tag_col not in columns:
+        raise SchemaError(f"{label}: no tag column {tag_col!r}; columns are {', '.join(columns)}")
+    keys = frame[tag_col]
+    blank = int((keys.isna() | (keys.astype(str).str.strip() == "")).sum())
+    if blank:
+        raise SchemaError(
+            f"{label}: {blank} rows have no tag in column {tag_col!r}; fill in their tag "
+            "or drop them from the export"
+        )
+    found = list(dict.fromkeys(keys.astype(str)))
+    if tags is None:
+        return found
+    chosen = list(dict.fromkeys(str(t) for t in tags))
+    known = set(found)
+    for tag in chosen:
+        if tag not in known:
+            more = len(found) - 10
+            shown = ", ".join(found[:10]) + (f" and {more} more" if more > 0 else "")
+            raise SchemaError(
+                f"{label}: column {tag_col!r} holds no tag {tag!r} named in "
+                f"{argname('tags', '--tags')}; it holds {shown}"
+            )
+    return chosen
+
+
+def _tag_values(values: pd.Series) -> pd.Series:
+    """``values`` as numbers when every non-null entry reads as one, else unchanged.
+
+    One tag's digital states make a shared value column text for every
+    tag. Each tag's values are typed the way a single-tag export of that
+    tag would be.
+    """
+    if values.dtype != object:
+        return values
+    numbers = pd.to_numeric(values, errors="coerce")
+    if int(numbers.notna().sum()) == int(values.notna().sum()):
+        return numbers
+    return values
+
+
+def ingest_long(
+    source: str | Path,
+    *,
+    out_dir: str | Path,
+    meta_dir: str | Path,
+    tag_col: str,
+    timestamp_col: str = "timestamp",
+    value_col: str = "value",
+    quality_col: str = "quality",
+    tags: Sequence[str] | None = None,
+    tz: str | None = None,
+    assume_quality: str | None = None,
+    overwrite: bool = False,
+    timestamp_format: str | None = None,
+    dayfirst: bool = False,
+) -> list[Path]:
+    """Turn a long export, one row per tag and timestamp, into one archive per tag.
+
+    The file is read once. ``tag_col`` names each row's tag, and the tags
+    are ``tags`` when given, else every value of ``tag_col`` in order of
+    first appearance. Metadata for a tag comes from
+    ``meta_dir / f"{safe_filename(tag)}.json"`` and its archive goes to
+    ``out_dir / f"{safe_filename(point_id)}.parquet"``. Each archive holds
+    the tag's rows in file order. Every check runs before the first
+    archive is written, so a refusal leaves ``out_dir`` as it was.
+    Timestamps are parsed as [`ingest`][tsdive.ingest] parses them, with
+    one date order for the whole column, and localised tag by tag.
+
+    Raises:
+        SchemaError: unreadable input; a missing timestamp, value, tag or
+            quality column or metadata file; a row without a tag; a tag in
+            ``tags`` that the column does not hold; naive timestamps
+            without ``tz``; a date that reads day first and month first
+            with no order stated; or an unusable ``assume_quality`` value.
+        NonMonotonicIndex: a tag's timestamp precedes the one before it.
+        ValueError: two tags or two point ids that share one file name, or
+            both ``timestamp_format`` and ``dayfirst``.
+        FileExistsError: an archive exists and ``overwrite`` is False.
+
+    Examples:
+        A long export of the two demo tags, without a quality column:
+
+        >>> import pandas as pd
+        >>> import tsdive
+        >>> parts = [
+        ...     pd.read_parquet(f"data/demo/{name}_demo.parquet")[["timestamp", "value"]]
+        ...     .assign(tag=tag)
+        ...     for name, tag in (("fic101", "FIC101.PV"), ("tic101", "TIC101.PV"))
+        ... ]
+        >>> pd.concat(parts).sort_values("timestamp", kind="stable").to_csv(
+        ...     "long.csv", index=False)
+        >>> _ = tsdive.init_long_meta("long.csv", out_dir="meta", source_id="plant1",
+        ...                           tag_col="tag")
+        >>> archives = tsdive.ingest_long("long.csv", out_dir="archive/plant1",
+        ...                               meta_dir="meta", tag_col="tag",
+        ...                               assume_quality="GOOD")
+        >>> [(path.as_posix(), len(pd.read_parquet(path))) for path in archives]
+        [('archive/plant1/FIC101.PV.parquet', 562), ('archive/plant1/TIC101.PV.parquet', 562)]
+    """
+    src = Path(source)
+    frame = _read_source(src)
+    label = src.name
+    for name, column in (("timestamp", timestamp_col), ("value", value_col)):
+        if column not in frame.columns:
+            raise SchemaError(
+                f"{label}: no {name} column {column!r}; columns are "
+                f"{', '.join(map(str, frame.columns))}"
+            )
+    chosen = _long_tags(frame, label=label, tag_col=tag_col, tags=tags)
+    _check_distinct_filenames(chosen, what="tags")
+    quality, assumed = _resolve_quality(
+        frame, label=label, quality_col=quality_col, assume_quality=assume_quality
+    )
+    metas = _tag_metas(chosen, meta_dir, init="init_long_meta")
+    targets = _archive_targets(metas, out_dir, overwrite=overwrite)
+    stamps = _parse_timestamps(
+        frame[timestamp_col], timestamp_col, timestamp_format=timestamp_format, dayfirst=dayfirst
+    )
+    _all_aware(stamps, timestamp_col)
+    keys = frame[tag_col].astype(str).to_numpy()
+    read = {tag_col, timestamp_col, value_col} | (set() if assumed else {quality_col})
+    prepared: list[tuple[Path, pd.DataFrame, TagMeta]] = []
+    for tag in chosen:
+        rows = np.flatnonzero(keys == tag)
+        part = frame.iloc[rows]
+        timestamps = _localise([stamps[i] for i in rows], part.index, tz, timestamp_col)
+        _check_one_series(part, timestamps, label=f"{label}, tag {tag!r}", read=read, rows=rows)
+        out_frame, stamped = _prepare_archive(
+            timestamps=timestamps,
+            values=_tag_values(part[value_col]),
+            quality=quality.iloc[rows],
             assumed=assumed,
             meta=metas[tag],
         )
@@ -973,6 +1171,18 @@ def _quality_code_template(raw_codes: pd.Series) -> dict[str, str | None]:
         folded = raw.strip().upper()
         template[raw] = folded if folded in severities else None
     return template
+
+
+def _tag_template(tag: str, source_id: str, raw_codes: pd.Series | None) -> dict[str, object]:
+    """The metadata template of one tag of a multi-tag export."""
+    payload: dict[str, object] = {
+        "identity": {"source_id": source_id, "point_id": tag},
+        "name": tag,
+        **dict.fromkeys(_META_TEMPLATE_KEYS),
+    }
+    if raw_codes is not None:
+        payload["quality_codes"] = _quality_code_template(raw_codes)
+    return payload
 
 
 def init_meta(
@@ -1043,14 +1253,89 @@ def init_meta(
     root.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for tag in chosen:
-        payload: dict[str, object] = {
-            "identity": {"source_id": source_id, "point_id": tag},
-            "name": tag,
-            **dict.fromkeys(_META_TEMPLATE_KEYS),
-        }
         qcol = quality_cols[tag]
-        if qcol is not None:
-            payload["quality_codes"] = _quality_code_template(frame[qcol])
+        payload = _tag_template(tag, source_id, None if qcol is None else frame[qcol])
+        targets[tag].write_text(
+            json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n"
+        )
+        written.append(targets[tag])
+    return written
+
+
+def init_long_meta(
+    source: str | Path,
+    *,
+    out_dir: str | Path,
+    source_id: str,
+    tag_col: str,
+    timestamp_col: str = "timestamp",
+    value_col: str = "value",
+    quality_col: str = "quality",
+    tags: Sequence[str] | None = None,
+    overwrite: bool = False,
+) -> list[Path]:
+    """Write one metadata template per tag of a long export, one row per tag and timestamp.
+
+    The tags are ``tags`` when given, else every value of ``tag_col`` in
+    order of first appearance. Each template at
+    ``out_dir / f"{safe_filename(tag)}.json"`` carries ``identity``
+    (``source_id`` and the tag as ``point_id``), ``name`` (the tag) and
+    every optional key of ``tsdive.meta`` set to ``null``. When
+    ``quality_col`` exists, ``quality_codes`` lists every raw code of the
+    tag's rows, filled as [`init_meta`][tsdive.init_meta] fills it.
+    [`ingest_long`][tsdive.ingest_long] reads the templates from
+    ``out_dir``.
+
+    Raises:
+        SchemaError: unreadable input, a missing timestamp, value or tag
+            column, a row without a tag, or a tag in ``tags`` that the
+            column does not hold.
+        ValueError: two tags that share one file name.
+        FileExistsError: a template exists and ``overwrite`` is False.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import tsdive
+        >>> pd.DataFrame({"tag": ["FIC101.PV", "TIC101.PV", "FIC101.PV", "TIC101.PV"],
+        ...               "ts": ["2024-03-01T00:00:00Z"] * 2 + ["2024-03-01T00:01:00Z"] * 2,
+        ...               "v": [61.0, 180.2, 62.0, 180.4],
+        ...               "q": ["Good", "Good", "Questionable", "Good"]}
+        ...              ).to_csv("long.csv", index=False)
+        >>> paths = tsdive.init_long_meta("long.csv", out_dir="meta", source_id="plant1",
+        ...                               tag_col="tag", timestamp_col="ts", value_col="v",
+        ...                               quality_col="q")
+        >>> [path.as_posix() for path in paths]
+        ['meta/FIC101.PV.json', 'meta/TIC101.PV.json']
+        >>> import json
+        >>> json.loads(paths[0].read_text(encoding="utf-8"))["quality_codes"]
+        {'Good': 'GOOD', 'Questionable': None}
+    """
+    src = Path(source)
+    frame = _read_source(src)
+    label = src.name
+    for name, column in (("timestamp", timestamp_col), ("value", value_col)):
+        if column not in frame.columns:
+            raise SchemaError(
+                f"{label}: no {name} column {column!r}; columns are "
+                f"{', '.join(map(str, frame.columns))}"
+            )
+    chosen = _long_tags(frame, label=label, tag_col=tag_col, tags=tags)
+    _check_distinct_filenames(chosen, what="tags")
+    root = Path(out_dir)
+    targets = {tag: root / f"{safe_filename(tag)}.json" for tag in chosen}
+    if not overwrite:
+        for target in targets.values():
+            if target.exists():
+                raise FileExistsError(
+                    f"{target} already exists; pass {_overwrite_option()} to replace it"
+                )
+    root.mkdir(parents=True, exist_ok=True)
+    keys = frame[tag_col].astype(str)
+    has_quality = quality_col in frame.columns
+    written: list[Path] = []
+    for tag in chosen:
+        codes = frame.loc[keys == tag, quality_col] if has_quality else None
+        payload = _tag_template(tag, source_id, codes)
         targets[tag].write_text(
             json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n"
         )

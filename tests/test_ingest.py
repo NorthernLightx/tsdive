@@ -907,6 +907,167 @@ def test_wide_tags_colliding_after_safe_filename_are_refused(tmp_path):
     assert not (tmp_path / "archive").exists()
 
 
+# --------------------------------------- long exports, one row per tag and time
+
+LONG_ARGS = ["--timestamp-col", "Timestamp", "--value-col", "Value", "--quality-col", "Status"]
+
+
+def test_tag_col_templates_then_archives_one_per_tag(tmp_path, capsys):
+    src = _long_csv(tmp_path)
+    meta_dir = tmp_path / "meta"
+    rc = cmd_ingest(
+        [str(src), "--tag-col", "Tag", *LONG_ARGS, "--init-meta", str(meta_dir),
+         "--source-id", "plant1"]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"wrote     {(meta_dir / 'PI101.PV.json').as_posix()}",
+        f"wrote     {(meta_dir / 'FI102.PV.json').as_posix()}",
+        f"wrote     {(meta_dir / 'TI103.PV.json').as_posix()}",
+    ]
+    template = json.loads((meta_dir / "FI102.PV.json").read_text(encoding="utf-8"))
+    assert template["identity"] == {"source_id": "plant1", "point_id": "FI102.PV"}
+    assert template["quality_codes"] == {"Good": "GOOD"}
+
+    out_dir = tmp_path / "archive"
+    rc = cmd_ingest(
+        [str(src), "--tag-col", "Tag", *LONG_ARGS, "--out", str(out_dir), "--meta-dir",
+         str(meta_dir)]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"wrote     {(out_dir / 'PI101.PV.parquet').as_posix()}",
+        f"wrote     {(out_dir / 'FI102.PV.parquet').as_posix()}",
+        f"wrote     {(out_dir / 'TI103.PV.parquet').as_posix()}",
+    ]
+    for tag, level in LONG_TAGS.items():
+        frame = pd.read_parquet(out_dir / f"{tag}.parquet")
+        assert list(frame["timestamp"]) == list(LONG_INSTANTS)
+        assert frame["value"].iloc[0] == level
+        assert meta_from_parquet(out_dir / f"{tag}.parquet").identity.point_id == tag
+
+
+def test_tag_sorted_and_time_sorted_exports_give_the_same_archives(tmp_path):
+    meta_dir = _wide_meta_dir(tmp_path, tags=tuple(LONG_TAGS), codes={"Good": "GOOD"})
+    frames = {}
+    for sort_by in ("Timestamp", "Tag"):
+        written = tsdive.ingest_long(
+            _long_csv(tmp_path, sort_by=sort_by, name=f"{sort_by}.csv"),
+            out_dir=tmp_path / sort_by,
+            meta_dir=meta_dir,
+            tag_col="Tag",
+            timestamp_col="Timestamp",
+            value_col="Value",
+            quality_col="Status",
+        )
+        frames[sort_by] = {p.name: pd.read_parquet(p) for p in written}
+    assert sorted(frames["Tag"]) == sorted(frames["Timestamp"])
+    for name, frame in frames["Tag"].items():
+        pd.testing.assert_frame_equal(frame, frames["Timestamp"][name])
+
+
+def test_tag_col_writes_nothing_when_one_tag_has_no_metadata(tmp_path):
+    with pytest.raises(SchemaError, match=r"tag 'TI103\.PV': no metadata file .*init_long_meta"):
+        tsdive.ingest_long(
+            _long_csv(tmp_path),
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path, tags=("PI101.PV", "FI102.PV")),
+            tag_col="Tag",
+            timestamp_col="Timestamp",
+            value_col="Value",
+            assume_quality="GOOD",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
+def test_tag_col_takes_a_subset_and_refuses_an_absent_tag(tmp_path):
+    kwargs = {
+        "out_dir": tmp_path / "archive",
+        "meta_dir": _wide_meta_dir(tmp_path, tags=tuple(LONG_TAGS)),
+        "tag_col": "Tag",
+        "timestamp_col": "Timestamp",
+        "value_col": "Value",
+        "assume_quality": "GOOD",
+    }
+    src = _long_csv(tmp_path)
+    written = tsdive.ingest_long(src, tags=["TI103.PV"], **kwargs)
+    assert [p.name for p in written] == ["TI103.PV.parquet"]
+    with pytest.raises(
+        SchemaError,
+        match=r"column 'Tag' holds no tag 'TI104\.PV' named in tags; it holds PI101\.PV, "
+        r"FI102\.PV, TI103\.PV",
+    ):
+        tsdive.ingest_long(src, tags=["TI104.PV"], overwrite=True, **kwargs)
+
+
+def test_tag_col_refuses_rows_without_a_tag(tmp_path):
+    src = _long_csv(tmp_path)
+    frame = pd.read_csv(src)
+    frame.loc[[3, 7], "Tag"] = None
+    frame.to_csv(src, index=False)
+    with pytest.raises(SchemaError, match="2 rows have no tag in column 'Tag'"):
+        tsdive.init_long_meta(src, out_dir=tmp_path / "meta", source_id="plant1", tag_col="Tag",
+                              timestamp_col="Timestamp", value_col="Value")
+
+
+def test_tag_col_types_each_tags_values_on_their_own(tmp_path):
+    """One tag's digital state leaves the other tags' archives numeric."""
+    src = _long_csv(tmp_path)
+    frame = pd.read_csv(src)
+    frame["Value"] = frame["Value"].astype(object)
+    frame.loc[frame.index[frame["Tag"] == "PI101.PV"][5], "Value"] = "Shutdown"
+    frame.to_csv(src, index=False)
+    meta_dir = _wide_meta_dir(tmp_path, tags=tuple(LONG_TAGS), codes={"Shutdown": "BAD"})
+    written = tsdive.ingest_long(
+        src,
+        out_dir=tmp_path / "archive",
+        meta_dir=meta_dir,
+        tag_col="Tag",
+        timestamp_col="Timestamp",
+        value_col="Value",
+        assume_quality="GOOD",
+    )
+    dtypes = {p.stem: str(pd.read_parquet(p)["value"].dtype) for p in written}
+    assert dtypes == {"PI101.PV": "object", "FI102.PV": "float64", "TI103.PV": "float64"}
+
+
+def test_tag_col_refuses_a_tag_that_runs_backwards_naming_the_file_row(tmp_path):
+    src = _long_csv(tmp_path, sort_by="Tag")
+    frame = pd.read_csv(src)
+    frame.iloc[[300, 301]] = frame.iloc[[301, 300]].to_numpy()
+    frame.to_csv(src, index=False)
+    with pytest.raises(NonMonotonicIndex, match=r"long\.csv, tag 'PI101\.PV': the timestamp "
+                       r"of data row 302 "):
+        tsdive.ingest_long(
+            src,
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path, tags=tuple(LONG_TAGS)),
+            tag_col="Tag",
+            timestamp_col="Timestamp",
+            value_col="Value",
+            assume_quality="GOOD",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--wide"], "--tag-col does not apply with --wide"),
+        (["--quality-suffix", "_q"], "--quality-suffix requires --wide"),
+        (["--meta", "m.json"], "--meta does not apply with --tag-col; use --meta-dir"),
+        ([], "--tag-col requires --meta-dir"),
+    ],
+)
+def test_tag_col_flags_that_belong_to_another_form_are_usage_errors(
+    tmp_path, capsys, extra, message
+):
+    with pytest.raises(SystemExit) as info:
+        cmd_ingest(["long.csv", "--tag-col", "Tag", "--out", str(tmp_path / "x"), *extra])
+    assert info.value.code == 2
+    assert message in capsys.readouterr().err
+
+
 # ---------------------------------------------------------- metadata templates
 
 TEMPLATE_KEYS = [

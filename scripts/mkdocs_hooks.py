@@ -73,7 +73,9 @@ TOP_LEVEL_GROUPS: dict[str, list[str]] = {
     "Reading and ingest": [
         "ingest",
         "ingest_wide",
+        "ingest_long",
         "init_meta",
+        "init_long_meta",
         "init_tag_meta",
         "read_meta_json",
         "write_tag",
