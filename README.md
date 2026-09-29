@@ -112,10 +112,7 @@ window    2024-03-31 01:00:00Z -> 06:00:00Z
 method    MAD   center 62.32   scale 0.5488   k 3.0   limits [60.67, 63.97]
 
 Flagged
-  2024-03-31 02:01:00Z
-  2024-03-31 02:02:00Z
-  2024-03-31 02:03:00Z
-  (+26 more)
+  2024-03-31 02:01:00Z -> 02:29:00Z   29 samples
 ```
 
 `--mode <parquet>` computes one baseline per regime of a MODE tag, such as
@@ -140,7 +137,7 @@ limits    center 62.32   sigma 0.5488   lcl 60.67   ucl 63.97
 basis     individuals 3-sigma
 
 BEYOND_3SIGMA  29
-  2024-03-31 02:01:00Z   value 100 outside [60.67, 63.97]
+  2024-03-31 02:01:00Z -> 02:29:00Z   29 samples
 
 RUN_9_SAMESIDE  6
   2024-03-31 01:08:00Z   9 consecutive points on one side of center 62.32

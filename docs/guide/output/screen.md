@@ -26,8 +26,10 @@ tsdive screen data/demo/fic101_demo.parquet \
 - `caveat    provisional: one baseline for every regime in the window`:
   the screen assumed one operating point. If the regime changed inside
   the window, the flags say so and not more.
-- `Flagged`: the first flagged timestamps, and `(+26 more)` for the
-  rest. All 29 here are the half hour at 100 m3/h from 02:01.
+- `Flagged`: the runs of consecutive flagged samples. A lone flag
+  prints its timestamp, and a longer run its span and sample count. The
+  section lists five runs and counts the rest, such as `(+3 more runs)`.
+  Here one run holds all 29, the half hour at 100 m3/h from 02:01.
 
 With `--mode`, two more lines appear: `alignment`, the baseline and
 window rows that carried a mode sample of their own, and a `Regimes`

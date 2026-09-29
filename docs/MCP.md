@@ -46,8 +46,8 @@ same arguments give the same fields as the command line.
 |---|---|---|---|
 | `profile` | `archive` | `window`, `basis`, `stepped`, `tz`, `flatline` | sampling contract, unit resolution, coverage and gap classes, clipping, timestamp audit, quality counts, statistics, flatline verdict |
 | `segment` | `archive` | `window`, `penalty`, `min_size`, `basis`, `stepped` | breakpoints, and one row per segment with `n`, `median` and `mad` |
-| `screen` | `archive`, `baseline`, `window` | `method`, `k`, `mode`, `basis`, `stepped` | center, scale, limits, `n_screened`, `n_flagged`, and the flagged timestamps |
-| `spc` | `archive`, `baseline`, `window` | `basis`, `stepped` | individuals limits, and the hits of `BEYOND_3SIGMA`, `RUN_9_SAMESIDE` and `TREND_6` |
+| `screen` | `archive`, `baseline`, `window` | `method`, `k`, `mode`, `basis`, `stepped`, `max_events` | center, scale, limits, `n_screened`, `n_flagged`, the runs of consecutive flagged samples, and up to `max_events` flagged timestamps |
+| `spc` | `archive`, `baseline`, `window` | `basis`, `stepped`, `max_events` | individuals limits, and for `BEYOND_3SIGMA`, `RUN_9_SAMESIDE` and `TREND_6` the hit count, the runs of consecutive hits and up to `max_events` hits |
 | `compare` | `archives`, `before`, `after` | `top`, `rate_s` | per-tag change rows, the pairwise correlation table, the joint MSPC structure |
 | `switchback_analyze` | `archives`, `plan`, `target` | `covariates` | the verified plan digest, the B minus A estimate with its p-value and 95% interval, kept samples per block, the adjusted estimate |
 
@@ -61,6 +61,14 @@ date for one whole UTC day. `screen` and `spc` take a
 `baseline` window and a `window` to monitor. `compare` takes `before`
 and `after`. An option left out takes the default the command line
 declares, so `k` is 3.0, `min_size` is 10 and `top` is 10.
+
+`screen` and `spc` answer with counts and runs. A run is a stretch of
+consecutive GOOD samples that all carry the flag or rule hit, given as
+`start`, `end` and `n`. The per-sample lists, `flagged` in `screen` and
+`hits` under each rule in `spc`, keep `max_events` entries (0 when left
+out), and `flagged_dropped` or `hits_dropped` counts the entries left
+out. The counts `n_flagged`, `n_hits` and `n` cover every sample.
+`tsdive screen --json` and `tsdive spc --json` print the full lists.
 
 ## Result union
 

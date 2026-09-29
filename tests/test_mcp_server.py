@@ -239,6 +239,72 @@ def test_a_missing_archive_reaches_the_client_with_its_path(server: Any) -> None
         asyncio.run(server.call_tool("profile", {"archive": "absent.parquet"}))
 
 
+# Two days at 60 s on the switchback demo temperature, charted against a
+# 12 h baseline: 849 BEYOND_3SIGMA hits in 34 runs.
+TWO_DAYS = {
+    "baseline": "2024-06-01/PT12H",
+    "window": "2024-06-02T00:00:00Z/2024-06-03T23:59:00Z",
+}
+
+
+@pytest.fixture(scope="module")
+def ti201(tmp_path_factory: pytest.TempPathFactory) -> str:
+    import tsdive
+
+    paths = tsdive.write_demo_data(tmp_path_factory.mktemp("demo"))
+    return str(next(p for p in paths if p.name == "ti201.parquet"))
+
+
+def _answer_size(server: Any, name: str, arguments: dict[str, Any]) -> tuple[int, dict]:
+    """Characters of text and structured content of one call, and the structured content."""
+    import json
+
+    result = asyncio.run(server.call_tool(name, arguments))
+    assert result.is_error is False
+    text = sum(len(c.text) for c in result.content if hasattr(c, "text"))
+    return text + len(json.dumps(result.structured_content)), dict(result.structured_content)
+
+
+def test_a_two_day_spc_answer_is_bounded_and_its_counts_exact(server: Any, ti201: str) -> None:
+    from tsdive.cli import _parser_spc, json_spc
+    from tsdive.ui.jsonout import to_jsonable
+
+    size, payload = _answer_size(server, "spc", {"archive": ti201, **TWO_DAYS})
+    assert size < 40_000
+    full = json_spc(
+        _parser_spc().parse_args(
+            ["--baseline", TWO_DAYS["baseline"], "--window", TWO_DAYS["window"], ti201]
+        )
+    )
+    assert payload["n_hits"] == full["n_hits"] == 987
+    for trimmed, entry in zip(payload["rules"], full["rules"], strict=True):
+        assert trimmed["n"] == entry["n"] == len(entry["hits"])
+        assert trimmed["hits"] == []
+        assert trimmed["hits_dropped"] == entry["n"]
+    assert payload["runs"] == to_jsonable(full["runs"])
+    beyond = [r for r in payload["runs"] if r["rule"] == "BEYOND_3SIGMA"]
+    assert (len(beyond), sum(r["n"] for r in beyond)) == (34, 849)
+
+
+def test_max_events_lists_that_many_events(server: Any, ti201: str) -> None:
+    _, charted = _answer_size(server, "spc", {"archive": ti201, **TWO_DAYS, "max_events": 3})
+    assert [len(r["hits"]) for r in charted["rules"]] == [3, 3, 3]
+    assert [r["hits_dropped"] for r in charted["rules"]] == [846, 16, 116]
+    _, screened = _answer_size(server, "screen", {"archive": ti201, **TWO_DAYS})
+    assert (screened["n_flagged"], screened["flagged"], screened["flagged_dropped"]) == (
+        849,
+        [],
+        849,
+    )
+
+
+def test_a_negative_max_events_raises_a_tool_error(server: Any, ti201: str) -> None:
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    with pytest.raises(ToolError, match="max_events must be 0 or more"):
+        asyncio.run(server.call_tool("spc", {"archive": ti201, **TWO_DAYS, "max_events": -1}))
+
+
 def test_a_directory_reaches_the_client_with_its_path(server: Any, tmp_path: Path) -> None:
     from mcp.server.mcpserver.exceptions import ToolError
 

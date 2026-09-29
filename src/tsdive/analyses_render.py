@@ -9,7 +9,7 @@ else, so every renderer here stays plain text.
 from __future__ import annotations
 
 import textwrap
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -65,9 +65,9 @@ def render_lines(text: str) -> list[str]:
     return text.split("\n")
 
 
-# Enough flagged timestamps to see where the screen fired without pasting
-# a monitored window back at the caller.
-FLAGGED_SHOWN = 3
+# Enough runs, and mspc breach timestamps, to see where a check fired
+# without pasting a monitored window back at the caller.
+RUNS_SHOWN = 5
 HITS_SHOWN = 5
 
 # The rule set apply_rules emits, in report order. A rule with no hits
@@ -125,6 +125,67 @@ def _window_line(window: Window) -> str:
     return label_line("window", fmt_span(window.start, window.end))
 
 
+def flag_runs(
+    sequence: Sequence[pd.Timestamp], flagged: Iterable[pd.Timestamp]
+) -> list[tuple[pd.Timestamp, pd.Timestamp, int]]:
+    """``(start, end, n)`` of each stretch of consecutive ``sequence`` samples all in ``flagged``.
+
+    ``sequence`` is the window's GOOD samples in time order. A GOOD
+    sample without the flag ends a run. A stretch with no GOOD sample
+    (a gap, or rows of other quality) does not.
+    """
+    marked = set(flagged)
+    runs: list[tuple[pd.Timestamp, pd.Timestamp, int]] = []
+    start: pd.Timestamp | None = None
+    last: pd.Timestamp | None = None
+    n = 0
+    for stamp in sequence:
+        if stamp in marked:
+            if start is None:
+                start, n = stamp, 0
+            last, n = stamp, n + 1
+            continue
+        if start is not None and last is not None:
+            runs.append((start, last, n))
+        start = None
+    if start is not None and last is not None:
+        runs.append((start, last, n))
+    return runs
+
+
+def _good_stamps(window: Window) -> list[pd.Timestamp]:
+    """The timestamps of the window's GOOD samples, in time order."""
+    frame = window.frame
+    return sorted(pd.Timestamp(t) for t in frame.loc[frame["valid"].astype(bool), "timestamp"])
+
+
+def _run_lines(
+    runs: Sequence[tuple[pd.Timestamp, pd.Timestamp, int]],
+    details: Mapping[pd.Timestamp, str] | None = None,
+) -> list[str]:
+    """Up to RUNS_SHOWN runs, one line each, and a count of the rest.
+
+    A run of one sample prints its timestamp, followed by its entry in
+    ``details`` when there is one. A longer run prints its span and count.
+    """
+    details = details or {}
+    lines = [
+        SEP.join(filter(None, (fmt_ts(start), details.get(start))))
+        if n == 1
+        else f"{fmt_span(start, end)}{SEP}{plural(n, 'sample')}"
+        for start, end, n in runs[:RUNS_SHOWN]
+    ]
+    hidden = len(runs) - RUNS_SHOWN
+    more = [f"(+{plural(hidden, 'more run')})"] if hidden > 0 else []
+    return indent([*lines, *more])
+
+
+def _runs_json(
+    runs: Sequence[tuple[pd.Timestamp, pd.Timestamp, int]], **key: str
+) -> list[dict[str, object]]:
+    return [{**key, "start": start, "end": end, "n": n} for start, end, n in runs]
+
+
 def _baseline_json(window: Window) -> dict[str, object]:
     return {
         **window_json(window),
@@ -142,6 +203,11 @@ def _flagged_share(a: ScreenAnalysis) -> str:
     if not result.n_screened:
         return "n/a"
     return f"{100.0 * result.n_flagged / result.n_screened:.1f}%"
+
+
+def screen_runs(a: ScreenAnalysis) -> list[tuple[pd.Timestamp, pd.Timestamp, int]]:
+    """The runs of flagged samples over the window's GOOD samples."""
+    return flag_runs(_good_stamps(a.monitor), a.result.flagged_timestamps)
 
 
 def screen_lines(a: ScreenAnalysis) -> list[str]:
@@ -189,12 +255,8 @@ def screen_lines(a: ScreenAnalysis) -> list[str]:
         )
         lines.append(label_line("caveat", base.caveat))
     if result.flagged_timestamps:
-        # Regime screening walks regime by regime, so its timestamps come
-        # back grouped rather than in time order; "first" has to mean first.
-        stamps = sorted(result.flagged_timestamps)
         lines.extend(rule("Flagged"))
-        lines.extend(indent(fmt_ts(t) for t in stamps[:FLAGGED_SHOWN]))
-        lines.extend(more_line(len(stamps) - FLAGGED_SHOWN))
+        lines.extend(_run_lines(screen_runs(a)))
     return lines
 
 
@@ -244,6 +306,7 @@ def screen_json(a: ScreenAnalysis) -> dict[str, object]:
         "n_screened": result.n_screened,
         "n_flagged": result.n_flagged,
         "flagged": sorted(result.flagged_timestamps),
+        "runs": _runs_json(screen_runs(a)),
     }
 
 
@@ -339,6 +402,15 @@ def segment_json(a: SegmentAnalysis) -> dict[str, object]:
 # --- spc --------------------------------------------------------------------
 
 
+def spc_runs(a: SpcAnalysis) -> dict[str, list[tuple[pd.Timestamp, pd.Timestamp, int]]]:
+    """The runs of each rule's hits over the window's GOOD samples, keyed by rule."""
+    stamps = _good_stamps(a.monitor)
+    return {
+        name: flag_runs(stamps, (h.timestamp for h in a.hits if h.rule == name))
+        for name in SPC_RULES
+    }
+
+
 def spc_lines(a: SpcAnalysis) -> list[str]:
     """The ``tsdive spc`` report for one analysis."""
     limits = a.limits
@@ -355,13 +427,10 @@ def spc_lines(a: SpcAnalysis) -> list[str]:
         ),
         label_line("basis", limits.basis),
     ]
-    for name in SPC_RULES:
+    for name, runs in spc_runs(a).items():
         fired = [h for h in a.hits if h.rule == name]
         lines.extend(rule(name, str(len(fired))))
-        lines.extend(
-            indent(f"{fmt_ts(h.timestamp)}{SEP}{h.detail}" for h in fired[:HITS_SHOWN])
-        )
-        lines.extend(more_line(len(fired) - HITS_SHOWN))
+        lines.extend(_run_lines(runs, {h.timestamp: h.detail for h in fired}))
     return lines
 
 
@@ -391,6 +460,11 @@ def spc_json(a: SpcAnalysis) -> dict[str, object]:
                 ],
             }
             for name in SPC_RULES
+        ],
+        "runs": [
+            row
+            for name, runs in spc_runs(a).items()
+            for row in _runs_json(runs, rule=name)
         ],
     }
 
