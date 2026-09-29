@@ -79,7 +79,7 @@ from tsdive.store.tagstore import (
 from tsdive.switchback.archive import SwitchbackAnalysis
 from tsdive.switchback.plan import SwitchbackPlan
 from tsdive.switchback.render import plan_lines
-from tsdive.ui.jsonout import refusal_json, to_jsonable
+from tsdive.ui.jsonout import error_text, refusal_json, to_jsonable
 from tsdive.ui.term import colour_enabled, colourise, red
 
 MAIN_DOC = """tsdive - data-quality profiling and monitoring for process time series
@@ -284,7 +284,7 @@ def _report_and_exit(
     Messages raised inside name CLI flags (``--rate-s``), not keywords.
 
     Returns ``OK``, ``REFUSED`` for a ``TSDiveError``, and ``USAGE`` for a
-    malformed argument, a missing file or an existing output.
+    malformed argument, an existing output or a path the OS cannot read.
     """
     try:
         with cli_names():
@@ -295,8 +295,8 @@ def _report_and_exit(
         return OK
     except TSDiveError as e:
         return _refused(e, args)
-    except (ValueError, FileNotFoundError, FileExistsError) as e:
-        _print_refusal("error:", str(e), args)
+    except (ValueError, OSError) as e:
+        _print_refusal("error:", error_text(e), args)
         return USAGE
 
 
@@ -1058,7 +1058,7 @@ def cmd_demo(argv: Sequence[str] | None = None) -> int:
     try:
         paths = write_demo_data(args.directory)
     except (OSError, ValueError) as e:
-        _print_refusal("error:", str(e), args)
+        _print_refusal("error:", error_text(e), args)
         return USAGE
     lines = []
     for i, path in enumerate(paths):
@@ -1197,7 +1197,7 @@ def _ingest(args: argparse.Namespace) -> int:
     except TSDiveError as e:
         return _refused(e, args)
     except (ValueError, OSError) as e:
-        _print_refusal("error:", str(e), args)
+        _print_refusal("error:", error_text(e), args)
         return USAGE
 
 
@@ -1254,7 +1254,7 @@ def _report_html(args: argparse.Namespace) -> int:
             except TSDiveError as e:
                 refusals.append(f"[{type(e).__name__}] {e}")
             except OSError as e:
-                refusals.append(f"[FileNotFoundError] {e}")
+                refusals.append(f"[{type(e).__name__}] {error_text(e)}")
         ledger = EvidenceLedger(
             title=f"snapshot {window_label}", profiles=profiles, refusals=refusals
         )
@@ -1284,8 +1284,8 @@ def _report_html(args: argparse.Namespace) -> int:
         return OK
     except TSDiveError as e:
         return _refused(e, args)
-    except (ValueError, FileNotFoundError) as e:
-        _print_refusal("error:", str(e), args)
+    except (ValueError, OSError) as e:
+        _print_refusal("error:", error_text(e), args)
         return USAGE
 
 
@@ -1381,7 +1381,7 @@ def _run(args: argparse.Namespace) -> int:
     except (ValueError, OSError) as e:
         # Nothing is written for a plan that never started: an unknown
         # step or an unmatched glob leaves no half-run output directory.
-        _print_refusal("error:", str(e), args)
+        _print_refusal("error:", error_text(e), args)
         return USAGE
     profiles, findings, refusals, figures = execute(plan)
     out_dir = Path(args.out) if args.out else plan_path.parent / "tsdive-run"

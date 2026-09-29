@@ -48,7 +48,7 @@ from tsdive.cli import (
     json_switchback_analyze,
 )
 from tsdive.errors import TSDiveError
-from tsdive.ui.jsonout import refusal_json, to_jsonable
+from tsdive.ui.jsonout import error_text, refusal_json, to_jsonable
 
 RELEASE_WHEEL = (
     "https://github.com/NorthernLightx/tsdive/releases/download/"
@@ -382,8 +382,8 @@ def _carrying_the_message(
     def call(*args: Any, **kwargs: Any) -> dict[str, Any]:
         try:
             return fn(*args, **kwargs)
-        except (ValueError, FileNotFoundError) as e:
-            raise tool_error(str(e)) from e
+        except (ValueError, OSError) as e:
+            raise tool_error(error_text(e)) from e
 
     return call
 

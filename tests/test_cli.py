@@ -315,6 +315,18 @@ def test_profile_rejects_unknown_tz(tmp_path, capsys):
     assert "Traceback" not in captured.err
 
 
+def test_profile_of_a_directory_exits_2_with_one_line_naming_it(tmp_path, capsys):
+    folder = tmp_path / "exports"
+    folder.mkdir()
+    rc = cmd_profile([str(folder)])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert captured.err.startswith("error: ")
+    assert captured.err.strip().count("\n") == 0
+    assert "exports" in captured.err
+
+
 def test_profile_accepts_known_tz(tmp_path, capsys):
     path, _ = _demo_archive(tmp_path)
     rc = cmd_profile([str(path), "--window", WINDOW, "--tz", "Europe/London"])

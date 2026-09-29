@@ -239,6 +239,16 @@ def test_a_missing_archive_reaches_the_client_with_its_path(server: Any) -> None
         asyncio.run(server.call_tool("profile", {"archive": "absent.parquet"}))
 
 
+def test_a_directory_reaches_the_client_with_its_path(server: Any, tmp_path: Path) -> None:
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    folder = tmp_path / "exports"
+    folder.mkdir()
+    with pytest.raises(ToolError, match="exports") as info:
+        asyncio.run(server.call_tool("profile", {"archive": str(folder)}))
+    assert "\n" not in str(info.value)
+
+
 def test_build_server_without_the_extra_names_the_install(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

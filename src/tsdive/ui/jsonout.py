@@ -67,6 +67,20 @@ def to_jsonable(obj: Any) -> Any:
     return str(obj)
 
 
+def error_text(error: BaseException) -> str:
+    """The message of an error; an OSError comes out as one line naming its file.
+
+    Python's own OSError keeps the path in ``filename``. pyarrow writes it
+    into a message that can end in a line break.
+    """
+    if not isinstance(error, OSError):
+        return str(error)
+    text = " ".join(line.strip() for line in str(error).splitlines() if line.strip())
+    if error.filename is not None and str(error.filename) not in text:
+        text = f"{error.filename}: {text}"
+    return text
+
+
 def refusal_json(error: BaseException) -> dict[str, str]:
     """The object a typed refusal becomes on a JSON surface.
 
