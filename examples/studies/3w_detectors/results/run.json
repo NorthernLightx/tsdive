@@ -63,10 +63,12 @@
         0.062695
       ],
       "fold": 0,
+      "largest_test_spe": 16.9549,
       "n_components": 5,
       "n_test_windows_refused": 1634,
       "n_train_windows_aligned": 2995,
-      "n_train_windows_refused": 2309
+      "n_train_windows_refused": 2309,
+      "spe_refused_all_components_kept": false
     },
     {
       "explained_variance": [
@@ -77,10 +79,12 @@
         0.040626
       ],
       "fold": 1,
+      "largest_test_spe": 11.5561,
       "n_components": 5,
       "n_test_windows_refused": 612,
       "n_train_windows_aligned": 2128,
-      "n_train_windows_refused": 3331
+      "n_train_windows_refused": 3331,
+      "spe_refused_all_components_kept": false
     },
     {
       "explained_variance": [
@@ -91,10 +95,12 @@
         0.046081
       ],
       "fold": 2,
+      "largest_test_spe": 3452.18,
       "n_components": 5,
       "n_test_windows_refused": 883,
       "n_train_windows_aligned": 2329,
-      "n_train_windows_refused": 3060
+      "n_train_windows_refused": 3060,
+      "spe_refused_all_components_kept": false
     },
     {
       "explained_variance": [
@@ -105,10 +111,12 @@
         0.098468
       ],
       "fold": 3,
+      "largest_test_spe": 2.91028,
       "n_components": 5,
       "n_test_windows_refused": 375,
       "n_train_windows_aligned": 2304,
-      "n_train_windows_refused": 3568
+      "n_train_windows_refused": 3568,
+      "spe_refused_all_components_kept": false
     },
     {
       "explained_variance": [
@@ -119,63 +127,99 @@
         0.058382
       ],
       "fold": 4,
+      "largest_test_spe": 4.77655,
       "n_components": 5,
       "n_test_windows_refused": 439,
       "n_train_windows_aligned": 2440,
-      "n_train_windows_refused": 3504
+      "n_train_windows_refused": 3504,
+      "spe_refused_all_components_kept": false
     }
   ],
   "mspc_standardised": [
     {
       "explained_variance": [
-        0.986317
+        0.234756,
+        0.189905,
+        0.166706,
+        0.166625,
+        0.130794,
+        0.111214
       ],
       "fold": 0,
-      "n_components": 1,
+      "largest_test_spe": 4.30907e-26,
+      "n_components": 6,
       "n_test_windows_refused": 855,
       "n_train_windows_aligned": 2017,
-      "n_train_windows_refused": 1578
+      "n_train_windows_refused": 1578,
+      "spe_refused_all_components_kept": true
     },
     {
       "explained_variance": [
-        0.988961
+        0.235101,
+        0.167226,
+        0.166721,
+        0.166087,
+        0.15461,
+        0.110255
       ],
       "fold": 1,
-      "n_components": 1,
+      "largest_test_spe": 1.8009e-28,
+      "n_components": 6,
       "n_test_windows_refused": 283,
       "n_train_windows_aligned": 1183,
-      "n_train_windows_refused": 2150
+      "n_train_windows_refused": 2150,
+      "spe_refused_all_components_kept": true
     },
     {
       "explained_variance": [
-        0.987784
+        0.222561,
+        0.167259,
+        0.166715,
+        0.166064,
+        0.154403,
+        0.122997
       ],
       "fold": 2,
-      "n_components": 1,
+      "largest_test_spe": 6.95319e-29,
+      "n_components": 6,
       "n_test_windows_refused": 612,
       "n_train_windows_aligned": 1545,
-      "n_train_windows_refused": 1821
+      "n_train_windows_refused": 1821,
+      "spe_refused_all_components_kept": true
     },
     {
       "explained_variance": [
-        0.712508,
-        0.28592
+        0.252284,
+        0.220792,
+        0.166388,
+        0.139331,
+        0.112452,
+        0.108753
       ],
       "fold": 3,
-      "n_components": 2,
+      "largest_test_spe": 2.84111e-21,
+      "n_components": 6,
       "n_test_windows_refused": 301,
       "n_train_windows_aligned": 1686,
-      "n_train_windows_refused": 2132
+      "n_train_windows_refused": 2132,
+      "spe_refused_all_components_kept": true
     },
     {
       "explained_variance": [
-        0.990116
+        0.173821,
+        0.167527,
+        0.166845,
+        0.166714,
+        0.165026,
+        0.160067
       ],
       "fold": 4,
-      "n_components": 1,
+      "largest_test_spe": 7.10362e-28,
+      "n_components": 6,
       "n_test_windows_refused": 382,
       "n_train_windows_aligned": 1817,
-      "n_train_windows_refused": 2051
+      "n_train_windows_refused": 2051,
+      "spe_refused_all_components_kept": true
     }
   ],
   "population": {
@@ -283,8 +327,8 @@
       }
     },
     "code": {
-      "git_head": "f5ab869af1bce1554fccbfa5cb035774cf75f243",
-      "tagledger_version": "0.1.0"
+      "git_head": "11d27513bcf8be8ca17028c2af3cb253a7687a6b",
+      "tsdive_version": "0.7.0"
     },
     "common_variables": [
       "P-ANULAR",
@@ -572,7 +616,7 @@
         "stratum_col": "folder_label"
       }
     },
-    "wall_seconds": 217.7,
+    "wall_seconds": 281.1,
     "windows_manifest": {
       "archives_root": "data\\3w_archives",
       "common_variables": [

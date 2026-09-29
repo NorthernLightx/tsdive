@@ -83,7 +83,7 @@ ALIGNED_LABELS = {
 }
 
 
-def fmt(value, nd: int = 3, dash: str = "—") -> str:
+def fmt(value, nd: int = 3, dash: str = "refused") -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return dash
     return f"{value:.{nd}f}"
@@ -417,7 +417,57 @@ def plot_detection_delay(summary: pd.DataFrame, out: Path) -> None:
 # ------------------------------------------------------------ aligned section
 
 
-def pct(value, dash: str = "—") -> str:
+NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+SPE_ALL_KEPT = (
+    "the PCA keeps all six components in every fold, so SPE is 0 up to rounding and "
+    "every window is refused"
+)
+# The MSPC rows this study published before tsdive 0.7.0, when `fit_pca` centred
+# each column and did not scale it: tagledger 0.1.0 @ edf2b4ad for the
+# onset-aligned design, @ f5ab869a for per-instance-standardised. The component
+# counts and shares are those runs' `explained_variance` in run.json.
+ALIGNED_MSPC_BEFORE = {
+    "t2": "AUC 0.541, paired hit 0.643/0.630, FAR 57.1%, detect post1 77.8%",
+    "spe": "AUC 0.658, paired hit 0.893/0.852, FAR 96.4%, detect post1 100.0%",
+    "components": "2 or 3 components per fold, the first carrying 0.477 to 0.769 of "
+    "the variance",
+}
+STANDARDISED_MSPC_BEFORE = {
+    "t2": "AUC 0.752 (0.326-1.000)",
+    "spe": "AUC 0.701 (0.441-1.000)",
+    "components": "one component on four of five folds, carrying 0.986 to 0.990 of the "
+    "variance",
+}
+
+
+def all_components_kept(folds: list[dict]) -> bool:
+    """True when every fold's PCA kept as many components as there are columns."""
+    return bool(folds) and all(f.get("spe_refused_all_components_kept") for f in folds)
+
+
+def mspc_note(add, folds: list[dict], before: dict[str, str], now: str) -> None:
+    """The paragraph on what `fit_pca`'s column scaling did to this design's MSPC."""
+    if not all_components_kept(folds):
+        return
+    largest = max(float(f["largest_test_spe"]) for f in folds)
+    first = [float(f["explained_variance"][0]) for f in folds]
+    add(
+        "**MSPC moved with tsdive 0.7.0, and SPE no longer scores.** Since 0.7.0 "
+        "`fit_pca` divides each column by its training standard deviation before the "
+        f"SVD. Before, the fit kept {before['components']}, so the columns with the "
+        "largest spread set the model. Scaled, the first component carries "
+        f"{min(first):.3f} to {max(first):.3f} of the variance, close to the 1/6 of six "
+        "uncorrelated columns, and every fold keeps all six components to reach 0.95. "
+        "No residual subspace is left. The largest test-window SPE over the "
+        f"{len(folds)} folds is {largest:.1e}, so the study refuses SPE instead of "
+        "ranking rounding error. T2 becomes a squared distance over all six scaled "
+        f"columns. Before 0.7.0 this design reported MSPC Hotelling T2 at {before['t2']} "
+        f"and MSPC SPE at {before['spe']}. {now}"
+    )
+    add("")
+
+
+def pct(value, dash: str = "refused") -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return dash
     return f"{float(value):.1%}"
@@ -650,6 +700,9 @@ def aligned_section(add, res: Path, out_dir: Path, clock_row: pd.Series) -> None
             continue
         delay = r["median_delay_windows"]
         far = r["false_alarm_rate_pre"]
+        if int(r["n_instances_with_threshold"]) == 0:
+            add(f"| {ALIGNED_LABELS[tool]} | 0 |" + " refused |" * 8)
+            continue
         over = (
             "n/a"
             if pd.isna(far)
@@ -665,8 +718,14 @@ def aligned_section(add, res: Path, out_dir: Path, clock_row: pd.Series) -> None
         )
     add("")
     spc_far = row("spc")["false_alarm_rate_pre"]
+    n_firing = sum(
+        1
+        for t in ALIGNED_TOOLS
+        if not t.startswith("clock") and not pd.isna(row(t)["false_alarm_rate_pre"])
+    )
     add(
-        f"SPC has the lowest FAR of the five detectors at {pct(spc_far)}, and that is "
+        f"Of the {NUMBER_WORDS[n_firing]} detectors that score, SPC has the lowest FAR, "
+        f"{pct(spc_far)}, and that is "
         f"still {100.0 * (spc_far - far_floor):.1f} points above the "
         f"{pct(far_floor)} floor: on {pct(spc_far)} of instances a window taken "
         "before the fault beat the worst of that instance's own three quiet hours. A "
@@ -678,6 +737,8 @@ def aligned_section(add, res: Path, out_dir: Path, clock_row: pd.Series) -> None
     for tool in ALIGNED_TOOLS:
         r = row(tool)
         n = int(r["n_instances_with_threshold"])
+        if n == 0:
+            continue
         for label, column in (
             ("pre", "n_pre_at_threshold"),
             ("post0", "n_post0_at_threshold"),
@@ -696,6 +757,11 @@ def aligned_section(add, res: Path, out_dir: Path, clock_row: pd.Series) -> None
             + ". The rest of the rates are over the instance count in the second column."
         )
         add("")
+    scoring = [
+        t
+        for t in ("mspc_t2", "mspc_spe", "iforest")
+        if int(row(t)["n_instances_with_threshold"]) > 0
+    ]
     add(
         "The three per-instance-standardised tools fit one model per fold under 5-fold "
         f"group holdout by well over the {onsets['n_evaluable_wells']} evaluable wells, "
@@ -705,19 +771,31 @@ def aligned_section(add, res: Path, out_dir: Path, clock_row: pd.Series) -> None
         + ", ".join(
             f"{ALIGNED_LABELS[t].split(',')[0]} {fmt(row(t)['auc_fold_min'])}-"
             f"{fmt(row(t)['auc_fold_max'])}"
-            for t in ("mspc_t2", "mspc_spe", "iforest")
+            for t in scoring
         )
         + ". The own-history tools fit nothing across instances and have no folds."
     )
     add("")
+    t2 = row("mspc_t2")
+    mspc_note(
+        add,
+        run["mspc"],
+        ALIGNED_MSPC_BEFORE,
+        f"T2 now ranks at AUC {fmt(t2['roc_auc'])} with paired hit "
+        f"{fmt(t2['paired_hit_post0'])}/{fmt(t2['paired_hit_post1'])}, and its false-alarm "
+        f"rate before onset rises from 57.1% to {pct(t2['false_alarm_rate_pre'])}: T2 "
+        "no longer holds the lowest FAR of the standardised tools, and its alarm fires "
+        "on almost every pre window, as IsolationForest's does.",
+    )
     std_far = ", ".join(
         f"{ALIGNED_LABELS[t].split(',')[0].replace('**', '')} "
         f"{pct(row(t)['false_alarm_rate_pre'])}"
-        for t in ("mspc_t2", "mspc_spe", "iforest")
+        for t in scoring
     )
     add(
-        f"**Those three FARs ({std_far}) are a design limit, not a measurement of the "
-        "tools.** `_instance_zscore` takes each column's centre and scale from the "
+        f"**Those {NUMBER_WORDS[len(scoring)]} FARs ({std_far}) are a design limit, not "
+        "a measurement of the tools.** `_instance_zscore` takes each column's centre "
+        "and scale from the "
         f"same {k_base} baseline windows the threshold is then read off. After that "
         "standardisation those windows are, by construction, the most ordinary rows "
         "the model will ever see for that instance - centred at zero with unit spread "
@@ -762,12 +840,17 @@ def aligned_section(add, res: Path, out_dir: Path, clock_row: pd.Series) -> None
         "adds coverage rather than speed."
     )
     add("")
+    others = " and ".join(
+        f"{ALIGNED_LABELS[t].split(',')[0]} on {pct(row(t)['false_alarm_rate_pre'])}"
+        for t in scoring
+        if t != "iforest"
+    )
     add(
-        "**The three standardised tools have no threshold at all.** IsolationForest "
+        "**The standardised tools that score have no threshold at all.** IsolationForest "
         f"fires on {pct(row('iforest')['false_alarm_rate_pre'])} of pre windows - "
-        f"exactly what the clock control does - and MSPC SPE on "
-        f"{pct(row('mspc_spe')['false_alarm_rate_pre'])}. "
-        "The mechanism is in the design: each column is z-scored against "
+        "exactly what the clock control does"
+        + (f" - and {others}. " if others else ". ")
+        + "The mechanism is in the design: each column is z-scored against "
         f"that instance's own {k} baseline windows, so the baseline rows are the very "
         "rows the scale was fitted to and land in a band nothing else can enter. Across "
         "all 48 instances IsolationForest scores every baseline window between -0.190 "
@@ -825,7 +908,9 @@ def aligned_section(add, res: Path, out_dir: Path, clock_row: pd.Series) -> None
     why = {
         "mspc_t2": "the instance has a window missing one of the six common variables, "
         "so no matrix can be aligned without a hole in it (`MspcAlignmentError`)",
-        "mspc_spe": "same alignment refusal as T2",
+        "mspc_spe": (
+            SPE_ALL_KEPT if all_components_kept(run["mspc"]) else "same alignment refusal as T2"
+        ),
     }
     for tool in ALIGNED_TOOLS:
         r = row(tool)
@@ -1172,6 +1257,15 @@ def main(argv: list[str] | None = None) -> int:
         "about the detectors changed between those two columns; only the question did."
     )
     add("")
+    t2_std = pick(summary, "mspc_t2", STANDARDISED, "all")
+    mspc_note(
+        add,
+        run["mspc_standardised"],
+        STANDARDISED_MSPC_BEFORE,
+        f"T2 now scores AUC {auc_cell(t2_std)}. The pooled-cross-well MSPC rows do not "
+        "move: this study divides those columns by their training standard deviation "
+        "before the fit, so the new scaling divides every column by one common factor.",
+    )
 
     add("### The clock control, and what is left of the gain")
     add("")
@@ -1277,7 +1371,12 @@ def main(argv: list[str] | None = None) -> int:
         ("mspc_spe", POOLED): "same alignment refusal as T2",
         ("mspc_t2", STANDARDISED): "the same alignment refusal, plus a sub-group cell "
         "whose (instance, variable) had no usable baseline statistics",
-        ("mspc_spe", STANDARDISED): "same as T2",
+        ("mspc_spe", STANDARDISED): (
+            "T2's refusals, and on every other window the PCA keeps all six components, "
+            "so SPE is 0 up to rounding"
+            if all_components_kept(run["mspc_standardised"])
+            else "same as T2"
+        ),
         ("regime", POOLED): "the window's modal `LABEL_state` never reached 20 training "
         "windows for that variable, or never appeared in training at all "
         "(`RegimeTooSparse`)",

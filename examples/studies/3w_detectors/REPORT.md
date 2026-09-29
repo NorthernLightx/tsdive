@@ -10,13 +10,13 @@ Correcting it exposed a second problem, which is what the third design is for. A
 |---|---|
 | dataset | `petrobras/3W` v2.0.0 (CC BY 4.0), real `WELL-*` instances |
 | manifest sha256 | `14bc1397d3eef8a671b9f6253d195c161d06157307e47e687829da2070f3b1c2` |
-| code | tagledger 0.1.0 @ `f5ab869a` |
+| code | tsdive 0.7.0 @ `11d27513` |
 | pooled split | 5-fold group holdout by well, seed 42, stratified on folder label |
 | own-history split | first 3 windows of each instance, label-blind; all 1,113 instances carrying a window, no group holdout |
 | windows | 6,992 of 3600 s over 1,119 instances |
 | positive rate | 51.4% (3,596 of 6,992) |
 | common variables | `P-ANULAR`, `P-JUS-CKGL`, `P-MON-CKP`, `P-PDG`, `P-TPT`, `T-TPT` |
-| runtime | 195 s to build windows on 14 processes, 218 s to score |
+| runtime | 195 s to build windows on 14 processes, 281 s to score |
 
 ```console
 uv run python examples/studies/3w_detectors/build_windows.py --jobs 14
@@ -97,10 +97,10 @@ ROC-AUC with the fold-to-fold range in brackets where there are folds. The own-h
 | 5 | SPC individuals rules | own-history | 4,495 | 0.754 | 0.818 | 0.858 | 35.7% |
 | 6 | MSPC Hotelling T2 | pooled-cross-well | 3,049 | 0.502 (0.337-0.735) | 0.522 | 0.593 | 53.4% |
 | 6 | MSPC Hotelling T2 | pooled-cross-well, own-history windows | 2,095 | 0.565 (0.323-0.786) | 0.630 | 0.701 | 55.2% |
-| 6 | MSPC Hotelling T2 | per-instance-standardised | 2,062 | 0.752 (0.326-1.000) | 0.782 | 0.774 | 70.2% |
+| 6 | MSPC Hotelling T2 | per-instance-standardised | 2,062 | 0.744 (0.542-1.000) | 0.724 | 0.764 | 70.2% |
 | 6 | MSPC SPE | pooled-cross-well | 3,049 | 0.617 (0.434-0.826) | 0.600 | 0.642 | 53.4% |
 | 6 | MSPC SPE | pooled-cross-well, own-history windows | 2,095 | 0.632 (0.502-0.857) | 0.702 | 0.754 | 55.2% |
-| 6 | MSPC SPE | per-instance-standardised | 2,062 | 0.701 (0.441-1.000) | 0.701 | 0.735 | 70.2% |
+| 6 | MSPC SPE | per-instance-standardised | 0 | refused | refused | refused | 100.0% |
 | 7 | IsolationForest | pooled-cross-well | 6,992 | 0.532 (0.442-0.777) | 0.536 | 0.563 | 0.0% |
 | 7 | IsolationForest | pooled-cross-well, own-history windows | 4,495 | 0.544 (0.388-0.709) | 0.679 | 0.734 | 0.0% |
 | 7 | IsolationForest | per-instance-standardised | 4,495 | 0.706 (0.663-0.813) | 0.774 | 0.793 | 36.0% |
@@ -108,7 +108,9 @@ ROC-AUC with the fold-to-fold range in brackets where there are folds. The own-h
 
 ![same population, two designs](out/02_same_population.png)
 
-**The design change is worth more than any of the detectors.** On the identical 4,495 windows the MAD screen goes from 0.602 to 0.867, the SPC rules from 0.609 to 0.754, IsolationForest from 0.544 to 0.706, T2 from 0.565 to 0.752. Nothing about the detectors changed between those two columns; only the question did.
+**The design change is worth more than any of the detectors.** On the identical 4,495 windows the MAD screen goes from 0.602 to 0.867, the SPC rules from 0.609 to 0.754, IsolationForest from 0.544 to 0.706, T2 from 0.565 to 0.744. Nothing about the detectors changed between those two columns; only the question did.
+
+**MSPC moved with tsdive 0.7.0, and SPE no longer scores.** Since 0.7.0 `fit_pca` divides each column by its training standard deviation before the SVD. Before, the fit kept one component on four of five folds, carrying 0.986 to 0.990 of the variance, so the columns with the largest spread set the model. Scaled, the first component carries 0.174 to 0.252 of the variance, close to the 1/6 of six uncorrelated columns, and every fold keeps all six components to reach 0.95. No residual subspace is left. The largest test-window SPE over the 5 folds is 2.8e-21, so the study refuses SPE instead of ranking rounding error. T2 becomes a squared distance over all six scaled columns. Before 0.7.0 this design reported MSPC Hotelling T2 at AUC 0.752 (0.326-1.000) and MSPC SPE at AUC 0.701 (0.441-1.000). T2 now scores AUC 0.744 (0.542-1.000). The pooled-cross-well MSPC rows do not move: this study divides those columns by their training standard deviation before the fit, so the new scaling divides every column by one common factor.
 
 ### The clock control, and what is left of the gain
 
@@ -121,8 +123,8 @@ The cut that breaks the clock is the transient one. Drop the transient-only wind
 | clock control | own-history | 0.900 | 0.658 | 0.700 |
 | MAD screen (regime-blind) | own-history | 0.867 | 0.693 | 0.677 |
 | SPC individuals rules | own-history | 0.754 | 0.854 | 0.923 |
-| MSPC Hotelling T2 | per-instance-standardised | 0.752 | 0.716 | 0.613 |
-| MSPC SPE | per-instance-standardised | 0.701 | 0.424 | 0.498 |
+| MSPC Hotelling T2 | per-instance-standardised | 0.744 | 0.632 | 0.600 |
+| MSPC SPE | per-instance-standardised | refused | refused | refused |
 | IsolationForest | per-instance-standardised | 0.706 | 0.734 | 0.730 |
 
 ### Per fold, and per event folder
@@ -134,9 +136,9 @@ The cut that breaks the clock is the transient one. Drop the transient-only wind
 | population screen (frozen tags) | pooled-cross-well | 0.498 | 0.506 | 0.493 | 0.521 | 0.524 |
 | SPC individuals rules | pooled-cross-well | 0.482 | 0.319 | 0.797 | 0.723 | 0.405 |
 | MSPC Hotelling T2 | pooled-cross-well | 0.735 | 0.499 | 0.372 | 0.569 | 0.337 |
-| MSPC Hotelling T2 | per-instance-standardised | 1.000 | 0.916 | 0.608 | 0.908 | 0.326 |
+| MSPC Hotelling T2 | per-instance-standardised | 1.000 | 0.884 | 0.542 | 0.718 | 0.575 |
 | MSPC SPE | pooled-cross-well | 0.826 | 0.560 | 0.476 | 0.786 | 0.434 |
-| MSPC SPE | per-instance-standardised | 1.000 | 0.884 | 0.441 | 0.664 | 0.516 |
+| MSPC SPE | per-instance-standardised | refused | refused | refused | refused | refused |
 | IsolationForest | pooled-cross-well | 0.442 | 0.476 | 0.777 | 0.457 | 0.510 |
 | IsolationForest | per-instance-standardised | 0.668 | 0.813 | 0.710 | 0.677 | 0.663 |
 
@@ -218,19 +220,21 @@ That threshold rule carries a false-alarm floor. With 3 baseline windows, a pre 
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | MAD screen (regime-blind), own history | 48 | 0.799 | 0.812 | 0.917 | 62.5% | +37.5 pt | 81.2% | 91.7% | 0 window(s) |
 | SPC individuals rules, own history | 48 | 0.713 | 0.812 | 0.812 | 43.8% | +18.8 pt | 77.1% | 85.4% | 0 window(s) |
-| MSPC Hotelling T2, per-instance-standardised | 28 | 0.541 | 0.643 | 0.630 | 57.1% | +32.1 pt | 71.4% | 77.8% | 0 window(s) |
-| MSPC SPE, per-instance-standardised | 28 | 0.658 | 0.893 | 0.852 | 96.4% | +71.4 pt | 100.0% | 100.0% | 0 window(s) |
+| MSPC Hotelling T2, per-instance-standardised | 28 | 0.636 | 0.893 | 0.778 | 96.4% | +71.4 pt | 100.0% | 100.0% | 0 window(s) |
+| MSPC SPE, per-instance-standardised | 0 | refused | refused | refused | refused | refused | refused | refused | refused |
 | IsolationForest, per-instance-standardised | 48 | 0.793 | 0.875 | 0.875 | 100.0% | +75.0 pt | 100.0% | 100.0% | 0 window(s) |
 | **clock control** (position in the record) | 48 | 0.626 | 1.000 | 1.000 | 100.0% | +75.0 pt | 100.0% | 100.0% | 0 window(s) |
 | clock control, design offset removed | 48 | 0.500 | 0.000 | 0.000 | 0.0% | -25.0 pt | 0.0% | 0.0% | never fires |
 
-SPC has the lowest FAR of the five detectors at 43.8%, and that is still 18.8 points above the 25.0% floor: on 43.8% of instances a window taken before the fault beat the worst of that instance's own three quiet hours. A detector whose FAR sat *at* the floor would be firing exactly as often as chance; none of these do.
+Of the four detectors that score, SPC has the lowest FAR, 43.8%, and that is still 18.8 points above the 25.0% floor: on 43.8% of instances a window taken before the fault beat the worst of that instance's own three quiet hours. A detector whose FAR sat *at* the floor would be firing exactly as often as chance; none of these do.
 
-Each rate is over the instances that have both a threshold and that window, and those counts are not always the same number: MSPC Hotelling T2, per-instance-standardised has a threshold for 28 instances but a scored post1 window for 27; MSPC SPE, per-instance-standardised has a threshold for 28 instances but a scored post1 window for 27. The rest of the rates are over the instance count in the second column.
+Each rate is over the instances that have both a threshold and that window, and those counts are not always the same number: MSPC Hotelling T2, per-instance-standardised has a threshold for 28 instances but a scored post1 window for 27. The rest of the rates are over the instance count in the second column.
 
-The three per-instance-standardised tools fit one model per fold under 5-fold group holdout by well over the 21 evaluable wells, on the training instances' baseline and pre windows only - no post window reaches any fit. Their pooled AUC therefore ranks scores five separate models produced; the per-fold range is MSPC Hotelling T2 0.407-0.750, MSPC SPE 0.562-1.000, IsolationForest 0.745-0.949. The own-history tools fit nothing across instances and have no folds.
+The three per-instance-standardised tools fit one model per fold under 5-fold group holdout by well over the 21 evaluable wells, on the training instances' baseline and pre windows only - no post window reaches any fit. Their pooled AUC therefore ranks scores five separate models produced; the per-fold range is MSPC Hotelling T2 0.562-0.900, IsolationForest 0.745-0.949. The own-history tools fit nothing across instances and have no folds.
 
-**Those three FARs (MSPC Hotelling T2 57.1%, MSPC SPE 96.4%, IsolationForest 100.0%) are a design limit, not a measurement of the tools.** `_instance_zscore` takes each column's centre and scale from the same 3 baseline windows the threshold is then read off. After that standardisation those windows are, by construction, the most ordinary rows the model will ever see for that instance - centred at zero with unit spread - while every pre and post window is scored without having contributed to the scaling. Setting the alarm at the maximum of the three in-fit rows and testing out-of-fit rows against it is an unfair comparison in a fixed direction, and it pushes the FAR toward 100% independently of whether the tool sees anything. The correction is a leave-one-out threshold: standardise each baseline window against the other 2 and take the alarm from those held-out scores. It is not done here because `score_mspc` and `score_iforest` fit and score in a single call and do not hand back a fitted model, so every left-out window needs its own refit; that is a change to the scoring interface rather than a few lines in this report. Until it exists, read the standardised tools' AUC and paired hit rate - which never compare in-fit rows against out-of-fit ones - and treat their FAR as unmeasured.
+**MSPC moved with tsdive 0.7.0, and SPE no longer scores.** Since 0.7.0 `fit_pca` divides each column by its training standard deviation before the SVD. Before, the fit kept 2 or 3 components per fold, the first carrying 0.477 to 0.769 of the variance, so the columns with the largest spread set the model. Scaled, the first component carries 0.180 to 0.262 of the variance, close to the 1/6 of six uncorrelated columns, and every fold keeps all six components to reach 0.95. No residual subspace is left. The largest test-window SPE over the 5 folds is 8.7e-22, so the study refuses SPE instead of ranking rounding error. T2 becomes a squared distance over all six scaled columns. Before 0.7.0 this design reported MSPC Hotelling T2 at AUC 0.541, paired hit 0.643/0.630, FAR 57.1%, detect post1 77.8% and MSPC SPE at AUC 0.658, paired hit 0.893/0.852, FAR 96.4%, detect post1 100.0%. T2 now ranks at AUC 0.636 with paired hit 0.893/0.778, and its false-alarm rate before onset rises from 57.1% to 96.4%: T2 no longer holds the lowest FAR of the standardised tools, and its alarm fires on almost every pre window, as IsolationForest's does.
+
+**Those two FARs (MSPC Hotelling T2 96.4%, IsolationForest 100.0%) are a design limit, not a measurement of the tools.** `_instance_zscore` takes each column's centre and scale from the same 3 baseline windows the threshold is then read off. After that standardisation those windows are, by construction, the most ordinary rows the model will ever see for that instance - centred at zero with unit spread - while every pre and post window is scored without having contributed to the scaling. Setting the alarm at the maximum of the three in-fit rows and testing out-of-fit rows against it is an unfair comparison in a fixed direction, and it pushes the FAR toward 100% independently of whether the tool sees anything. The correction is a leave-one-out threshold: standardise each baseline window against the other 2 and take the alarm from those held-out scores. It is not done here because `score_mspc` and `score_iforest` fit and score in a single call and do not hand back a fitted model, so every left-out window needs its own refit; that is a change to the scoring interface rather than a few lines in this report. Until it exists, read the standardised tools' AUC and paired hit rate - which never compare in-fit rows against out-of-fit ones - and treat their FAR as unmeasured.
 
 ![paired score deltas](out/05_paired_deltas.png)
 
@@ -242,7 +246,7 @@ The three per-instance-standardised tools fit one model per fold under 5-fold gr
 
 This is the deployable question and it is where the result is thin. With the alarm set at the worst of the 3 baseline hours, the SPC rules fire on 43.8% of the hours *before* onset while catching 85.4% of instances by the second hour after it; the MAD screen catches more (91.7%) and false-alarms more (62.5%). Neither is a usable alarm rate. Every detected instance is detected in the first hour: the median delay is 0 windows for every tool that detects anything, so the second post window adds coverage rather than speed.
 
-**The three standardised tools have no threshold at all.** IsolationForest fires on 100.0% of pre windows - exactly what the clock control does - and MSPC SPE on 96.4%. The mechanism is in the design: each column is z-scored against that instance's own 3 baseline windows, so the baseline rows are the very rows the scale was fitted to and land in a band nothing else can enter. Across all 48 instances IsolationForest scores every baseline window between -0.190 and -0.143 and every pre window above its own instance's baseline maximum. A threshold taken from 3 in-sample points is not a threshold, and the false-alarm column is what says so.
+**The standardised tools that score have no threshold at all.** IsolationForest fires on 100.0% of pre windows - exactly what the clock control does - and MSPC Hotelling T2 on 96.4%. The mechanism is in the design: each column is z-scored against that instance's own 3 baseline windows, so the baseline rows are the very rows the scale was fitted to and land in a band nothing else can enter. Across all 48 instances IsolationForest scores every baseline window between -0.190 and -0.143 and every pre window above its own instance's baseline maximum. A threshold taken from 3 in-sample points is not a threshold, and the false-alarm column is what says so.
 
 ### Per event folder, and folder 9
 
@@ -250,8 +254,8 @@ This is the deployable question and it is where the result is thin. With the ala
 |---|---:|---:|---:|---:|---:|---:|
 | MAD screen (regime-blind), own history | 0.778 | 1.000 | 0.619 | 0.969 | 0.888 | 0.790 |
 | SPC individuals rules, own history | 0.944 | 1.000 | 0.627 | 0.875 | 0.694 | 0.720 |
-| MSPC Hotelling T2, per-instance-standardised | 1.000 | refused | 0.505 | 0.500 | 0.569 | 0.536 |
-| MSPC SPE, per-instance-standardised | 0.750 | refused | 0.586 | 1.000 | 0.681 | 0.654 |
+| MSPC Hotelling T2, per-instance-standardised | 0.750 | refused | 0.560 | 0.875 | 0.667 | 0.625 |
+| MSPC SPE, per-instance-standardised | refused | refused | refused | refused | refused | refused |
 | IsolationForest, per-instance-standardised | 1.000 | 0.750 | 0.707 | 0.918 | 0.867 | 0.800 |
 | **clock control** (position in the record) | 0.806 | 1.000 | 0.662 | 0.617 | 1.000 | 0.620 |
 | clock control, design offset removed | 0.500 | 0.500 | 0.500 | 0.500 | 0.500 | 0.500 |
@@ -267,7 +271,7 @@ Folder 9's 7 evaluable instances are the ones that *do* carry a fault row, so th
 | MAD screen (regime-blind), own history | 48 | 0 | nothing left to refuse |
 | SPC individuals rules, own history | 48 | 0 | nothing left to refuse |
 | MSPC Hotelling T2, per-instance-standardised | 28 | 20 | the instance has a window missing one of the six common variables, so no matrix can be aligned without a hole in it (`MspcAlignmentError`) |
-| MSPC SPE, per-instance-standardised | 28 | 20 | same alignment refusal as T2 |
+| MSPC SPE, per-instance-standardised | 0 | 48 | the PCA keeps all six components in every fold, so SPE is 0 up to rounding and every window is refused |
 | IsolationForest, per-instance-standardised | 48 | 0 | nothing left to refuse |
 | **clock control** (position in the record) | 48 | 0 | nothing left to refuse |
 | clock control, design offset removed | 48 | 0 | nothing left to refuse |
@@ -295,7 +299,7 @@ Two kinds, counted separately. A refusal *imposed by the design* is a baseline w
 | MSPC Hotelling T2 | pooled-cross-well | 53.4% | 0.0% | the window is missing one of the six common variables, so no matrix can be aligned without a hole in it (`MspcAlignmentError`) |
 | MSPC Hotelling T2 | per-instance-standardised | 70.2% | 35.7% | the same alignment refusal, plus a sub-group cell whose (instance, variable) had no usable baseline statistics |
 | MSPC SPE | pooled-cross-well | 53.4% | 0.0% | same alignment refusal as T2 |
-| MSPC SPE | per-instance-standardised | 70.2% | 35.7% | same as T2 |
+| MSPC SPE | per-instance-standardised | 100.0% | 35.7% | T2's refusals, and on every other window the PCA keeps all six components, so SPE is 0 up to rounding |
 | IsolationForest | pooled-cross-well | 0.0% | 0.0% | nothing left to refuse |
 | IsolationForest | per-instance-standardised | 36.0% | 35.7% | nothing left to refuse |
 
@@ -388,8 +392,8 @@ Excluding folder 9, excluding transient-only windows, and excluding instances wh
 | clock control | 0.900 | 0.934 | 0.658 | 0.700 | 0.908 |
 | MAD screen (regime-blind) | 0.867 | 0.883 | 0.693 | 0.677 | 0.874 |
 | SPC individuals rules | 0.754 | 0.829 | 0.854 | 0.923 | 0.754 |
-| MSPC Hotelling T2 | 0.752 | 0.771 | 0.716 | 0.613 | 0.756 |
-| MSPC SPE | 0.701 | 0.769 | 0.424 | 0.498 | 0.707 |
+| MSPC Hotelling T2 | 0.744 | 0.783 | 0.632 | 0.600 | 0.750 |
+| MSPC SPE | refused | refused | refused | refused | refused |
 | IsolationForest | 0.706 | 0.698 | 0.734 | 0.730 | 0.708 |
 
 ## What the real data broke

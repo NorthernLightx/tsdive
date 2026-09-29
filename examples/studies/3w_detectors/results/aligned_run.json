@@ -29,66 +29,93 @@
   "mspc": [
     {
       "explained_variance": [
-        0.654556,
-        0.295087,
-        0.050352
+        0.251333,
+        0.176268,
+        0.171544,
+        0.166962,
+        0.15636,
+        0.077532
       ],
       "fold": 0,
-      "n_components": 3,
+      "largest_test_spe": 4.76674e-26,
+      "n_components": 6,
       "n_fit_windows": 148,
       "n_test_windows_refused": 12,
       "n_train_windows_aligned": 76,
-      "n_train_windows_refused": 72
+      "n_train_windows_refused": 72,
+      "spe_refused_all_components_kept": true
     },
     {
       "explained_variance": [
-        0.768654,
-        0.228747
+        0.247585,
+        0.177621,
+        0.1694,
+        0.166537,
+        0.163459,
+        0.075399
       ],
       "fold": 1,
-      "n_components": 2,
+      "largest_test_spe": 2.83249e-25,
+      "n_components": 6,
       "n_fit_windows": 148,
       "n_test_windows_refused": 19,
       "n_train_windows_aligned": 80,
-      "n_train_windows_refused": 68
+      "n_train_windows_refused": 68,
+      "spe_refused_all_components_kept": true
     },
     {
       "explained_variance": [
-        0.524174,
-        0.419236,
-        0.056582
+        0.262198,
+        0.178055,
+        0.171716,
+        0.166995,
+        0.155594,
+        0.065442
       ],
       "fold": 2,
-      "n_components": 3,
+      "largest_test_spe": 8.66991e-22,
+      "n_components": 6,
       "n_fit_windows": 148,
       "n_test_windows_refused": 36,
       "n_train_windows_aligned": 92,
-      "n_train_windows_refused": 56
+      "n_train_windows_refused": 56,
+      "spe_refused_all_components_kept": true
     },
     {
       "explained_variance": [
-        0.601444,
-        0.353851
+        0.244216,
+        0.172011,
+        0.170471,
+        0.166893,
+        0.162195,
+        0.084214
       ],
       "fold": 3,
-      "n_components": 2,
+      "largest_test_spe": 1.32912e-29,
+      "n_components": 6,
       "n_fit_windows": 160,
       "n_test_windows_refused": 36,
       "n_train_windows_aligned": 104,
-      "n_train_windows_refused": 56
+      "n_train_windows_refused": 56,
+      "spe_refused_all_components_kept": true
     },
     {
       "explained_variance": [
-        0.477148,
-        0.448883,
-        0.073964
+        0.180238,
+        0.175305,
+        0.167489,
+        0.165755,
+        0.159592,
+        0.15162
       ],
       "fold": 4,
-      "n_components": 3,
+      "largest_test_spe": 7.75671e-24,
+      "n_components": 6,
       "n_fit_windows": 164,
       "n_test_windows_refused": 18,
       "n_train_windows_aligned": 96,
-      "n_train_windows_refused": 68
+      "n_train_windows_refused": 68,
+      "spe_refused_all_components_kept": true
     }
   ],
   "provenance": {
@@ -195,8 +222,8 @@
       }
     },
     "code": {
-      "git_head": "edf2b4ad0debb4df2cfe6109d9c1da1c599211c6",
-      "tagledger_version": "0.1.0"
+      "git_head": "11d27513bcf8be8ca17028c2af3cb253a7687a6b",
+      "tsdive_version": "0.7.0"
     },
     "dataset_manifest_sha256": "14bc1397d3eef8a671b9f6253d195c161d06157307e47e687829da2070f3b1c2",
     "design": "onset-aligned",
@@ -376,6 +403,6 @@
       }
     },
     "threshold_rule": "each instance's own alarm limit is the largest score the tool gave that instance's baseline windows; a test window fires when it scores strictly above it",
-    "wall_seconds": 15.0
+    "wall_seconds": 7.8
   }
 }

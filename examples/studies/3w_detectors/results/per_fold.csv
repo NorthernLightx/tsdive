@@ -354,71 +354,71 @@ mspc_t2,per-instance-standardised,well,0,no_folder9,1593,36,1557,758,0.9774,1.0,
 mspc_t2,per-instance-standardised,well,0,no_transients,1118,22,1096,785,0.9803,1.0,1.0,1.0,1,21,
 mspc_t2,per-instance-standardised,well,0,no_folder9_no_transients,1023,13,1010,755,0.9873,1.0,1.0,1.0,1,12,
 mspc_t2,per-instance-standardised,well,0,no_positive_baseline,1688,45,1643,788,0.9733,1.0,1.0,1.0,24,21,
-mspc_spe,per-instance-standardised,well,0,all,1688,45,1643,788,0.9733,1.0,1.0,1.0,24,21,
-mspc_spe,per-instance-standardised,well,0,no_folder9,1593,36,1557,758,0.9774,1.0,1.0,1.0,24,12,
-mspc_spe,per-instance-standardised,well,0,no_transients,1118,22,1096,785,0.9803,1.0,1.0,1.0,1,21,
-mspc_spe,per-instance-standardised,well,0,no_folder9_no_transients,1023,13,1010,755,0.9873,1.0,1.0,1.0,1,12,
-mspc_spe,per-instance-standardised,well,0,no_positive_baseline,1688,45,1643,788,0.9733,1.0,1.0,1.0,24,21,
+mspc_spe,per-instance-standardised,well,0,all,1688,0,1688,788,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,0,no_folder9,1593,0,1593,758,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,0,no_transients,1118,0,1118,785,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,0,no_folder9_no_transients,1023,0,1023,755,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,0,no_positive_baseline,1688,0,1688,788,1.0,,,,0,0,every window in this fold was refused
 iforest,per-instance-standardised,well,0,all,1688,900,788,788,0.4668,0.6676,0.7897,0.747,573,327,
 iforest,per-instance-standardised,well,0,no_folder9,1593,835,758,758,0.4758,0.6855,0.8327,0.8037,573,262,
 iforest,per-instance-standardised,well,0,no_transients,1118,333,785,785,0.7021,0.8481,0.4842,0.75,6,327,
 iforest,per-instance-standardised,well,0,no_folder9_no_transients,1023,268,755,755,0.738,0.8651,0.4943,0.75,6,262,
 iforest,per-instance-standardised,well,0,no_positive_baseline,1688,900,788,788,0.4668,0.6676,0.7897,0.747,573,327,
-mspc_t2,per-instance-standardised,well,1,all,1533,879,654,371,0.4266,0.9157,0.9836,0.9947,774,105,
-mspc_t2,per-instance-standardised,well,1,no_folder9,1442,866,576,345,0.3994,0.9108,0.984,0.9947,770,96,
-mspc_t2,per-instance-standardised,well,1,no_transients,587,107,480,365,0.8177,1.0,1.0,1.0,2,105,
-mspc_t2,per-instance-standardised,well,1,no_folder9_no_transients,501,98,403,340,0.8044,1.0,1.0,1.0,2,96,
-mspc_t2,per-instance-standardised,well,1,no_positive_baseline,1533,879,654,371,0.4266,0.9157,0.9836,0.9947,774,105,
-mspc_spe,per-instance-standardised,well,1,all,1533,879,654,371,0.4266,0.8841,0.984,1.0,774,105,
-mspc_spe,per-instance-standardised,well,1,no_folder9,1442,866,576,345,0.3994,0.8796,0.9847,1.0,770,96,
-mspc_spe,per-instance-standardised,well,1,no_transients,587,107,480,365,0.8177,0.2571,0.0185,0.0235,2,105,
-mspc_spe,per-instance-standardised,well,1,no_folder9_no_transients,501,98,403,340,0.8044,0.1875,0.0185,0.0235,2,96,
-mspc_spe,per-instance-standardised,well,1,no_positive_baseline,1533,879,654,371,0.4266,0.8841,0.984,1.0,774,105,
+mspc_t2,per-instance-standardised,well,1,all,1533,879,654,371,0.4266,0.8842,0.9841,1.0,774,105,
+mspc_t2,per-instance-standardised,well,1,no_folder9,1442,866,576,345,0.3994,0.8802,0.9848,1.0,770,96,
+mspc_t2,per-instance-standardised,well,1,no_transients,587,107,480,365,0.8177,0.4762,0.0259,0.0317,2,105,
+mspc_t2,per-instance-standardised,well,1,no_folder9_no_transients,501,98,403,340,0.8044,0.4271,0.0259,0.0317,2,96,
+mspc_t2,per-instance-standardised,well,1,no_positive_baseline,1533,879,654,371,0.4266,0.8842,0.9841,1.0,774,105,
+mspc_spe,per-instance-standardised,well,1,all,1533,0,1533,371,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,1,no_folder9,1442,0,1442,345,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,1,no_transients,587,0,587,365,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,1,no_folder9_no_transients,501,0,501,340,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,1,no_positive_baseline,1533,0,1533,371,1.0,,,,0,0,every window in this fold was refused
 iforest,per-instance-standardised,well,1,all,1533,1162,371,371,0.242,0.8132,0.9544,0.9817,950,212,
 iforest,per-instance-standardised,well,1,no_folder9,1442,1097,345,345,0.2393,0.7618,0.9576,0.9817,946,151,
 iforest,per-instance-standardised,well,1,no_transients,587,222,365,365,0.6218,0.9929,0.8897,1.0,10,212,
 iforest,per-instance-standardised,well,1,no_folder9_no_transients,501,161,340,340,0.6786,0.9901,0.8897,1.0,10,151,
 iforest,per-instance-standardised,well,1,no_positive_baseline,1533,1162,371,371,0.242,0.8132,0.9544,0.9817,950,212,
-mspc_t2,per-instance-standardised,well,2,all,1603,517,1086,474,0.6775,0.6082,0.9442,0.9358,471,46,
-mspc_t2,per-instance-standardised,well,2,no_folder9,1511,494,1017,446,0.6731,0.6421,0.955,0.9419,452,42,
-mspc_t2,per-instance-standardised,well,2,no_transients,729,78,651,450,0.893,0.269,0.4406,0.4103,32,46,
-mspc_t2,per-instance-standardised,well,2,no_folder9_no_transients,655,73,582,422,0.8885,0.2688,0.4771,0.4247,31,42,
-mspc_t2,per-instance-standardised,well,2,no_positive_baseline,1471,481,990,381,0.673,0.6346,0.9435,0.9338,435,46,
-mspc_spe,per-instance-standardised,well,2,all,1603,517,1086,474,0.6775,0.4405,0.9239,0.911,471,46,
-mspc_spe,per-instance-standardised,well,2,no_folder9,1511,494,1017,446,0.6731,0.4296,0.9257,0.915,452,42,
-mspc_spe,per-instance-standardised,well,2,no_transients,729,78,651,450,0.893,0.0401,0.2516,0.4103,32,46,
-mspc_spe,per-instance-standardised,well,2,no_folder9_no_transients,655,73,582,422,0.8885,0.0115,0.2584,0.4247,31,42,
-mspc_spe,per-instance-standardised,well,2,no_positive_baseline,1471,481,990,381,0.673,0.4692,0.9242,0.9044,435,46,
+mspc_t2,per-instance-standardised,well,2,all,1603,517,1086,474,0.6775,0.542,0.9367,0.9202,471,46,
+mspc_t2,per-instance-standardised,well,2,no_folder9,1511,494,1017,446,0.6731,0.5379,0.9387,0.9303,452,42,
+mspc_t2,per-instance-standardised,well,2,no_transients,729,78,651,450,0.893,0.2018,0.2861,0.4267,32,46,
+mspc_t2,per-instance-standardised,well,2,no_folder9_no_transients,655,73,582,422,0.8885,0.1943,0.2969,0.4429,31,42,
+mspc_t2,per-instance-standardised,well,2,no_positive_baseline,1471,481,990,381,0.673,0.5678,0.937,0.9292,435,46,
+mspc_spe,per-instance-standardised,well,2,all,1603,0,1603,474,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,2,no_folder9,1511,0,1511,446,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,2,no_transients,729,0,729,450,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,2,no_folder9_no_transients,655,0,655,422,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,2,no_positive_baseline,1471,0,1471,381,1.0,,,,0,0,every window in this fold was refused
 iforest,per-instance-standardised,well,2,all,1603,1129,474,474,0.2957,0.7101,0.8702,0.9032,892,237,
 iforest,per-instance-standardised,well,2,no_folder9,1511,1065,446,446,0.2952,0.6664,0.8733,0.905,873,192,
 iforest,per-instance-standardised,well,2,no_transients,729,279,450,450,0.6173,0.5108,0.1513,0.164,42,237,
 iforest,per-instance-standardised,well,2,no_folder9_no_transients,655,233,422,422,0.6443,0.4604,0.1601,0.1858,41,192,
 iforest,per-instance-standardised,well,2,no_positive_baseline,1471,1090,381,381,0.259,0.7206,0.8693,0.9038,853,237,
-mspc_t2,per-instance-standardised,well,3,all,1120,376,744,443,0.6643,0.9082,0.5163,0.4231,15,361,
-mspc_t2,per-instance-standardised,well,3,no_folder9,852,136,716,416,0.8404,0.9993,0.9924,1.0,11,125,
+mspc_t2,per-instance-standardised,well,3,all,1120,376,744,443,0.6643,0.718,0.12,0.2162,15,361,
+mspc_t2,per-instance-standardised,well,3,no_folder9,852,136,716,416,0.8404,0.9578,0.4905,0.6429,11,125,
 mspc_t2,per-instance-standardised,well,3,no_transients,857,361,496,440,0.5788,,,,0,361,fold under test carries one class only; no ranking metric exists
 mspc_t2,per-instance-standardised,well,3,no_folder9_no_transients,593,125,468,413,0.7892,,,,0,125,fold under test carries one class only; no ranking metric exists
-mspc_t2,per-instance-standardised,well,3,no_positive_baseline,1120,376,744,443,0.6643,0.9082,0.5163,0.4231,15,361,
-mspc_spe,per-instance-standardised,well,3,all,1120,376,744,443,0.6643,0.6637,0.0626,0.0857,15,361,
-mspc_spe,per-instance-standardised,well,3,no_folder9,852,136,716,416,0.8404,0.9491,0.4481,0.6,11,125,
-mspc_spe,per-instance-standardised,well,3,no_transients,857,361,496,440,0.5788,,,,0,361,fold under test carries one class only; no ranking metric exists
-mspc_spe,per-instance-standardised,well,3,no_folder9_no_transients,593,125,468,413,0.7892,,,,0,125,fold under test carries one class only; no ranking metric exists
-mspc_spe,per-instance-standardised,well,3,no_positive_baseline,1120,376,744,443,0.6643,0.6637,0.0626,0.0857,15,361,
+mspc_t2,per-instance-standardised,well,3,no_positive_baseline,1120,376,744,443,0.6643,0.718,0.12,0.2162,15,361,
+mspc_spe,per-instance-standardised,well,3,all,1120,0,1120,443,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,3,no_folder9,852,0,852,416,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,3,no_transients,857,0,857,440,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,3,no_folder9_no_transients,593,0,593,413,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,3,no_positive_baseline,1120,0,1120,443,1.0,,,,0,0,every window in this fold was refused
 iforest,per-instance-standardised,well,3,all,1120,677,443,443,0.3955,0.6766,0.5583,0.6016,280,397,
 iforest,per-instance-standardised,well,3,no_folder9,852,436,416,416,0.4883,0.7357,0.8046,0.8346,276,160,
 iforest,per-instance-standardised,well,3,no_transients,857,417,440,440,0.5134,0.5599,0.0905,0.0818,20,397,
 iforest,per-instance-standardised,well,3,no_folder9_no_transients,593,180,413,413,0.6965,0.6008,0.242,0.2241,20,160,
 iforest,per-instance-standardised,well,3,no_positive_baseline,1120,677,443,443,0.3955,0.6766,0.5583,0.6016,280,397,
-mspc_t2,per-instance-standardised,well,4,all,1048,245,803,421,0.7662,0.3258,0.4648,0.5184,127,118,
-mspc_t2,per-instance-standardised,well,4,no_folder9,953,221,732,379,0.7681,0.3042,0.3744,0.4949,106,115,
-mspc_t2,per-instance-standardised,well,4,no_transients,644,126,518,392,0.8043,0.5953,0.5351,1.0,8,118,
-mspc_t2,per-instance-standardised,well,4,no_folder9_no_transients,576,119,457,355,0.7934,0.1826,0.0253,0.0336,4,115,
-mspc_t2,per-instance-standardised,well,4,no_positive_baseline,1036,244,792,412,0.7645,0.3233,0.4625,0.5164,126,118,
-mspc_spe,per-instance-standardised,well,4,all,1048,245,803,421,0.7662,0.5163,0.5355,0.6777,127,118,
-mspc_spe,per-instance-standardised,well,4,no_folder9,953,221,732,379,0.7681,0.5852,0.5349,0.675,106,115,
-mspc_spe,per-instance-standardised,well,4,no_transients,644,126,518,392,0.8043,0.3972,0.3067,0.0635,8,118,
-mspc_spe,per-instance-standardised,well,4,no_folder9_no_transients,576,119,457,355,0.7934,0.7935,0.5615,1.0,4,115,
-mspc_spe,per-instance-standardised,well,4,no_positive_baseline,1036,244,792,412,0.7645,0.5182,0.535,0.6777,126,118,
+mspc_t2,per-instance-standardised,well,4,all,1048,245,803,421,0.7662,0.5749,0.5811,0.6842,127,118,
+mspc_t2,per-instance-standardised,well,4,no_folder9,953,221,732,379,0.7681,0.5397,0.5282,0.6316,106,115,
+mspc_t2,per-instance-standardised,well,4,no_transients,644,126,518,392,0.8043,0.8506,0.4654,0.3684,8,118,
+mspc_t2,per-instance-standardised,well,4,no_folder9_no_transients,576,119,457,355,0.7934,0.7783,0.5606,1.0,4,115,
+mspc_t2,per-instance-standardised,well,4,no_positive_baseline,1036,244,792,412,0.7645,0.5777,0.5811,0.6842,126,118,
+mspc_spe,per-instance-standardised,well,4,all,1048,0,1048,421,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,4,no_folder9,953,0,953,379,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,4,no_transients,644,0,644,392,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,4,no_folder9_no_transients,576,0,576,355,1.0,,,,0,0,every window in this fold was refused
+mspc_spe,per-instance-standardised,well,4,no_positive_baseline,1036,0,1036,412,1.0,,,,0,0,every window in this fold was refused
 iforest,per-instance-standardised,well,4,all,1048,627,421,421,0.4017,0.6627,0.6981,0.7333,388,239,
 iforest,per-instance-standardised,well,4,no_folder9,953,574,379,379,0.3977,0.639,0.6843,0.7307,362,212,
 iforest,per-instance-standardised,well,4,no_transients,644,252,392,392,0.6087,0.7568,0.14,0.1538,13,239,
