@@ -511,6 +511,114 @@ def test_ingest_refuses_an_unsupported_input(tmp_path):
         )
 
 
+# A German-locale Excel CSV: ';' between columns, ',' as the decimal mark,
+# cp1252 text with a degree sign in the header, and one PI digital state.
+GERMAN_ROWS = [
+    "Zeitstempel;Wert \N{DEGREE SIGN}C;Status",
+    "28.10.2026 06:00:00;40,06;Good",
+    "28.10.2026 06:05:00;40,11;Good",
+    "28.10.2026 06:10:00;Shutdown;Bad",
+    "28.10.2026 06:15:00;40,02;Good",
+]
+GERMAN_ARGS = [
+    "--timestamp-col", "Zeitstempel", "--value-col", "Wert \N{DEGREE SIGN}C",
+    "--quality-col", "Status", "--tz", "Europe/Berlin", "--dayfirst",
+]
+
+
+def _german_csv(tmp_path):
+    path = tmp_path / "de.csv"
+    path.write_bytes(("\r\n".join(GERMAN_ROWS) + "\r\n").encode("cp1252"))
+    return path
+
+
+def test_sep_decimal_and_encoding_read_a_german_excel_export(tmp_path, capsys):
+    out = tmp_path / "de.parquet"
+    meta = _meta_file(tmp_path, quality_codes={"Good": "GOOD", "Bad": "BAD", "Shutdown": "BAD"})
+    rc = cmd_ingest(
+        [str(_german_csv(tmp_path)), "--out", str(out), "--meta", str(meta), *GERMAN_ARGS,
+         "--sep", ";", "--decimal", ",", "--encoding", "cp1252"]
+    )
+    assert rc == 0, capsys.readouterr().err
+    stored = pd.read_parquet(out)
+    assert list(stored["value"]) == ["40.06", "40.11", "Shutdown", "40.02"]
+    assert tsdive.profile(out).stats.features.max == 40.11
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (
+            [],
+            "[SchemaError] de.csv: byte 0xb0 at offset 17 is not utf-8; pass --encoding NAME",
+        ),
+        (
+            ["--encoding", "cp1252"],
+            "[SchemaError] de.csv: the header reads as one column 'Zeitstempel;Wert "
+            "\N{DEGREE SIGN}C;Status'; the export separates its columns with ';', so pass "
+            "--sep ';'",
+        ),
+    ],
+    ids=["encoding", "sep"],
+)
+def test_a_csv_read_with_the_wrong_format_names_the_flag(tmp_path, capsys, extra, message):
+    out = tmp_path / "de.parquet"
+    rc = cmd_ingest(
+        [str(_german_csv(tmp_path)), "--out", str(out), "--meta", str(_meta_file(tmp_path)),
+         *GERMAN_ARGS, *extra]
+    )
+    assert rc == 3
+    assert message in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_csv_options_reach_wide_long_and_template_reads(tmp_path):
+    options = {"sep": ";", "decimal": ",", "encoding": "cp1252"}
+    wide = tmp_path / "wide.csv"
+    wide.write_bytes("ts;FIC101.PV;TIC201.PV\r\n2024-03-01T00:00:00Z;1,5;2,5\r\n".encode("cp1252"))
+    (path,) = tsdive.init_meta(wide, out_dir=tmp_path / "wmeta", source_id="plant1",
+                               timestamp_col="ts", tags=["FIC101.PV"], **options)
+    written = tsdive.ingest_wide(wide, out_dir=tmp_path / "wide", meta_dir=path.parent,
+                                 timestamp_col="ts", tags=["FIC101.PV"],
+                                 assume_quality="GOOD", **options)
+    assert list(pd.read_parquet(written[0])["value"]) == [1.5]
+
+    long = tmp_path / "long.csv"
+    long.write_bytes(
+        "tag;ts;v\r\nA;2024-03-01T00:00:00Z;1,5\r\nB;2024-03-01T00:00:00Z;2,5\r\n".encode("cp1252")
+    )
+    meta_dir = tmp_path / "lmeta"
+    tsdive.init_long_meta(long, out_dir=meta_dir, source_id="plant1", tag_col="tag",
+                          timestamp_col="ts", value_col="v", **options)
+    written = tsdive.ingest_long(long, out_dir=tmp_path / "long", meta_dir=meta_dir,
+                                 tag_col="tag", timestamp_col="ts", value_col="v",
+                                 assume_quality="GOOD", **options)
+    assert [list(pd.read_parquet(p)["value"]) for p in written] == [[1.5], [2.5]]
+
+    template = tsdive.init_tag_meta(_german_csv(tmp_path), out=tmp_path / "de.json",
+                                    timestamp_col="Zeitstempel",
+                                    value_col="Wert \N{DEGREE SIGN}C", quality_col="Status",
+                                    **options)
+    codes = json.loads(template.read_text(encoding="utf-8"))["quality_codes"]
+    assert codes == {"Bad": "BAD", "Good": "GOOD", "Shutdown": None}
+
+
+def test_python_callers_see_the_keyword_and_parquet_takes_no_csv_option(tmp_path):
+    meta = tsdive.read_meta_json(_meta_file(tmp_path))
+    with pytest.raises(SchemaError, match=r"so pass sep=';'$"):
+        tsdive.ingest(_german_csv(tmp_path), out=tmp_path / "x.parquet", meta=meta,
+                      encoding="cp1252")
+    with pytest.raises(ValueError, match=r"fic101\.parquet: sep applies to CSV input"):
+        tsdive.ingest(_parquet_export(tmp_path), out=tmp_path / "y.parquet", meta=meta, sep=";")
+
+
+def _parquet_export(tmp_path):
+    path = tmp_path / "fic101.parquet"
+    pd.DataFrame({"timestamp": AWARE, "value": [1.0, 2.0, 3.0], "quality": ["GOOD"] * 3}
+                 ).to_parquet(path)
+    return path
+
+
 def test_ingest_does_not_overwrite_an_archive(tmp_path):
     src = _csv(tmp_path, stamps=AWARE)
     meta = tsdive.read_meta_json(_meta_file(tmp_path))

@@ -838,6 +838,11 @@ def _split_tags(text: str | None) -> list[str] | None:
     return None if text is None else [t.strip() for t in text.split(",") if t.strip()]
 
 
+def _csv_options(args: argparse.Namespace) -> dict[str, str | None]:
+    """The CSV reading options of an ingest command line."""
+    return {"sep": args.sep, "decimal": args.decimal, "encoding": args.encoding}
+
+
 def _warn_assumed_quality(assume_quality: str | None) -> None:
     if assume_quality:
         print(
@@ -879,6 +884,24 @@ def _parser_ingest() -> argparse.ArgumentParser:
         action="store_true",
         help="read numeric dates day first, so 01/02/2026 is 1 February; without it "
         "or --timestamp-format a date that reads both ways raises SchemaError",
+    )
+    parser.add_argument(
+        "--sep",
+        default=None,
+        metavar="CHAR",
+        help="column separator of a CSV export, like ';' (default ,)",
+    )
+    parser.add_argument(
+        "--decimal",
+        default=None,
+        metavar="CHAR",
+        help="decimal mark of a CSV export, like ',' (default .)",
+    )
+    parser.add_argument(
+        "--encoding",
+        default=None,
+        metavar="NAME",
+        help="text encoding of a CSV export, like cp1252 (default utf-8)",
     )
     parser.add_argument(
         "--value-col",
@@ -1066,6 +1089,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 value_col=args.value_col or "value",
                 quality_col=args.quality_col or "quality",
                 overwrite=args.overwrite,
+                **_csv_options(args),
             )
             _print_lines([label_line("wrote", template.as_posix())], args)
             return OK
@@ -1080,6 +1104,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 quality_col=args.quality_col or "quality",
                 tags=_split_tags(args.tags),
                 overwrite=args.overwrite,
+                **_csv_options(args),
             )
             _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
             return OK
@@ -1092,6 +1117,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 tags=_split_tags(args.tags),
                 quality_suffix=args.quality_suffix,
                 overwrite=args.overwrite,
+                **_csv_options(args),
             )
             _print_lines([label_line("wrote", path.as_posix()) for path in templates], args)
             return 0
@@ -1110,6 +1136,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 overwrite=args.overwrite,
                 timestamp_format=args.timestamp_format,
                 dayfirst=args.dayfirst,
+                **_csv_options(args),
             )
             _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
             _warn_assumed_quality(args.assume_quality)
@@ -1127,6 +1154,7 @@ def _ingest(args: argparse.Namespace) -> int:
                 overwrite=args.overwrite,
                 timestamp_format=args.timestamp_format,
                 dayfirst=args.dayfirst,
+                **_csv_options(args),
             )
             _print_lines([label_line("wrote", path.as_posix()) for path in written], args)
             _warn_assumed_quality(args.assume_quality)
@@ -1146,6 +1174,7 @@ def _ingest(args: argparse.Namespace) -> int:
             overwrite=args.overwrite,
             timestamp_format=args.timestamp_format,
             dayfirst=args.dayfirst,
+            **_csv_options(args),
         )
         quality = (
             f"quality assumed {args.assume_quality.strip().upper()}"

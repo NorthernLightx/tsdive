@@ -290,10 +290,47 @@ def read_meta_json(path: str | Path) -> TagMeta:
     return meta_from_dict(payload, label=Path(path).name)
 
 
-def _read_source(path: Path) -> pd.DataFrame:
+def _read_source(
+    path: Path,
+    *,
+    sep: str | None = None,
+    decimal: str | None = None,
+    encoding: str | None = None,
+) -> pd.DataFrame:
+    """Read an export: a CSV with the stated format, or a parquet file.
+
+    ``sep``, ``decimal`` and ``encoding`` apply to a CSV only; ``None``
+    reads it comma-separated, with a decimal point, as UTF-8. With a
+    ``decimal`` other than a point, a text column cell that reads as a
+    number once its decimal mark is a point is rewritten with the point,
+    so a value column that also holds digital states stays readable.
+    """
+    csv_options = {"sep": sep, "decimal": decimal, "encoding": encoding}
     if path.suffix.lower() == ".csv":
-        return cast(pd.DataFrame, pd.read_csv(path))
+        stated = {k: v for k, v in csv_options.items() if v is not None}
+        try:
+            frame = cast(pd.DataFrame, pd.read_csv(path, **stated))
+        except UnicodeDecodeError as e:
+            raise SchemaError(
+                f"{path.name}: byte {e.object[e.start]:#04x} at offset {e.start} is not "
+                f"{encoding or 'utf-8'}; pass "
+                f"{option('encoding', '--encoding', 'NAME')} with the encoding the export "
+                "was written in, such as cp1252"
+            ) from e
+        except LookupError as e:
+            raise ValueError(f"{path.name}: {e}") from e
+        _check_separator(frame, path.name, sep)
+        if decimal is not None and decimal != ".":
+            for column in frame.columns:
+                if frame[column].dtype == object:
+                    frame[column] = frame[column].map(lambda v: _point_decimal(v, decimal))
+        return frame
     if path.suffix.lower() in {".parquet", ".pq"}:
+        stated_names = [argname(k, f"--{k}") for k, v in csv_options.items() if v is not None]
+        if stated_names:
+            raise ValueError(
+                f"{path.name}: {', '.join(stated_names)} applies to CSV input, not parquet"
+            )
         try:
             return cast(pd.DataFrame, pd.read_parquet(path))
         except pa.ArrowInvalid as e:
@@ -301,6 +338,30 @@ def _read_source(path: Path) -> pd.DataFrame:
     raise SchemaError(
         f"{path.name}: unsupported input {path.suffix!r}; ingest reads .csv and .parquet"
     )
+
+
+def _check_separator(frame: pd.DataFrame, name: str, sep: str | None) -> None:
+    """Raise ``SchemaError`` when the whole header landed in one column holding a ``;``."""
+    if len(frame.columns) != 1 or sep == ";":
+        return
+    header = str(frame.columns[0])
+    if ";" in header:
+        raise SchemaError(
+            f"{name}: the header reads as one column {header!r}; the export separates "
+            f"its columns with ';', so pass {option('sep', '--sep', repr(';'))}"
+        )
+
+
+def _point_decimal(value: object, decimal: str) -> object:
+    """``value`` with ``decimal`` written as a point when that makes it a number."""
+    if not isinstance(value, str) or decimal not in value or "." in value:
+        return value
+    pointed = value.replace(decimal, ".")
+    try:
+        float(pointed)
+    except ValueError:
+        return value
+    return pointed
 
 
 # A numeric date whose first two fields are day and month in some order:
@@ -715,6 +776,9 @@ def ingest(
     overwrite: bool = False,
     timestamp_format: str | None = None,
     dayfirst: bool = False,
+    sep: str | None = None,
+    decimal: str | None = None,
+    encoding: str | None = None,
 ) -> Path:
     """Turn a CSV or parquet export into a tsdive archive.
 
@@ -734,6 +798,11 @@ def ingest(
     is the explicit override, and it is recorded on the archive
     (``quality_assumed``) and printed by every profile of it.
 
+    ``sep``, ``decimal`` and ``encoding`` read a CSV written with another
+    column separator, decimal mark or text encoding, such as the
+    ``;``-separated, comma-decimal cp1252 file of a German Excel. Left
+    ``None``, a CSV reads comma-separated, with a decimal point, as UTF-8.
+
     Timestamps are parsed row by row, so rows with different UTC offsets
     each keep their own. A numeric date such as ``01/02/2026`` reads as 1
     February day first and 2 January month first; a column holding one
@@ -743,13 +812,15 @@ def ingest(
     without either.
 
     Raises:
-        SchemaError: unreadable input, missing column, naive timestamps
-            without ``tz``, a date that reads day first and month first
-            with no order stated, a row that does not match
-            ``timestamp_format``, an unusable ``assume_quality`` value, or
-            an export of several tags.
+        SchemaError: unreadable input, a CSV header that holds ``;`` in
+            one column, bytes that are not ``encoding``, missing column,
+            naive timestamps without ``tz``, a date that reads day first
+            and month first with no order stated, a row that does not
+            match ``timestamp_format``, an unusable ``assume_quality``
+            value, or an export of several tags.
         NonMonotonicIndex: a timestamp precedes the row before it.
-        ValueError: both ``timestamp_format`` and ``dayfirst``.
+        ValueError: both ``timestamp_format`` and ``dayfirst``, an unknown
+            ``encoding``, or a CSV option given for a parquet file.
         FileExistsError: ``out`` exists and ``overwrite`` is False.
 
     Examples:
@@ -779,7 +850,7 @@ def ingest(
         ['2026-02-01 07:00', '2026-02-13 07:00']
     """
     src = Path(source)
-    frame = _read_source(src)
+    frame = _read_source(src, sep=sep, decimal=decimal, encoding=encoding)
     for name, column in (("timestamp", timestamp_col), ("value", value_col)):
         if column not in frame.columns:
             raise SchemaError(
@@ -931,6 +1002,9 @@ def ingest_wide(
     overwrite: bool = False,
     timestamp_format: str | None = None,
     dayfirst: bool = False,
+    sep: str | None = None,
+    decimal: str | None = None,
+    encoding: str | None = None,
 ) -> list[Path]:
     """Turn a wide export, one column per tag, into one archive per tag.
 
@@ -940,9 +1014,9 @@ def ingest_wide(
     Metadata for a tag comes from ``meta_dir / f"{safe_filename(tag)}.json"``
     and its archive goes to ``out_dir / f"{safe_filename(point_id)}.parquet"``.
     Every check runs before the first archive is written, so a refusal
-    leaves ``out_dir`` as it was. Timestamps are parsed as
-    [`ingest`][tsdive.ingest] parses them, ``timestamp_format`` and
-    ``dayfirst`` included.
+    leaves ``out_dir`` as it was. The file and its timestamps are read
+    as [`ingest`][tsdive.ingest] reads them, ``sep``, ``decimal``,
+    ``encoding``, ``timestamp_format`` and ``dayfirst`` included.
 
     Raises:
         SchemaError: unreadable input; a missing timestamp, tag, quality
@@ -973,7 +1047,7 @@ def ingest_wide(
         ['archive/plant1/FIC101.PV.parquet', 'archive/plant1/TIC101.PV.parquet']
     """
     src = Path(source)
-    frame = _read_source(src)
+    frame = _read_source(src, sep=sep, decimal=decimal, encoding=encoding)
     label = src.name
     chosen = _wide_columns(
         frame,
@@ -1094,6 +1168,9 @@ def ingest_long(
     overwrite: bool = False,
     timestamp_format: str | None = None,
     dayfirst: bool = False,
+    sep: str | None = None,
+    decimal: str | None = None,
+    encoding: str | None = None,
 ) -> list[Path]:
     """Turn a long export, one row per tag and timestamp, into one archive per tag.
 
@@ -1104,8 +1181,9 @@ def ingest_long(
     ``out_dir / f"{safe_filename(point_id)}.parquet"``. Each archive holds
     the tag's rows in file order. Every check runs before the first
     archive is written, so a refusal leaves ``out_dir`` as it was.
-    Timestamps are parsed as [`ingest`][tsdive.ingest] parses them, with
-    one date order for the whole column, and localised tag by tag.
+    The file is read as [`ingest`][tsdive.ingest] reads it, ``sep``,
+    ``decimal`` and ``encoding`` included. Timestamps are parsed with one
+    date order for the whole column, and localised tag by tag.
 
     Raises:
         SchemaError: unreadable input; a missing timestamp, value, tag or
@@ -1139,7 +1217,7 @@ def ingest_long(
         [('archive/plant1/FIC101.PV.parquet', 562), ('archive/plant1/TIC101.PV.parquet', 562)]
     """
     src = Path(source)
-    frame = _read_source(src)
+    frame = _read_source(src, sep=sep, decimal=decimal, encoding=encoding)
     label = src.name
     for name, column in (("timestamp", timestamp_col), ("value", value_col)):
         if column not in frame.columns:
@@ -1238,6 +1316,9 @@ def init_meta(
     tags: Sequence[str] | None = None,
     quality_suffix: str | None = None,
     overwrite: bool = False,
+    sep: str | None = None,
+    decimal: str | None = None,
+    encoding: str | None = None,
 ) -> list[Path]:
     """Write one metadata template per tag column of a wide export.
 
@@ -1251,7 +1332,9 @@ def init_meta(
     itself; every other code stays ``null`` for the reader to fill, and
     [`read_meta_json`][tsdive.read_meta_json] refuses the file until they are.
     A tag column that holds numbers and strings, such as PI digital
-    states, adds each string to ``quality_codes`` as ``null``.
+    states, adds each string to ``quality_codes`` as ``null``. The file is
+    read as [`ingest`][tsdive.ingest] reads it, ``sep``, ``decimal`` and
+    ``encoding`` included.
 
     Raises:
         SchemaError: unreadable input, or a missing timestamp, tag or
@@ -1276,7 +1359,7 @@ def init_meta(
         ('plant1:FIC101.PV', 'FIC101.PV', None)
     """
     src = Path(source)
-    frame = _read_source(src)
+    frame = _read_source(src, sep=sep, decimal=decimal, encoding=encoding)
     chosen = _wide_columns(
         frame,
         label=src.name,
@@ -1321,6 +1404,9 @@ def init_long_meta(
     quality_col: str = "quality",
     tags: Sequence[str] | None = None,
     overwrite: bool = False,
+    sep: str | None = None,
+    decimal: str | None = None,
+    encoding: str | None = None,
 ) -> list[Path]:
     """Write one metadata template per tag of a long export, one row per tag and timestamp.
 
@@ -1331,7 +1417,9 @@ def init_long_meta(
     every optional key of ``tsdive.meta`` set to ``null``. When
     ``quality_col`` exists, ``quality_codes`` lists every raw code of the
     tag's rows, filled as [`init_meta`][tsdive.init_meta] fills it. Each
-    string among a tag's numeric values is added to it as ``null``.
+    string among a tag's numeric values is added to it as ``null``. The
+    file is read as [`ingest`][tsdive.ingest] reads it, ``sep``,
+    ``decimal`` and ``encoding`` included.
     [`ingest_long`][tsdive.ingest_long] reads the templates from
     ``out_dir``.
 
@@ -1360,7 +1448,7 @@ def init_long_meta(
         {'Good': 'GOOD', 'Questionable': None}
     """
     src = Path(source)
-    frame = _read_source(src)
+    frame = _read_source(src, sep=sep, decimal=decimal, encoding=encoding)
     label = src.name
     for name, column in (("timestamp", timestamp_col), ("value", value_col)):
         if column not in frame.columns:
@@ -1426,6 +1514,9 @@ def init_tag_meta(
     value_col: str = "value",
     quality_col: str = "quality",
     overwrite: bool = False,
+    sep: str | None = None,
+    decimal: str | None = None,
+    encoding: str | None = None,
 ) -> Path:
     """Write a metadata template for a single-tag export and return its path.
 
@@ -1439,7 +1530,9 @@ def init_tag_meta(
     ``null``. A value column that holds numbers and strings, such as PI
     digital states, adds each string to ``quality_codes`` as ``null``.
     [`read_meta_json`][tsdive.read_meta_json] refuses the file until the
-    identity, the name and every code are filled.
+    identity, the name and every code are filled. The file is read as
+    [`ingest`][tsdive.ingest] reads it, ``sep``, ``decimal`` and
+    ``encoding`` included.
 
     Raises:
         SchemaError: unreadable input, or a missing timestamp or value
@@ -1462,7 +1555,7 @@ def init_tag_meta(
         "timestamp 'ts', value 'v', quality 'q'; the export has ts, v, q"
     """
     src = Path(source)
-    frame = _read_source(src)
+    frame = _read_source(src, sep=sep, decimal=decimal, encoding=encoding)
     columns = [str(c) for c in frame.columns]
     for role, column in (("timestamp", timestamp_col), ("value", value_col)):
         if column not in columns:

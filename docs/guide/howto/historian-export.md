@@ -2,8 +2,8 @@
 
 This guide turns the CSV files a historian exports into archives. It
 covers local time, day-first dates, digital states in the value column,
-quality codes, interpolated exports, and wide and long files. Each step
-runs the real command on a small export.
+quality codes, interpolated exports, regional CSV formats, and wide and
+long files. Each step runs the real command on a small export.
 
 ## The recipe
 
@@ -113,6 +113,39 @@ tsdive profile PI4402.parquet
 
 The contract line reads `INTERPOLATED`, and the digest changed with it.
 
+## A CSV saved by a German Excel
+
+Excel in a German locale separates columns with `;` and writes `,` as
+the decimal mark:
+
+```csv file=TI3102.csv
+Zeitstempel;Wert;Status
+28.10.2026 06:00:00;181,2;Good
+28.10.2026 06:05:00;181,4;Good
+28.10.2026 06:10:00;181,9;Good
+```
+
+```json file=TI3102.json
+{
+  "identity": {"source_id": "pi-north", "point_id": "TI3102.PV"},
+  "name": "TI-3102 reactor inlet temperature",
+  "unit_raw": "degC",
+  "sample_rate_s": 300
+}
+```
+
+`--sep` and `--decimal` state the format:
+
+```tsdive
+tsdive ingest TI3102.csv --out TI3102.parquet --meta TI3102.json \
+    --sep ";" --decimal "," --timestamp-col Zeitstempel --value-col Wert \
+    --quality-col Status --tz Europe/Berlin
+```
+
+Without `--sep` the header reads as one column, and ingest raises
+`SchemaError` naming `--sep`. If the file holds a character such as `°`
+in the Windows code page, pass `--encoding cp1252` too.
+
 ## An OPC export with byte quality codes
 
 Classic OPC DA writes quality as a byte: 192 Good, 64 Uncertain, 0 Bad,
@@ -210,6 +243,8 @@ tsdive ingest plant.csv --tag-col Tag --timestamp-col Timestamp \
 
 | message says | do |
 |---|---|
+| `the header reads as one column` | pass `--sep` with the separator the message names |
+| `is not utf-8` | pass `--encoding` with the encoding the export was written in |
 | `is naive (no UTC offset)` | pass `--tz` with the zone the export was written in |
 | `reads as day 02 of month 03 or as month 02` | pass `--dayfirst`, or `--timestamp-format` |
 | `repeats when the clocks go back` | export the stretch around the clock change with UTC offsets |
