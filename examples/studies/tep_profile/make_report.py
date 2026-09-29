@@ -791,7 +791,7 @@ def render_report(summary: dict, rows: list[dict], run_meta: dict) -> str:
     add("")
     add("```console")
     add("uv run python scripts/fetch_tep.py --dest data/tep --yes")
-    add("uv sync --extra tep")
+    add("uv sync --group tep")
     add(
         "uv run python scripts/convert_tep.py --src data/tep --out data/tep_archives "
         f"--runs-per-fault {conv['runs_per_fault']}"

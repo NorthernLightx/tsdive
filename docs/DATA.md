@@ -95,7 +95,7 @@ study's protocol (`tsdive.eval`). It needs the detector study's aligned
 cache under `data/3w_windows_aligned` and its frozen
 `results/aligned_per_instance.csv` for the fold membership.
 
-- Install: `uv sync --extra tsfm` (chronos-forecasting and a CPU torch;
+- Install: `uv sync --group tsfm` (chronos-forecasting and a CPU torch;
   the library itself never imports either).
 - Run: `uv run python examples/studies/3w_chronos/run_chronos.py`, then
   `uv run python examples/studies/3w_chronos/make_report.py`.
@@ -374,7 +374,7 @@ Verified on 2026-08-28; testing files verified on 2026-09-28.
   and fetch time. A file the API does not checksum is refused rather than
   downloaded unverified.
 - The files are R `.RData`, so reading them needs `pyreadr`
-  (`uv sync --extra tep`). The library itself never imports it; only
+  (`uv sync --group tep`). The library itself never imports it; only
   `scripts/convert_tep.py` does, lazily.
 
 - Fetch: `python scripts/fetch_tep.py --dest data/tep [--all] [--yes]`.

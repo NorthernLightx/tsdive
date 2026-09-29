@@ -19,7 +19,7 @@ Commands:
 
 ```console
 uv run python scripts/fetch_tep.py --dest data/tep --yes
-uv sync --extra tep
+uv sync --group tep
 uv run python scripts/convert_tep.py --src data/tep --out data/tep_archives --runs-per-fault 20
 uv run python examples/studies/tep_profile/run_study.py --window-s 10800 --jobs 14
 uv run python examples/studies/tep_profile/make_report.py

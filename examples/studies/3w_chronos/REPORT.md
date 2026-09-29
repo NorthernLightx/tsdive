@@ -31,7 +31,7 @@ Per window and instance:
 Commands:
 
 ```
-uv sync --extra tsfm
+uv sync --group tsfm
 uv run python examples/studies/3w_chronos/run_chronos.py
 uv run python examples/studies/3w_chronos/make_report.py
 ```
