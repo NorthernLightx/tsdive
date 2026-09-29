@@ -11,12 +11,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
-          enable-cache: true
+          python-version: "3.12"
       - name: Build sdist and wheel
         run: uv build
+      - name: Install the wheel in a clean venv and run it
+        run: |
+          uv venv "$RUNNER_TEMP/wheel"
+          uv pip install --python "$RUNNER_TEMP/wheel" dist/*.whl
+          cd "$RUNNER_TEMP"
+          wheel/bin/tsdive --no-color demo smoke
+          wheel/bin/tsdive --no-color profile smoke/demo/fic101_demo.parquet
       - name: Create the release and attach the artifacts
         env:
           GH_TOKEN: ${{ github.token }}

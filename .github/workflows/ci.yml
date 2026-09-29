@@ -7,27 +7,36 @@ on:
 
 jobs:
   test:
+    name: test (${{ matrix.os }}, ${{ matrix.python-version }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: ubuntu-latest
+            python-version: "3.14"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
-          enable-cache: true
+          python-version: ${{ matrix.python-version }}
       - name: Install (pinned lockfile)
         run: uv sync --frozen
       - name: Lint
         run: uv run ruff check .
       - name: Test (offline)
         run: uv run pytest
+      # One interpreter checks the committed outputs byte for byte. The
+      # other jobs run the same code through the tests.
       - name: Reference cases byte-identical
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: uv run python examples/reference_case/run_reference.py
       - name: Benchmarks byte-identical
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: uv run python examples/benchmarks/run_benchmarks.py
 
   docs:
@@ -35,10 +44,10 @@ jobs:
     env:
       NO_MKDOCS_2_WARNING: "true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
         with:
-          enable-cache: true
+          python-version: "3.12"
       - name: Install (pinned lockfile, docs group)
         run: uv sync --frozen --group docs
       - name: Docs coverage tests
