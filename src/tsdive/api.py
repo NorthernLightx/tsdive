@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -464,19 +465,60 @@ def _month_first(value: object, *, dayfirst: bool) -> object:
     return f"{month}/{day}/{year}{rest}"
 
 
+def _parse_timestamp(
+    value: object, column: str, *, timestamp_format: str | None, order: bool
+) -> pd.Timestamp:
+    """Parse one element to a Timestamp, or raise ``SchemaError`` naming it."""
+    if timestamp_format is not None:
+        try:
+            ts = cast(pd.Timestamp, pd.to_datetime(value, format=timestamp_format))
+        except (ValueError, TypeError):
+            ts = pd.NaT
+        if ts is pd.NaT or pd.isna(ts):
+            raise SchemaError(
+                f"{column}: {value!r} does not match "
+                f"{argname('timestamp_format', '--timestamp-format')} {timestamp_format!r}"
+            )
+        return ts
+    ts = cast(pd.Timestamp, pd.to_datetime(_month_first(value, dayfirst=order), errors="coerce"))
+    if ts is pd.NaT or pd.isna(ts):
+        raise SchemaError(f"{column}: {value!r} is not a timestamp tsdive can parse")
+    return ts
+
+
+def _parse_column(prepared: pd.Series, timestamp_format: str | None) -> pd.Series | None:
+    """One ``pd.to_datetime`` over the column, or None when that parse cannot stand.
+
+    None when pandas warns or raises: rows with different UTC offsets
+    (object dtype and a warning that a future pandas raises), or a column
+    whose format pandas cannot infer from its first element.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        try:
+            parsed = pd.to_datetime(prepared, format=timestamp_format, errors="coerce")
+        except (ValueError, TypeError, Warning):
+            return None
+    if not pd.api.types.is_datetime64_any_dtype(parsed.dtype):
+        return None
+    return cast(pd.Series, parsed)
+
+
 def _parse_timestamps(
     raw: pd.Series,
     column: str,
     *,
     timestamp_format: str | None = None,
     dayfirst: bool = False,
-) -> list[pd.Timestamp]:
-    """Parse each element to a Timestamp, refusing the first unparseable one.
+) -> pd.Series:
+    """Parse a timestamp column on ``raw.index``, refusing the first unparseable element.
 
-    Element-wise on purpose. ``pd.to_datetime`` over a whole column whose
-    rows carry different UTC offsets returns object dtype (and warns that
-    a future pandas will raise), which makes every ``.dt`` accessor
-    downstream fail with an AttributeError instead of a typed refusal.
+    One ``pd.to_datetime`` reads the whole column when it can. A column
+    whose rows carry different UTC offsets, or whose format pandas infers
+    from no element, is parsed one element at a time, and so is every
+    element the whole-column parse leaves NaT. The result has datetime64
+    dtype when the whole-column parse read every element, else object
+    dtype holding one Timestamp per element.
 
     With ``timestamp_format`` every element must match that strptime
     format. Without it, numeric day/month dates are read in the one order
@@ -487,28 +529,29 @@ def _parse_timestamps(
             f"pass {argname('timestamp_format', '--timestamp-format')} or "
             f"{argname('dayfirst', '--dayfirst')}, not both"
         )
-    stamps: list[pd.Timestamp] = []
-    if timestamp_format is not None:
-        for v in raw:
-            try:
-                ts = cast(pd.Timestamp, pd.to_datetime(v, format=timestamp_format))
-            except (ValueError, TypeError):
-                ts = pd.NaT
-            if ts is pd.NaT or pd.isna(ts):
-                raise SchemaError(
-                    f"{column}: {v!r} does not match "
-                    f"{argname('timestamp_format', '--timestamp-format')} {timestamp_format!r}"
-                )
-            stamps.append(ts)
-        return stamps
-    order = _date_order(raw, column, dayfirst=dayfirst)
-    for v in raw:
-        ts = cast(
-            pd.Timestamp, pd.to_datetime(_month_first(v, dayfirst=order), errors="coerce")
+    order = False
+    prepared = raw
+    if timestamp_format is None and raw.dtype == object:
+        order = _date_order(raw, column, dayfirst=dayfirst)
+        prepared = raw.map(lambda v: _month_first(v, dayfirst=order))
+    whole = _parse_column(prepared, timestamp_format)
+    if whole is None:
+        return pd.Series(
+            [
+                _parse_timestamp(v, column, timestamp_format=timestamp_format, order=order)
+                for v in raw
+            ],
+            index=raw.index,
+            dtype=object,
         )
-        if ts is pd.NaT or pd.isna(ts):
-            raise SchemaError(f"{column}: {v!r} is not a timestamp tsdive can parse")
-        stamps.append(ts)
+    missing = np.flatnonzero(whole.isna().to_numpy())
+    if len(missing) == 0:
+        return whole
+    stamps = whole.astype(object)
+    for pos in missing:
+        stamps.iloc[pos] = _parse_timestamp(
+            raw.iloc[pos], column, timestamp_format=timestamp_format, order=order
+        )
     return stamps
 
 
@@ -540,15 +583,19 @@ def _to_utc(
     stamps = _parse_timestamps(
         raw, column, timestamp_format=timestamp_format, dayfirst=dayfirst
     )
-    return _localise(stamps, raw.index, tz, column)
+    return _localise(stamps, tz, column)
 
 
-def _all_aware(stamps: Sequence[pd.Timestamp], column: str) -> bool:
+def _all_aware(stamps: pd.Series, column: str) -> bool:
     """True when every stamp carries a UTC offset, False when none does.
 
     A column that mixes naive and offset-bearing rows raises
     ``SchemaError``: ``tz`` would apply to some rows and not others.
     """
+    if isinstance(stamps.dtype, pd.DatetimeTZDtype):
+        return len(stamps) > 0
+    if pd.api.types.is_datetime64_dtype(stamps.dtype):
+        return False
     aware = [ts.tz is not None for ts in stamps]
     if any(aware) and not all(aware):
         raise SchemaError(
@@ -556,16 +603,16 @@ def _all_aware(stamps: Sequence[pd.Timestamp], column: str) -> bool:
             "name no instant tsdive can place next to the aware ones - export "
             "the whole column with UTC offsets"
         )
-    return bool(stamps) and all(aware)
+    return len(stamps) > 0 and all(aware)
 
 
-def _localise(
-    stamps: Sequence[pd.Timestamp], index: pd.Index, tz: str | None, column: str
-) -> pd.Series:
-    """Parsed timestamps as a UTC series on ``index``, or ``SchemaError`` (see ``_to_utc``)."""
+def _localise(stamps: pd.Series, tz: str | None, column: str) -> pd.Series:
+    """Parsed timestamps as a UTC series, or ``SchemaError`` (see ``_to_utc``)."""
     if _all_aware(stamps, column):
+        if isinstance(stamps.dtype, pd.DatetimeTZDtype):
+            return cast(pd.Series, stamps.dt.tz_convert("UTC"))
         return pd.Series(
-            pd.DatetimeIndex([ts.tz_convert("UTC") for ts in stamps]), index=index
+            pd.DatetimeIndex([ts.tz_convert("UTC") for ts in stamps]), index=stamps.index
         )
     if tz is None:
         raise SchemaError(
@@ -573,7 +620,7 @@ def _localise(
             "to state what zone the source is in - tsdive will not assume UTC"
         )
     validate_tz_names((tz,))
-    local = pd.Series(pd.DatetimeIndex(stamps), index=index)
+    local = pd.Series(pd.DatetimeIndex(stamps), index=stamps.index)
     try:
         localised = local.dt.tz_localize(tz, ambiguous="infer")
     except Exception as e:
@@ -803,13 +850,12 @@ def ingest(
     ``;``-separated, comma-decimal cp1252 file of a German Excel. Left
     ``None``, a CSV reads comma-separated, with a decimal point, as UTF-8.
 
-    Timestamps are parsed row by row, so rows with different UTC offsets
-    each keep their own. A numeric date such as ``01/02/2026`` reads as 1
-    February day first and 2 January month first; a column holding one
-    raises ``SchemaError`` unless ``dayfirst`` or ``timestamp_format`` (a
-    strptime format every row must match) states the order. A column
-    whose dates read only one way, such as ``3/14/2024 1:05 PM``, parses
-    without either.
+    Rows with different UTC offsets each keep their own. A numeric date
+    such as ``01/02/2026`` reads as 1 February day first and 2 January
+    month first; a column holding one raises ``SchemaError`` unless
+    ``dayfirst`` or ``timestamp_format`` (a strptime format every row must
+    match) states the order. A column whose dates read only one way, such
+    as ``3/14/2024 1:05 PM``, parses without either.
 
     Raises:
         SchemaError: unreadable input, a CSV header that holds ``;`` in
@@ -1242,7 +1288,7 @@ def ingest_long(
     for tag in chosen:
         rows = np.flatnonzero(keys == tag)
         part = frame.iloc[rows]
-        timestamps = _localise([stamps[i] for i in rows], part.index, tz, timestamp_col)
+        timestamps = _localise(stamps.iloc[rows], tz, timestamp_col)
         _check_one_series(part, timestamps, label=f"{label}, tag {tag!r}", read=read, rows=rows)
         out_frame, stamped = _prepare_archive(
             timestamps=timestamps,

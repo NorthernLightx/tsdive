@@ -310,8 +310,8 @@ def test_a_row_off_the_stated_format_names_value_and_format(tmp_path):
 
 
 def test_unparseable_timestamp_names_the_offending_value(tmp_path):
-    src = _csv(tmp_path, stamps=["2024-03-01T00:00:00Z", "not a time"])
-    with pytest.raises(SchemaError, match="is not a timestamp tsdive can parse"):
+    src = _csv(tmp_path, stamps=["2024-03-01T00:00:00Z", "not a time", "never"])
+    with pytest.raises(SchemaError, match="'not a time' is not a timestamp tsdive can parse"):
         tsdive.ingest(
             src,
             out=tmp_path / "garbage.parquet",
@@ -320,6 +320,22 @@ def test_unparseable_timestamp_names_the_offending_value(tmp_path):
             value_col="v",
             quality_col="q",
         )
+
+
+def test_one_parse_reads_a_uniform_column_and_other_layouts_row_by_row():
+    from tsdive.api import _parse_timestamps
+
+    minutes = pd.date_range("2024-03-01", periods=1000, freq="min")
+    uniform = pd.Series(minutes.strftime("%d/%m/%Y %H:%M"))
+    parsed = _parse_timestamps(uniform, "ts", dayfirst=True)
+    assert str(parsed.dtype) == "datetime64[ns]"
+    assert parsed.iloc[-1] == pd.Timestamp("2024-03-01 16:39")
+
+    # The first row fixes the inferred format; the rows that miss it parse one by one.
+    mixed = pd.Series(["2024-03-01", "2024-03-01 00:01:00", "2024-03-01T00:02:00"])
+    assert list(_parse_timestamps(mixed, "ts")) == list(
+        pd.date_range("2024-03-01", periods=3, freq="min")
+    )
 
 
 def test_missing_quality_column_is_refused(tmp_path, capsys):
