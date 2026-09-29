@@ -687,7 +687,7 @@ def _residuals(model: PcaModel, aligned: AlignedMatrix) -> tuple[np.ndarray, flo
     hands back only its two statistics; the per-column residuals are what
     the contribution shares divide up.
     """
-    centred = aligned.matrix - model.mean
+    centred = (aligned.matrix - model.mean) / model.scale
     resid = centred - (centred @ model.components.T) @ model.components
     total = float((centred**2).sum())
     kept = 1.0 - float((resid**2).sum()) / total if total > 0 else 0.0
@@ -729,7 +729,12 @@ def joint_structure(
         return JointStructure(
             n_offered=len(periods), reason=f"{type(e).__name__}: {e}"
         )
-    model = fit_pca(train, variance_threshold=variance, limit_quantile=quantile)
+    try:
+        model = fit_pca(train, variance_threshold=variance, limit_quantile=quantile)
+    except TSDiveError as e:
+        return JointStructure(
+            n_offered=len(periods), reason=f"{type(e).__name__}: {e}"
+        )
     found = detect(model, test)
     resid, explained_after = _residuals(model, test)
 

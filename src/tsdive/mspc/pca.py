@@ -5,6 +5,10 @@ Rules enforced here:
 - Alignment refuses unless every tag shares the common UTC grid at the
   declared rate with at least ``min_coverage`` coverage, and contracts
   are mutually comparable. No silent interpolation across tags.
+- Each column is centred on its training mean and divided by its
+  training standard deviation, so the model does not depend on the
+  units a tag is stored in. A column that does not move in training
+  raises ``ZeroSpreadBaseline``.
 - Control limits are EMPIRICAL percentiles of training statistics. They
   carry no chi-square or F distributional claim.
 - SVD signs are fixed deterministically so models replay identically.
@@ -20,7 +24,8 @@ import numpy as np
 import pandas as pd
 
 from tsdive._naming import option
-from tsdive.errors import MspcAlignmentError
+from tsdive.baselines.provisional import zero_spread
+from tsdive.errors import InsufficientQuality, MspcAlignmentError
 from tsdive.store.tagstore import Window
 
 
@@ -124,6 +129,7 @@ def align_windows(
 class PcaModel:
     columns: list[str]
     mean: np.ndarray
+    scale: np.ndarray  # training standard deviation (ddof=1) of each column
     components: np.ndarray  # (k, n_tags), rows unit-norm, sign-fixed
     score_var: np.ndarray  # training variance of each score axis (for T2)
     t2_limit: float
@@ -146,10 +152,29 @@ def fit_pca(
     variance_threshold: float = 0.95,
     limit_quantile: float = 0.99,
 ) -> PcaModel:
-    """Fit PCA on fully-observed aligned rows; limits are empirical."""
+    """Fit PCA on fully-observed aligned rows; limits are empirical.
+
+    Each column is centred on its training mean and divided by its
+    training standard deviation (ddof=1) before the SVD, and
+    :func:`detect` applies the same mean and scale. Multiplying one tag by
+    a constant leaves T2, SPE and every breach unchanged.
+
+    Raises:
+        InsufficientQuality: fewer than 2 training rows.
+        ZeroSpreadBaseline: a column whose training values do not move.
+    """
     x = train.matrix
+    if len(x) < 2:
+        raise InsufficientQuality(
+            f"{len(x)} aligned baseline rows; PCA needs 2 or more to scale each tag"
+        )
     mean = x.mean(axis=0)
-    xc = x - mean
+    scale = x.std(axis=0, ddof=1)
+    flat = np.flatnonzero(scale == 0)
+    if len(flat):
+        column = int(flat[0])
+        raise zero_spread(x[:, column], scale="standard deviation", label=train.columns[column])
+    xc = (x - mean) / scale
     _, s, vt = np.linalg.svd(xc, full_matrices=False)
     var = s**2 / max(len(x) - 1, 1)
     ratio = var / var.sum()
@@ -165,6 +190,7 @@ def fit_pca(
     return PcaModel(
         columns=list(train.columns),
         mean=mean,
+        scale=scale,
         components=comps,
         score_var=var[:k].copy(),
         t2_limit=float(np.quantile(t2, limit_quantile)),
@@ -186,7 +212,7 @@ class MspcDetection:
 def detect(model: PcaModel, monitor: AlignedMatrix) -> MspcDetection:
     if list(monitor.columns) != model.columns:
         raise MspcAlignmentError("monitor matrix columns differ from trained model")
-    xc = monitor.matrix - model.mean
+    xc = (monitor.matrix - model.mean) / model.scale
     scores = xc @ model.components.T
     t2 = np.einsum("ij,ij->i", scores / np.maximum(model.score_var, 1e-12), scores)
     resid = xc - scores @ model.components

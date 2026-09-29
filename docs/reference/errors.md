@@ -242,7 +242,9 @@ visits, or screen without `--mode`.
 Raised by `screen`, `spc` and `screen --mode` when the GOOD values of the
 baseline do not spread, so its MAD or moving-range scale is 0. Limits of
 zero width would flag every sample that differs from the baseline's
-center. A tag that sits on one value of a coarse lattice for most of the
+center. `mspc` raises it for a tag whose standard deviation over the
+baseline is 0, and `compare` prints it as the reason of its joint
+table. A tag that sits on one value of a coarse lattice for most of the
 baseline is the usual cause. The message names the tag, the baseline
 window, the count of distinct values and the most common value with its
 share.

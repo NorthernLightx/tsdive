@@ -325,6 +325,14 @@ def z_individuals_sigma_zero(tmp_path: Path) -> None:
     individuals_limits(20.0, 0.0)
 
 
+def z_pca_column_that_does_not_move(tmp_path: Path) -> None:
+    from tsdive.mspc.pca import AlignedMatrix, fit_pca
+
+    index = pd.DatetimeIndex(_stamps(40))
+    matrix = np.column_stack([np.arange(40.0), np.full(40, 7.0)])
+    fit_pca(AlignedMatrix(index=index, columns=["A.PV", "B.PV"], matrix=matrix, coverage=1.0))
+
+
 # --------------------------------------------------------------------------
 # RegimeTooSparse
 # --------------------------------------------------------------------------
@@ -765,6 +773,12 @@ CORPUS: list[Case] = [
         ZeroSpreadBaseline,
         r"^sigma is 0, so both limits sit on the center 20",
         z_individuals_sigma_zero,
+    ),
+    Case(
+        "PCA baseline column holding one value",
+        ZeroSpreadBaseline,
+        r"^B\.PV: the standard deviation is 0, because the 40 GOOD baseline samples",
+        z_pca_column_that_does_not_move,
     ),
     Case(
         "regime R2 holding 3 GOOD samples against a floor of 20",

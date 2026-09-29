@@ -51,11 +51,13 @@ and the drop is well outside the noise. That is a
 ## Table 3: joint structure
 
 A PCA fitted on the before period, read on the after period, as `mspc`
-does. `explained 0.9839 -> 0.2643 on after` says one component carried
-98% of the before variance and 26% of the after variance: the structure
-the tags shared is gone. The T2 and SPE breaches count after rows over
-the before period's limits, and the SPE contributors name the tag that
-carries the break, TIC-101 with 79%. See [MSPC](mspc.md).
+does. `explained 0.9767 -> 0.5129 on after` says one component carried
+98% of the before variance and 51% of the after variance: half of the
+after variance lies off the structure the tags shared. The T2 and SPE
+breaches count after rows over the before period's limits. The SPE
+contributors divide the residual of the breach rows over the tags. With
+two tags the residual splits evenly, 50% each, so the tag table names
+the tag that changed. See [MSPC](mspc.md).
 
 ## When a table is refused
 

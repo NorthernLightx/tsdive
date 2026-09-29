@@ -76,7 +76,8 @@ class ZeroSpreadBaseline(TSDiveError):
     """A baseline whose GOOD values do not spread, so its scale is 0.
 
     Raised by the MAD and moving-range baselines, per regime by the
-    regime baselines, and by individuals chart limits with a sigma of 0.
+    regime baselines, by individuals chart limits with a sigma of 0, and
+    by the MSPC fit for a column whose training standard deviation is 0.
     Limits of zero width flag every sample that differs from the
     baseline's center.
     """

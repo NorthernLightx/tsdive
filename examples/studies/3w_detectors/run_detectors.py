@@ -52,9 +52,12 @@ change what the numbers mean:
   inside a single minute.
 - **MSPC columns are autoscaled on training statistics.** The six
   variables are pressures in Pa and a temperature in degC, spanning seven
-  orders of magnitude. ``fit_pca`` mean-centres but does not scale, so an
-  unscaled fit would be a model of ``P-ANULAR`` alone. Each column is
-  divided by its training standard deviation before the matrix is built.
+  orders of magnitude, so an unscaled fit would be a model of
+  ``P-ANULAR`` alone. Each column is divided by its training standard
+  deviation before the matrix is built. ``fit_pca`` then divides each
+  column by its own training standard deviation (ddof 1), a factor the
+  same for every column that moves, so T2 and every breach stay as the
+  study's scaling sets them.
 
     uv run python examples/studies/3w_detectors/run_detectors.py
 """
@@ -711,9 +714,11 @@ def score_mspc(
     """PCA T2 and SPE over the sub-group grid.
 
     ``autoscale`` divides each column by its training standard deviation.
-    It is off when the caller has already z-scored the grid per instance:
-    scaling twice would put a second, cross-well scale on top of the
-    per-tag one and undo the point of the design.
+    It is off when the caller has already z-scored the grid per instance.
+    ``fit_pca`` still divides each column by its pooled training standard
+    deviation, so a z-scored grid carries that cross-well scale on top of
+    the per-tag one. A training column that does not move raises
+    ``ZeroSpreadBaseline`` in ``fit_pca``, and the caller refuses the fold.
     """
     t2_out, spe_out = ToolScores.empty(), ToolScores.empty()
     step_s = window_s / len(subgroup_cols)
@@ -728,8 +733,8 @@ def score_mspc(
         raise MspcAlignmentError("no training window carries every common variable")
     stacked = np.vstack(blocks)
     # Autoscale on training statistics: seven orders of magnitude between
-    # a pressure in Pa and a temperature in degC, and fit_pca centres but
-    # does not scale.
+    # a pressure in Pa and a temperature in degC. fit_pca scales again by
+    # the ddof-1 standard deviation, the same factor on every moving column.
     if autoscale:
         scale = stacked.std(axis=0)
         scale = np.where(scale > 0, scale, 1.0)
@@ -1162,7 +1167,7 @@ def run_aligned(args) -> int:
                 window_s,
                 autoscale=False,
             )
-        except MspcAlignmentError as e:
+        except (MspcAlignmentError, ZeroSpreadBaseline) as e:
             refused = ToolScores(
                 scores={}, refusals={int(k): str(e) for k in sorted(test_keys)}
             )
@@ -1511,7 +1516,7 @@ def main(argv: list[str] | None = None) -> int:
             t2, spe, mspc_info = score_mspc(
                 g_train, g_test, variables, subgroup_cols, window_s
             )
-        except MspcAlignmentError as e:
+        except (MspcAlignmentError, ZeroSpreadBaseline) as e:
             refused = ToolScores(
                 scores={}, refusals={int(k): str(e) for k in sorted(test_keys)}
             )
@@ -1620,7 +1625,7 @@ def main(argv: list[str] | None = None) -> int:
                 window_s,
                 autoscale=False,
             )
-        except MspcAlignmentError as e:  # pragma: no cover - defensive
+        except (MspcAlignmentError, ZeroSpreadBaseline) as e:  # pragma: no cover
             refused = ToolScores(scores={}, refusals={int(k): str(e) for k in fold_keys})
             t2, spe, info = refused, refused, {"refusal": str(e)}
         answers["mspc_t2"], answers["mspc_spe"] = t2, spe

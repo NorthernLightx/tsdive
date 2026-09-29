@@ -568,7 +568,7 @@ class MspcAnalysis:
             ...                 "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z",
             ...                 "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z")
             >>> print(m.render().splitlines()[0])
-            demo:FIC101.PV, demo:TIC101.PV  T2 breaches 22   SPE breaches 108   of 121 rows
+            demo:FIC101.PV, demo:TIC101.PV  T2 breaches 70   SPE breaches 108   of 121 rows
         """
         return "\n".join(mspc_lines(self))
 
@@ -604,8 +604,9 @@ def mspc(
         ValueError: malformed window, overlapping windows, or no ``rate_s``
             where an archive declares no ``sample_rate_s`` or the archives
             declare different ones.
-        TSDiveError: a censored baseline, archives that do not align, or
-            any typed refusal from the read path.
+        TSDiveError: a censored baseline, archives that do not align, a
+            tag that does not move over the baseline, or any typed
+            refusal from the read path.
 
     Examples:
         >>> import tsdive
@@ -613,7 +614,7 @@ def mspc(
         ...                 "2024-03-30T20:00:00Z/2024-03-30T23:00:00Z",  # baseline
         ...                 "2024-03-31T04:00:00Z/2024-03-31T06:00:00Z")  # window
         >>> len(m.found.t2_breaches), len(m.found.spe_breaches), len(m.frame)
-        (22, 108, 121)
+        (70, 108, 121)
         >>> m.tags
         ['demo:FIC101.PV', 'demo:TIC101.PV']
     """

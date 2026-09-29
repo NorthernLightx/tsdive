@@ -14,8 +14,11 @@ than 0.95 of the grid cells are filled, it raises
 [`MspcAlignmentError`](../../reference/errors.md#mspcalignmenterror).
 On the baseline rows it fits a PCA: it finds the directions in which
 the tags vary together and keeps the fewest components that carry 0.95
-of the variance (`--variance`). The model works in the tags' own units,
-centred on the baseline mean, so a tag with a larger spread weighs more.
+of the variance (`--variance`). Each tag is centred on its baseline mean
+and divided by its baseline standard deviation, so the unit a tag is
+stored in does not change its weight. A tag that does not move over the
+baseline raises
+[`ZeroSpreadBaseline`](../../reference/errors.md#zerospreadbaseline).
 
 ## Two statistics per row
 
@@ -39,20 +42,21 @@ tsdive mspc data/demo/fic101_demo.parquet data/demo/tic101_demo.parquet \
     --window 2024-03-31T04:00:00Z/2024-03-31T06:00:00Z
 ```
 
-- `components 1 of 2   explained 0.9839`: one component carries 98% of
+- `components 1 of 2   explained 0.9767`: one component carries 98% of
   the baseline variance, because the temperature follows the flow.
-- `limits    T2 4.052   SPE 0.03662`: the breach thresholds.
-- `T2 breaches 22   SPE breaches 108   of 121 rows`: after 04:00 the
+- `limits    T2 3.759   SPE 0.2859`: the breach thresholds.
+- `T2 breaches 70   SPE breaches 108   of 121 rows`: after 04:00 the
   temperature stops tracking the flow. 108 of 121 rows break the
-  correlation, and 22 sit far along it.
+  correlation, and 70 sit far along it.
 
 ## Contributors
 
 [Contributors](../../reference/glossary.md#contributors) name the tags
 that carry the breaches, each with its share. With three tags or fewer
 every tag would be named, so `mspc` prints `not ranked`. `compare`'s
-joint table prints the shares for any number of tags: on the demo,
-TIC-101 carries 79% of the SPE.
+joint table prints the shares for any number of tags. With two tags and
+one component the residual falls on both tags equally, so the demo
+shares are 50% each and name neither tag.
 
 ## What to do
 

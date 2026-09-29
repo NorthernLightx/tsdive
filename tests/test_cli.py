@@ -998,7 +998,7 @@ def test_mspc_surfaces_a_residual_burst_in_spe(archive_factory, capsys):
     out = capsys.readouterr().out.splitlines()
     assert rc == 0
     # Two long tag names push the list off the headline, onto a tags line.
-    assert out[0] == "2 tags  T2 breaches 12   SPE breaches 30   of 60 rows"
+    assert out[0] == "2 tags  T2 breaches 9   SPE breaches 30   of 60 rows"
     assert out[2] == "tags      plant1:FIC101.PV, plant1:TIC101.PV"
     assert out[5].startswith("model     rate 60 s (declared)")
     assert "SPE breaches  30" in out
@@ -1539,7 +1539,7 @@ def test_run_mspc_returns_the_detection_lines(archive_factory):
         [str(flow), str(temp), "--baseline", MSPC_BASELINE, "--window", MSPC_WINDOW]
     )
     lines = run_mspc(args)
-    assert lines[0] == "2 tags  T2 breaches 12   SPE breaches 30   of 60 rows"
+    assert lines[0] == "2 tags  T2 breaches 9   SPE breaches 30   of 60 rows"
     assert lines[2] == "tags      plant1:FIC101.PV, plant1:TIC101.PV"
     assert lines[5].startswith("model     rate 60 s (declared)")
     assert "SPE breaches  30" in lines
