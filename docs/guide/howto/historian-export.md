@@ -179,6 +179,7 @@ writes one archive per tag.
 | `no quality column` | name it with `--quality-col`, or pass `--assume-quality` |
 | `unknown key` | fix the metadata key it names; the message suggests the right one |
 | `is not numeric and no digital state explains it` | name the string in `quality_codes` |
+| `precedes the row before it` | fix the row order in the export; tsdive does not sort it |
 
 The [errors page](../../reference/errors.md#schemaerror) lists every
 schema refusal.

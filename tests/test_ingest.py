@@ -9,7 +9,7 @@ import pytest
 
 import tsdive
 from tsdive.cli import cmd_ingest, cmd_profile
-from tsdive.errors import SchemaError
+from tsdive.errors import NonMonotonicIndex, SchemaError
 from tsdive.store.tagstore import meta_from_parquet, safe_filename
 
 META = {
@@ -588,6 +588,127 @@ def test_mode_tag_string_states_ingest_cleanly(tmp_path):
     assert list(tsdive.profile(out).frame["value"]) == ["R0", "R1", "R1"]
 
 
+# ------------------------------------------------- several tags in one export
+
+LONG_TAGS = {"PI101.PV": 3.5, "FI102.PV": 40.0, "TI103.PV": 181.0}
+LONG_INSTANTS = pd.date_range("2026-03-01", periods=288, freq="5min", tz="UTC")
+
+
+def _long_csv(tmp_path, *, sort_by="Timestamp", name="long.csv"):
+    """Three tags x 288 rows at 5 min in one Tag/Timestamp/Value/Status export."""
+    rows = [
+        {"Tag": tag, "Timestamp": t.isoformat(), "Value": level + 0.01 * k, "Status": "Good"}
+        for tag, level in LONG_TAGS.items()
+        for k, t in enumerate(LONG_INSTANTS)
+    ]
+    path = tmp_path / name
+    pd.DataFrame(rows).sort_values(sort_by, kind="stable").to_csv(path, index=False)
+    return path
+
+
+@pytest.mark.parametrize("sort_by", ["Timestamp", "Tag"], ids=["time-sorted", "tag-sorted"])
+def test_a_merged_multi_tag_export_is_refused(tmp_path, capsys, sort_by):
+    out = tmp_path / "merged.parquet"
+    rc = cmd_ingest(
+        [
+            str(_long_csv(tmp_path, sort_by=sort_by)),
+            "--out",
+            str(out),
+            "--meta",
+            str(_meta_file(tmp_path)),
+            "--timestamp-col",
+            "Timestamp",
+            "--value-col",
+            "Value",
+            "--assume-quality",
+            "GOOD",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert "[SchemaError] long.csv: 864 rows share a timestamp" in err
+    assert "column 'Tag' splits the rows into 3 overlapping series" in err
+    assert "pass --tag-col Tag to write one archive per tag" in err
+    assert not out.exists()
+
+
+def test_a_merged_export_on_offset_clocks_is_refused_naming_ingest_long(tmp_path):
+    """Tags sampled at different instants never share a timestamp but still run backwards."""
+    frame = pd.DataFrame(
+        {
+            "Tag": ["A"] * 3 + ["B"] * 3,
+            "Timestamp": [
+                "2026-03-01T00:00:00Z",
+                "2026-03-01T00:01:00Z",
+                "2026-03-01T00:02:00Z",
+                "2026-03-01T00:00:30Z",
+                "2026-03-01T00:01:30Z",
+                "2026-03-01T00:02:30Z",
+            ],
+            "Value": [1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+        }
+    )
+    frame.to_csv(tmp_path / "offset.csv", index=False)
+    with pytest.raises(
+        SchemaError,
+        match=r"the timestamps run backwards at data row 4, and column 'Tag' splits the rows "
+        r"into 2 overlapping series.*call ingest_long with tag_col='Tag'",
+    ):
+        tsdive.ingest(
+            tmp_path / "offset.csv",
+            out=tmp_path / "offset.parquet",
+            meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+            timestamp_col="Timestamp",
+            value_col="Value",
+            assume_quality="GOOD",
+        )
+    assert not (tmp_path / "offset.parquet").exists()
+
+
+def test_a_repeated_timestamp_in_a_single_tag_export_still_ingests(tmp_path):
+    """Two events at one instant: a row id and a batch column do not read as tag columns."""
+    stamps = [
+        "2024-03-01T00:00:00Z",
+        "2024-03-01T00:01:00Z",
+        "2024-03-01T00:01:00Z",
+        "2024-03-01T00:02:00Z",
+    ]
+    pd.DataFrame(
+        {
+            "ts": stamps,
+            "v": [50.0, 51.0, 51.5, 52.0],
+            "q": ["GOOD"] * 4,
+            "row": [1, 2, 3, 4],
+            "batch": ["B1", "B1", "B2", "B2"],
+        }
+    ).to_csv(tmp_path / "events.csv", index=False)
+    out = tsdive.ingest(
+        tmp_path / "events.csv",
+        out=tmp_path / "events.parquet",
+        meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+        timestamp_col="ts",
+        value_col="v",
+        quality_col="q",
+    )
+    assert list(pd.read_parquet(out)["value"]) == [50.0, 51.0, 51.5, 52.0]
+
+
+def test_a_backwards_export_is_refused_before_writing(tmp_path):
+    src = _csv(tmp_path, stamps=[AWARE[0], AWARE[2], AWARE[1]])
+    stamp = r"data row 3 \(2024-03-01T00:01:00\+00:00\)"
+    with pytest.raises(NonMonotonicIndex, match=stamp) as info:
+        tsdive.ingest(
+            src,
+            out=tmp_path / "back.parquet",
+            meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+            timestamp_col="ts",
+            value_col="v",
+            quality_col="q",
+        )
+    assert info.value.offending_positions == [2]
+    assert not (tmp_path / "back.parquet").exists()
+
+
 # ---------------------------------------------------------------- wide exports
 
 WIDE_TAGS = ("FIC101.PV", "TIC201.PV", "PIC301.PV")
@@ -737,6 +858,22 @@ def test_wide_naive_stamps_without_tz_are_refused(tmp_path):
             meta_dir=_wide_meta_dir(tmp_path),
             timestamp_col="ts",
             quality_suffix="_q",
+        )
+    assert not (tmp_path / "archive").exists()
+
+
+def test_wide_backwards_rows_are_refused_before_any_archive(tmp_path):
+    src = _wide_csv(tmp_path)
+    frame = pd.read_csv(src)
+    frame.iloc[::-1].to_csv(src, index=False)
+    with pytest.raises(NonMonotonicIndex, match=r"wide\.csv: the timestamp of data row 2"):
+        tsdive.ingest_wide(
+            src,
+            out_dir=tmp_path / "archive",
+            meta_dir=_wide_meta_dir(tmp_path),
+            timestamp_col="ts",
+            quality_suffix="_q",
+            tz="Europe/London",
         )
     assert not (tmp_path / "archive").exists()
 

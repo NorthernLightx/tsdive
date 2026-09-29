@@ -24,7 +24,7 @@ import pyarrow as pa
 
 from tsdive._naming import argname, cli_active, option
 from tsdive.detectors.flatline import FlatlineVerdict, assess_flatline
-from tsdive.errors import SchemaError
+from tsdive.errors import NonMonotonicIndex, SchemaError
 from tsdive.features.window_features import WindowStats, compute_stats
 from tsdive.report import profile_json, render_window_report
 from tsdive.store.identity import TagIdentity, TagMeta
@@ -53,6 +53,7 @@ from tsdive.store.tagstore import (
     safe_filename,
     write_tag,
 )
+from tsdive.store.timebase import backwards_positions
 from tsdive.switchback.archive import SwitchbackAnalysis, analyze_archives, with_power
 from tsdive.switchback.plan import SwitchbackPlan, make_plan
 from tsdive.ui.jsonout import to_jsonable
@@ -541,6 +542,85 @@ def _resolve_quality(
     return pd.Series([declared] * len(frame), index=frame.index), True
 
 
+def _tag_column(
+    frame: pd.DataFrame, timestamps: pd.Series, *, read: set[str]
+) -> tuple[str, int] | None:
+    """The first unread column that splits the rows into several series, with its count.
+
+    A column qualifies when it cuts the rows into two or more groups of at
+    least two rows each, the timestamps inside each group strictly
+    increase in row order, and two groups overlap in time by more than one
+    instant. A row id or a second measurement column makes one-row groups.
+    A batch or shift column makes groups that follow one another. Neither
+    qualifies.
+    """
+    stamps = timestamps.to_numpy()
+    for column in frame.columns:
+        if str(column) in read:
+            continue
+        pairs = pd.DataFrame({"group": frame[column].to_numpy(), "timestamp": stamps})
+        grouped = pairs.groupby("group", dropna=False, sort=False)["timestamp"]
+        sizes = grouped.size()
+        if len(sizes) < 2 or int(sizes.min()) < 2:
+            continue
+        steps = grouped.diff().dropna()
+        if bool((steps <= pd.Timedelta(0)).any()):
+            continue
+        spans = pd.DataFrame({"start": grouped.min(), "end": grouped.max()}).sort_values("start")
+        reach = spans["end"].cummax().shift(1)
+        if bool((spans["start"].iloc[1:] < reach.iloc[1:]).any()):
+            return str(column), len(sizes)
+    return None
+
+
+def _check_one_series(
+    frame: pd.DataFrame,
+    timestamps: pd.Series,
+    *,
+    label: str,
+    read: set[str],
+) -> None:
+    """Raise when the rows hold several tags or when their timestamps run backwards.
+
+    Repeated timestamps alone are accepted: a historian can record two
+    events at one instant. Repeated or backwards timestamps raise
+    ``SchemaError`` when an unread column splits the rows into overlapping
+    series that are each in time order (see ``_tag_column``). Otherwise a
+    backwards step raises ``NonMonotonicIndex``, because every read of the
+    archive would raise it.
+    """
+    shared = int(timestamps.duplicated(keep=False).sum())
+    positions = backwards_positions(timestamps.reset_index(drop=True))
+    if shared or positions:
+        found = _tag_column(frame, timestamps, read=read)
+        if found is not None:
+            column, count = found
+            finding = (
+                f"{shared} rows share a timestamp"
+                if shared
+                else f"the timestamps run backwards at data row {positions[0] + 1}"
+            )
+            fix = (
+                f"pass --tag-col {column} to write one archive per tag"
+                if cli_active()
+                else f"call ingest_long with tag_col={column!r} to write one archive per tag"
+            )
+            raise SchemaError(
+                f"{label}: {finding}, and column {column!r} splits the rows into {count} "
+                f"overlapping series, each in time order; the export holds several tags, "
+                f"so {fix}"
+            )
+    if positions:
+        first = positions[0]
+        raise NonMonotonicIndex(
+            f"{label}: the timestamp of data row {first + 1} "
+            f"({timestamps.iloc[first].isoformat()}) precedes the row before it "
+            f"({timestamps.iloc[first - 1].isoformat()}); every read of the archive would "
+            "raise NonMonotonicIndex, so fix the row order in the export",
+            offending_positions=positions,
+        )
+
+
 def _prepare_archive(
     *,
     timestamps: pd.Series,
@@ -583,7 +663,12 @@ def ingest(
 
     Only the three declared columns are carried over; everything else in
     the export is left behind, so an ingested archive contains exactly
-    what its schema promises.
+    what its schema promises. A left-behind column that splits the rows
+    into overlapping series, each in time order, marks an export of
+    several tags. Such an export raises ``SchemaError`` when its
+    timestamps repeat or run backwards. Timestamps that run backwards
+    otherwise raise ``NonMonotonicIndex``, because every read of the
+    archive would.
 
     A missing quality column is a refusal, not a default: a value whose
     trustworthiness is unknown is not a measurement. ``assume_quality``
@@ -602,7 +687,9 @@ def ingest(
         SchemaError: unreadable input, missing column, naive timestamps
             without ``tz``, a date that reads day first and month first
             with no order stated, a row that does not match
-            ``timestamp_format``, or an unusable ``assume_quality`` value.
+            ``timestamp_format``, an unusable ``assume_quality`` value, or
+            an export of several tags.
+        NonMonotonicIndex: a timestamp precedes the row before it.
         ValueError: both ``timestamp_format`` and ``dayfirst``.
         FileExistsError: ``out`` exists and ``overwrite`` is False.
 
@@ -643,14 +730,17 @@ def ingest(
     quality, assumed = _resolve_quality(
         frame, label=src.name, quality_col=quality_col, assume_quality=assume_quality
     )
+    timestamps = _to_utc(
+        frame[timestamp_col],
+        tz,
+        timestamp_col,
+        timestamp_format=timestamp_format,
+        dayfirst=dayfirst,
+    )
+    read = {timestamp_col, value_col} if assumed else {timestamp_col, value_col, quality_col}
+    _check_one_series(frame, timestamps, label=src.name, read=read)
     out_frame, stamped = _prepare_archive(
-        timestamps=_to_utc(
-            frame[timestamp_col],
-            tz,
-            timestamp_col,
-            timestamp_format=timestamp_format,
-            dayfirst=dayfirst,
-        ),
+        timestamps=timestamps,
         values=frame[value_col],
         quality=quality,
         assumed=assumed,
@@ -756,6 +846,7 @@ def ingest_wide(
             or metadata file; naive timestamps without ``tz``; a date that
             reads day first and month first with no order stated; or
             ``quality_suffix`` given together with ``assume_quality``.
+        NonMonotonicIndex: a timestamp precedes the row before it.
         ValueError: two tags or two point ids that share one file name, or
             both ``timestamp_format`` and ``dayfirst``.
         FileExistsError: an archive exists and ``overwrite`` is False.
@@ -838,6 +929,7 @@ def ingest_wide(
         timestamp_format=timestamp_format,
         dayfirst=dayfirst,
     )
+    _check_one_series(frame, timestamps, label=label, read={str(c) for c in frame.columns})
     prepared: list[tuple[Path, pd.DataFrame, TagMeta]] = []
     for tag in chosen:
         quality, assumed = _resolve_quality(

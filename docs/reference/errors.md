@@ -85,7 +85,8 @@ tsdive archive, a missing quality column at ingest, naive timestamps
 without `--tz`, a date that reads day first and month first, a metadata
 key tsdive does not define, a `quality_codes` entry that names no
 severity, or a string value on a tag that is not `role: MODE` and that
-`quality_codes` does not name.
+`quality_codes` does not name. A single-tag ingest raises it for an
+export of several tags, one column naming the tag of each row.
 
 ```csv file=export.csv
 timestamp,value,quality
@@ -153,9 +154,10 @@ What to do: read every archive under one `--basis`.
 
 ### NonMonotonicIndex
 
-Raised when timestamps go backwards. tsdive does not sort them, because
-gaps over a re-sorted index would describe an order the historian never
-had. The error carries the offending positions.
+Raised when timestamps go backwards, by `ingest` before it writes the
+archive and by every read of an archive. tsdive does not sort them,
+because gaps over a re-sorted index would describe an order the
+historian never had. The error carries the offending positions.
 
 ```pycon
 >>> import pandas as pd
