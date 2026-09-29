@@ -9,7 +9,8 @@ control-chart and PCA monitoring on the same window. It reads single-tag
 parquet archives, built from CSV or parquet exports with `ingest` or
 through a source adapter ([docs/SOURCES.md](docs/SOURCES.md)), and writes
 text, JSON, Python objects or a static HTML page. A check with no answer
-raises a typed error naming the check.
+raises a typed error naming the check. It also runs randomized two-setting
+trials on one unit ([switchback](docs/SWITCHBACK.md)).
 
 ## Install
 
@@ -21,11 +22,11 @@ pip install "git+https://github.com/NorthernLightx/tsdive.git"
 tsdive demo data
 ```
 
+Guides and full reference: https://northernlightx.github.io/tsdive/.
 Built wheels are on the
 [releases page](https://github.com/NorthernLightx/tsdive/releases). Add
 `[ml]` to the install for the IsolationForest detector (scikit-learn) or
-`[mcp]` for the MCP server. The package is not on PyPI. The `run`
-transcript reads `examples/plans/demo.toml` from a clone.
+`[mcp]` for the MCP server. The package is not on PyPI.
 
 The library and CLI make no network calls. The dataset fetch scripts
 under `scripts/` download on request and print their size first.
@@ -219,7 +220,7 @@ Runs one TOML plan over many archives and writes `ledger.json`,
 `ledger.txt` and `report.html` (tables and one plot per tag) to
 `-o DIR` (default `tsdive-run/` beside the plan). Options are the
 step's own flags: a list repeats the flag, `true` is the bare flag.
-Globs resolve against the plan file. `examples/plans/demo.toml`:
+Globs resolve against the plan file. `examples/plans/demo.toml`, in a clone:
 
 ```toml
 archives = ["../../data/demo/*.parquet"]
