@@ -196,11 +196,12 @@ def reference_history(
     # the last boundary sit between the references and the assessed
     # window; searchsorted puts them out of range and they are dropped.
     # Compared as UTC nanoseconds: searchsorted over boxed Timestamps
-    # would be a Python compare per sample.
+    # would be a Python compare per sample. An archive reads back in its
+    # stored unit (ms, us or ns), so both sides go to ns first.
     window_of = (
         np.searchsorted(
-            pd.Series(boundaries).astype("int64").to_numpy(),
-            good["timestamp"].astype("int64").to_numpy(),
+            boundaries.as_unit("ns").asi8,
+            good["timestamp"].dt.as_unit("ns").to_numpy(dtype="int64"),
             side="right",
         )
         - 1
@@ -237,7 +238,7 @@ def reference_history(
     # every second that moves every second has a 1 s interval, and one
     # that moves every tenth sample has a 10 s interval, where the
     # spacing would call both of them 1 s.
-    stamps = good["timestamp"].astype("int64").to_numpy()[at]
+    stamps = good["timestamp"].dt.as_unit("ns").to_numpy(dtype="int64")[at]
     in_window = window_of[at]
     gaps = np.diff(stamps)
     same_window = in_window[1:] == in_window[:-1]

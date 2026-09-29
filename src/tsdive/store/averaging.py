@@ -56,7 +56,8 @@ def time_weighted_mean(
             offending_positions=backwards,
         )
     end = window_end if window_end is not None else ts.iloc[-1]
-    end_ns = np.int64(pd.Timestamp(end).to_datetime64().astype("int64"))
+    # Timestamp.value is nanoseconds whatever the Timestamp's own unit.
+    end_ns = np.int64(pd.Timestamp(end).value)
     seg_end = np.append(epoch[1:], end_ns)
     weights = np.maximum(0.0, (seg_end - epoch) / 1e9)
     total_weight = float(weights.sum())

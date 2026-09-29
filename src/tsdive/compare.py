@@ -328,7 +328,7 @@ def _change_intervals_s(frame: pd.DataFrame) -> list[float]:
     at = np.flatnonzero(changed)
     if at.size < 2:
         return []
-    seconds = stamps.iloc[at].astype("int64").to_numpy() / 1e9
+    seconds = stamps.iloc[at].dt.as_unit("ns").to_numpy(dtype="int64") / 1e9
     return [float(v) for v in np.diff(seconds)]
 
 
