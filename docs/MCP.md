@@ -6,17 +6,19 @@ the server.
 
 ## Install
 
-The server needs the `mcp` extra. A base install does not carry it. From
-a clone:
+The server needs the `mcp` extra. A base install does not carry it.
+Install tsdive with the extra from git, or from the release wheel:
 
 ```console
-pip install -e '.[mcp]'
+pip install "tsdive[mcp] @ git+https://github.com/NorthernLightx/tsdive.git"
+pip install "tsdive[mcp] @ https://github.com/NorthernLightx/tsdive/releases/download/vX.Y.Z/tsdive-X.Y.Z-py3-none-any.whl"
 ```
 
-Without the extra, `tsdive-mcp` writes one line to stderr and exits 2:
+From a clone, `pip install -e ".[mcp]"` installs it. Without the extra,
+`tsdive-mcp` writes one line to stderr and exits 2:
 
 ```console
-error: the tsdive MCP server needs the mcp package (>=2.1); install tsdive with the mcp extra, for example pip install -e '.[mcp]' from a clone
+error: the tsdive MCP server needs the mcp package (>=2.1); install tsdive with the mcp extra: pip install "tsdive[mcp] @ git+https://github.com/NorthernLightx/tsdive.git", or the release wheel with it, pip install "tsdive[mcp] @ https://github.com/NorthernLightx/tsdive/releases/download/vX.Y.Z/tsdive-X.Y.Z-py3-none-any.whl"
 ```
 
 ## Launch

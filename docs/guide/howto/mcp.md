@@ -8,14 +8,17 @@ This guide installs the server and wires it into a client.
 
 ## Install the extra
 
-The server needs the `mcp` extra. Install the wheel with it:
+The server needs the `mcp` extra. Install tsdive with the extra from git,
+or from the release wheel:
 
 ```console
-uv pip install "tsdive[mcp] @ https://github.com/NorthernLightx/tsdive/releases/download/vX.Y.Z/tsdive-X.Y.Z-py3-none-any.whl"
+pip install "tsdive[mcp] @ git+https://github.com/NorthernLightx/tsdive.git"
+pip install "tsdive[mcp] @ https://github.com/NorthernLightx/tsdive/releases/download/vX.Y.Z/tsdive-X.Y.Z-py3-none-any.whl"
 ```
 
-With plain pip the command is the same after `pip install`. From a
-clone, `pip install -e ".[mcp]"` installs the extra.
+In a uv environment, `uv pip install` takes the same argument. From a
+clone, `pip install -e ".[mcp]"` installs the extra. Without the extra,
+`tsdive-mcp` exits 2 and prints both commands.
 
 ## Find the server's path
 
