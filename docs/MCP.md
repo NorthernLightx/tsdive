@@ -46,8 +46,8 @@ same arguments give the same fields as the command line.
 |---|---|---|---|
 | `profile` | `archive` | `window`, `basis`, `stepped`, `tz`, `flatline` | sampling contract, unit resolution, coverage and gap classes, clipping, timestamp audit, quality counts, statistics, flatline verdict |
 | `segment` | `archive` | `window`, `penalty`, `min_size`, `basis`, `stepped` | breakpoints, and one row per segment with `n`, `median` and `mad` |
-| `screen` | `archive`, `baseline`, `window` | `method`, `k`, `mode`, `basis`, `stepped`, `max_events` | center, scale, limits, `n_screened`, `n_flagged`, the runs of consecutive flagged samples, and up to `max_events` flagged timestamps |
-| `spc` | `archive`, `baseline`, `window` | `basis`, `stepped`, `max_events` | individuals limits, and for `BEYOND_3SIGMA`, `RUN_9_SAMESIDE` and `TREND_6` the hit count, the runs of consecutive hits and up to `max_events` hits |
+| `screen` | `archive`, `baseline`, `window` | `method`, `k`, `mode`, `basis`, `stepped`, `max_events`, `max_runs` | center, scale, limits, `n_screened`, `n_flagged`, up to `max_runs` runs of consecutive flagged samples, and up to `max_events` flagged timestamps |
+| `spc` | `archive`, `baseline`, `window` | `basis`, `stepped`, `max_events`, `max_runs` | individuals limits, and for `BEYOND_3SIGMA`, `RUN_9_SAMESIDE` and `TREND_6` the hit count, up to `max_runs` runs of consecutive hits and up to `max_events` hits |
 | `compare` | `archives`, `before`, `after` | `top`, `rate_s` | per-tag change rows, the pairwise correlation table, the joint MSPC structure |
 | `switchback_analyze` | `archives`, `plan`, `target` | `covariates` | the verified plan digest, the B minus A estimate with its p-value and 95% interval, kept samples per block, the adjusted estimate |
 
@@ -67,8 +67,11 @@ consecutive GOOD samples that all carry the flag or rule hit, given as
 `start`, `end` and `n`. The per-sample lists, `flagged` in `screen` and
 `hits` under each rule in `spc`, keep `max_events` entries (0 when left
 out), and `flagged_dropped` or `hits_dropped` counts the entries left
-out. The counts `n_flagged`, `n_hits` and `n` cover every sample.
-`tsdive screen --json` and `tsdive spc --json` print the full lists.
+out. `runs` keeps the first `max_runs` runs (40 when left out), per rule
+in `spc`. `runs_dropped` counts the runs left out, at the top of a
+`screen` answer and on each rule of an `spc` answer. The counts
+`n_flagged`, `n_hits` and `n` cover every sample. `tsdive screen --json`
+and `tsdive spc --json` print the full lists.
 
 ## Result union
 
