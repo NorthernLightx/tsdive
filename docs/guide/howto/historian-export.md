@@ -218,7 +218,9 @@ TI103.PV,2026-10-28T05:02:00Z,181.3,Good
 ```
 
 A single-tag ingest of this file raises `SchemaError`, because two rows
-share each timestamp and `Tag` splits them into two series. `--tag-col`
+share each timestamp and `Tag` splits them into two series. A file whose
+tags sample at offset instants, such as `:00` and `:30`, raises it too,
+because consecutive rows move between the two series. `--tag-col`
 names the tag column. With `--init-meta DIR` ingest writes one template
 per tag:
 

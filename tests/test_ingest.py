@@ -849,6 +849,96 @@ def test_a_merged_export_on_offset_clocks_is_refused_naming_ingest_long(tmp_path
     assert not (tmp_path / "offset.parquet").exists()
 
 
+def _offset_clock_csv(tmp_path):
+    """Three tags at :00, :20 and :40 of every minute, time-sorted: no timestamp repeats."""
+    base = pd.Timestamp("2026-03-01T00:00:00Z")
+    rows = [
+        {
+            "Tag": tag,
+            "Timestamp": (base + pd.Timedelta(minutes=k, seconds=20 * i)).isoformat(),
+            "Value": level + 0.01 * k,
+        }
+        for k in range(60)
+        for i, (tag, level) in enumerate(LONG_TAGS.items())
+    ]
+    path = tmp_path / "offset.csv"
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
+def test_a_time_sorted_export_on_offset_clocks_is_refused(tmp_path, capsys):
+    src = _offset_clock_csv(tmp_path)
+    out = tmp_path / "merged.parquet"
+    argv = ["--timestamp-col", "Timestamp", "--value-col", "Value", "--assume-quality", "GOOD"]
+    rc = cmd_ingest([str(src), "--out", str(out), "--meta", str(_meta_file(tmp_path)), *argv])
+    err = capsys.readouterr().err
+    assert rc == 3
+    assert (
+        "[SchemaError] offset.csv: column 'Tag' splits the rows into 3 overlapping series, "
+        "each in time order, and 100% of consecutive rows move to another series; the "
+        "export holds several tags, so pass --tag-col Tag to write one archive per tag"
+    ) in err
+    assert not out.exists()
+
+    meta_dir = tmp_path / "meta"
+    meta_dir.mkdir()
+    for tag in LONG_TAGS:
+        (meta_dir / f"{tag}.json").write_text(
+            json.dumps({**META, "identity": {"source_id": "plant1", "point_id": tag}}),
+            encoding="utf-8",
+        )
+    rc = cmd_ingest(
+        [str(src), "--tag-col", "Tag", "--out", str(tmp_path / "arch"), "--meta-dir",
+         str(meta_dir), *argv]
+    )
+    assert rc == 0
+    assert sorted(p.name for p in (tmp_path / "arch").iterdir()) == [
+        "FI102.PV.parquet", "PI101.PV.parquet", "TI103.PV.parquet"
+    ]
+
+
+def _one_tag_with(tmp_path, column, values):
+    """Three days at 1 min of one tag, time-sorted, with one more column the ingest leaves."""
+    n = len(values)
+    path = tmp_path / "one.csv"
+    pd.DataFrame(
+        {
+            "ts": pd.date_range("2026-03-01", periods=n, freq="min", tz="UTC").strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "v": [50.0 + 0.001 * i for i in range(n)],
+            "q": ["GOOD"] * n,
+            column: values,
+        }
+    ).to_csv(path, index=False)
+    return path
+
+
+N_MINUTES = 3 * 1440
+
+
+@pytest.mark.parametrize(
+    ("column", "values"),
+    [
+        ("shift", [("A", "B")[(i // 480) % 2] for i in range(N_MINUTES)]),
+        ("batch", [f"B{i // 600:02d}" for i in range(N_MINUTES)]),
+        ("row", list(range(1, N_MINUTES + 1))),
+        ("reading", [(40.0, 50.0, 60.0)[i % 3] for i in range(N_MINUTES)]),
+    ],
+    ids=["shift alternating every 8 h", "batch id", "row id", "float column"],
+)
+def test_a_column_that_moves_at_its_boundaries_is_not_a_tag_column(tmp_path, column, values):
+    out = tsdive.ingest(
+        _one_tag_with(tmp_path, column, values),
+        out=tmp_path / "one.parquet",
+        meta=tsdive.read_meta_json(_meta_file(tmp_path)),
+        timestamp_col="ts",
+        value_col="v",
+        quality_col="q",
+    )
+    assert len(pd.read_parquet(out)) == N_MINUTES
+
+
 def test_a_repeated_timestamp_in_a_single_tag_export_still_ingests(tmp_path):
     """Two events at one instant: a row id and a batch column do not read as tag columns."""
     stamps = [
