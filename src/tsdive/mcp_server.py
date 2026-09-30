@@ -155,6 +155,11 @@ def _answer(
         return refusal_json(e)
 
 
+# Runs listed per rule when max_runs is left out. An spc answer with all
+# three rules at this cap holds about 32,000 characters on a 60 s tag.
+DEFAULT_MAX_RUNS = 40
+
+
 def _events_kept(max_events: int | None) -> int:
     """The per-sample entries a list keeps: ``max_events``, 0 when omitted."""
     kept = 0 if max_events is None else max_events
@@ -163,11 +168,32 @@ def _events_kept(max_events: int | None) -> int:
     return kept
 
 
+def _runs_kept(max_runs: int | None) -> int:
+    """The runs a rule keeps: ``max_runs``, ``DEFAULT_MAX_RUNS`` when omitted."""
+    kept = DEFAULT_MAX_RUNS if max_runs is None else max_runs
+    if kept < 0:
+        raise ValueError(f"max_runs must be 0 or more, not {kept}")
+    return kept
+
+
 def _trim(entry: dict[str, Any], key: str, kept: int) -> None:
     """Cut the list ``entry[key]`` to ``kept`` items and state how many it dropped."""
     events = entry[key]
     entry[key] = events[:kept]
     entry[f"{key}_dropped"] = len(events) - len(entry[key])
+
+
+def _trim_runs_per_rule(payload: dict[str, Any], kept: int) -> None:
+    """Keep the first ``kept`` runs of each rule and put ``runs_dropped`` on each rule entry."""
+    seen: dict[str, int] = {}
+    runs = []
+    for run in payload["runs"]:
+        seen[run["rule"]] = seen.get(run["rule"], 0) + 1
+        if seen[run["rule"]] <= kept:
+            runs.append(run)
+    payload["runs"] = runs
+    for entry in payload["rules"]:
+        entry["runs_dropped"] = max(seen.get(entry["rule"], 0) - kept, 0)
 
 
 def profile(
@@ -243,6 +269,7 @@ def screen(
     basis: str | None = None,
     stepped: bool = False,
     max_events: int | None = None,
+    max_runs: int | None = None,
 ) -> dict[str, Any]:
     """Flag samples outside a baseline built from a separate window.
 
@@ -250,7 +277,8 @@ def screen(
     baseline overlapping the screened window raises a tool error. The
     answer carries n_flagged and the runs of consecutive flagged samples.
     The flagged list keeps max_events timestamps, and flagged_dropped
-    counts the rest.
+    counts the rest. The runs list keeps the first max_runs runs, and
+    runs_dropped counts the rest.
 
     Args:
         archive: single-tag parquet archive carrying tsdive.meta.
@@ -266,8 +294,10 @@ def screen(
         stepped: stepped interpolation between samples.
         max_events: flagged timestamps to list. Omitted, 0: the runs and
             the counts only.
+        max_runs: runs to list. Omitted, 40.
     """
     kept = _events_kept(max_events)
+    runs_kept = _runs_kept(max_runs)
     argv = [
         "--baseline",
         baseline,
@@ -282,6 +312,7 @@ def screen(
     payload = _answer(json_screen, _parser_screen(), [*argv, "--", archive])
     if payload["result_kind"] == "evidence":
         _trim(payload, "flagged", kept)
+        _trim(payload, "runs", runs_kept)
     return payload
 
 
@@ -292,13 +323,15 @@ def spc(
     basis: str | None = None,
     stepped: bool = False,
     max_events: int | None = None,
+    max_runs: int | None = None,
 ) -> dict[str, Any]:
     """Chart a window against individuals limits fitted on a baseline.
 
     Reports the limits and, for each rule (BEYOND_3SIGMA, RUN_9_SAMESIDE
     and TREND_6), its hit count n and the runs of consecutive hits. The
     hits list of a rule keeps max_events entries, and hits_dropped counts
-    the rest.
+    the rest. The runs list keeps the first max_runs runs of each rule,
+    and runs_dropped on the rule's entry counts the rest.
 
     Args:
         archive: single-tag parquet archive carrying tsdive.meta.
@@ -310,8 +343,10 @@ def spc(
         stepped: stepped interpolation between samples.
         max_events: hits to list per rule. Omitted, 0: the runs and the
             counts only.
+        max_runs: runs to list per rule. Omitted, 40.
     """
     kept = _events_kept(max_events)
+    runs_kept = _runs_kept(max_runs)
     argv = [
         "--baseline",
         baseline,
@@ -324,6 +359,7 @@ def spc(
     if payload["result_kind"] == "evidence":
         for entry in payload["rules"]:
             _trim(entry, "hits", kept)
+        _trim_runs_per_rule(payload, runs_kept)
     return payload
 
 

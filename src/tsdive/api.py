@@ -708,34 +708,78 @@ def _resolve_quality(
     return pd.Series([declared] * len(frame), index=frame.index), True
 
 
+def _series_count(groups: np.ndarray, stamps: np.ndarray) -> int | None:
+    """How many series ``groups`` cuts the rows into, or None when it cuts none.
+
+    The rows form series when there are two or more groups of at least
+    two rows each, the timestamps inside each group strictly increase in
+    row order, and two groups overlap in time by more than one instant.
+    """
+    pairs = pd.DataFrame({"group": groups, "timestamp": stamps})
+    grouped = pairs.groupby("group", dropna=False, sort=False)["timestamp"]
+    sizes = grouped.size()
+    if len(sizes) < 2 or int(sizes.min()) < 2:
+        return None
+    steps = grouped.diff().dropna()
+    if bool((steps <= pd.Timedelta(0)).any()):
+        return None
+    spans = pd.DataFrame({"start": grouped.min(), "end": grouped.max()}).sort_values("start")
+    reach = spans["end"].cummax().shift(1)
+    if bool((spans["start"].iloc[1:] < reach.iloc[1:]).any()):
+        return len(sizes)
+    return None
+
+
 def _tag_column(
     frame: pd.DataFrame, timestamps: pd.Series, *, read: set[str]
 ) -> tuple[str, int] | None:
     """The first unread column that splits the rows into several series, with its count.
 
-    A column qualifies when it cuts the rows into two or more groups of at
-    least two rows each, the timestamps inside each group strictly
-    increase in row order, and two groups overlap in time by more than one
-    instant. A row id or a second measurement column makes one-row groups.
-    A batch or shift column makes groups that follow one another. Neither
-    qualifies.
+    A column qualifies when ``_series_count`` finds series in it. A row id
+    or a second measurement column makes one-row groups. A batch or shift
+    column makes groups that follow one another. Neither qualifies.
     """
     stamps = timestamps.to_numpy()
     for column in frame.columns:
         if str(column) in read:
             continue
-        pairs = pd.DataFrame({"group": frame[column].to_numpy(), "timestamp": stamps})
-        grouped = pairs.groupby("group", dropna=False, sort=False)["timestamp"]
-        sizes = grouped.size()
-        if len(sizes) < 2 or int(sizes.min()) < 2:
+        count = _series_count(frame[column].to_numpy(), stamps)
+        if count is not None:
+            return str(column), count
+    return None
+
+
+# Consecutive rows that move to another series, as a share of all pairs,
+# above which the series interleave row by row. A shift, batch or
+# campaign column moves at its boundaries only.
+INTERLEAVED_SHARE = 0.5
+
+
+def _interleaved_column(
+    frame: pd.DataFrame, timestamps: pd.Series, *, read: set[str]
+) -> tuple[str, int, float] | None:
+    """The first unread column whose series alternate row by row, with its count and share.
+
+    The column qualifies as in ``_tag_column``, and consecutive rows
+    belong to different series in more than ``INTERLEAVED_SHARE`` of the
+    pairs. That is the shape of several tags whose clocks are offset, so
+    no two rows share a timestamp. A float column is left out: its
+    repeated values would interleave the same way, and it holds
+    measurements, not tag names.
+    """
+    stamps = timestamps.to_numpy()
+    for column in frame.columns:
+        values = frame[column]
+        if str(column) in read or len(values) < 3 or pd.api.types.is_float_dtype(values):
             continue
-        steps = grouped.diff().dropna()
-        if bool((steps <= pd.Timedelta(0)).any()):
+        groups = values.to_numpy()
+        codes = pd.factorize(groups, use_na_sentinel=False)[0]
+        share = float(np.mean(codes[1:] != codes[:-1]))
+        if share <= INTERLEAVED_SHARE:
             continue
-        spans = pd.DataFrame({"start": grouped.min(), "end": grouped.max()}).sort_values("start")
-        reach = spans["end"].cummax().shift(1)
-        if bool((spans["start"].iloc[1:] < reach.iloc[1:]).any()):
-            return str(column), len(sizes)
+        count = _series_count(groups, stamps)
+        if count is not None:
+            return str(column), count, share
     return None
 
 
@@ -752,7 +796,9 @@ def _check_one_series(
     Repeated timestamps alone are accepted: a historian can record two
     events at one instant. Repeated or backwards timestamps raise
     ``SchemaError`` when an unread column splits the rows into overlapping
-    series that are each in time order (see ``_tag_column``). Otherwise a
+    series that are each in time order (see ``_tag_column``). Timestamps
+    in order raise it when those series alternate row by row, the shape
+    of tags on offset clocks (see ``_interleaved_column``). Otherwise a
     backwards step raises ``NonMonotonicIndex``, because every read of the
     archive would raise it.
 
@@ -765,6 +811,14 @@ def _check_one_series(
     def row_of(pos: int) -> int:
         return (int(rows[pos]) if rows is not None else pos) + 1
 
+    def several_tags(column: str) -> str:
+        fix = (
+            f"pass --tag-col {column} to write one archive per tag"
+            if cli_active()
+            else f"call ingest_long with tag_col={column!r} to write one archive per tag"
+        )
+        return f"the export holds several tags, so {fix}"
+
     if shared or positions:
         found = _tag_column(frame, timestamps, read=read)
         if found is not None:
@@ -774,15 +828,18 @@ def _check_one_series(
                 if shared
                 else f"the timestamps run backwards at data row {row_of(positions[0])}"
             )
-            fix = (
-                f"pass --tag-col {column} to write one archive per tag"
-                if cli_active()
-                else f"call ingest_long with tag_col={column!r} to write one archive per tag"
-            )
             raise SchemaError(
                 f"{label}: {finding}, and column {column!r} splits the rows into {count} "
-                f"overlapping series, each in time order; the export holds several tags, "
-                f"so {fix}"
+                f"overlapping series, each in time order; {several_tags(column)}"
+            )
+    else:
+        interleaved = _interleaved_column(frame, timestamps, read=read)
+        if interleaved is not None:
+            column, count, share = interleaved
+            raise SchemaError(
+                f"{label}: column {column!r} splits the rows into {count} overlapping "
+                f"series, each in time order, and {share:.0%} of consecutive rows move to "
+                f"another series; {several_tags(column)}"
             )
     if positions:
         first = positions[0]
@@ -843,9 +900,11 @@ def ingest(
     what its schema promises. A left-behind column that splits the rows
     into overlapping series, each in time order, marks an export of
     several tags. Such an export raises ``SchemaError`` when its
-    timestamps repeat or run backwards, and
+    timestamps repeat or run backwards, or when more than half of its
+    consecutive rows move to another series, as tags on offset clocks do.
     [`ingest_long`][tsdive.ingest_long] writes one archive per tag from
-    it. Timestamps that run backwards
+    it. The offset-clock rule skips a column of floats, which holds
+    measurements. Timestamps that run backwards
     otherwise raise ``NonMonotonicIndex``, because every read of the
     archive would.
 

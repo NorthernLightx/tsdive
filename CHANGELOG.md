@@ -3,6 +3,58 @@
 Releases, newest first. While the version is 0.x a minor release can
 change any interface, and the entries say which ones moved.
 
+## 0.10.0 - 2026-09-30
+
+### Added
+
+- `tsdive profile` reports the longest constant run of the window: the
+  longest stretch of GOOD samples that hold one value, its first and
+  last sample, the time between them and the sample count. The Values
+  section prints it as
+  `constant run <start> -> <end>   <duration>   n=<samples>`.
+  `--json`, `Profile.to_dict()` and the MCP `profile`
+  answer carry it as `values.constant_run` with `start`, `end`,
+  `duration_s` and `samples`, or `null` with no GOOD sample. A freeze
+  that ended before the window end reads `stall 0 s` and shows here.
+  The constant run sets no flag, because a tag archived on exception or
+  compression settings also holds one value for hours. A SYNTHETIC row
+  of `BENCHMARKS.md` plants a 400-sample freeze in 7 days at 300 s, and
+  the run `profile` reports equals it.
+- The tag table of `tsdive run`, in `ledger.txt` and `report.html`,
+  adds `constant`, the longest constant run as its duration and sample
+  count, and `errors`, the steps that filed an error row for the tag.
+  Each `tags` row of `ledger.json` carries `constant_run_s`,
+  `constant_run_samples` and `errors`.
+- The MCP `screen` and `spc` tools take `max_runs`, the runs to list per
+  rule, 40 when left out. `runs_dropped` counts the runs left out, at
+  the top of a `screen` answer and on each rule of an `spc` answer.
+
+### Changed
+
+- Breaking: `WindowStats` in `tsdive.features` takes a required
+  `constant_run` field, a `ConstantRun` or `None`. `TAG_COLUMNS` in
+  `tsdive.narrate.ledger` adds `constant` and `errors`.
+
+### Fixed
+
+- A single-tag ingest of an export whose tags sample on offset clocks,
+  such as tag A at :00, B at :20 and C at :40, raises `SchemaError`
+  naming the tag column and `--tag-col`. It wrote one archive of every
+  tag's rows before, because no timestamp repeats and none runs
+  backwards. The check takes an unread column whose series overlap in
+  time, are each in time order, and alternate in more than half of the
+  consecutive rows. A shift, batch or row id column does not qualify,
+  and neither does a column of floats. `ingest_long` runs the same
+  check on each tag's rows.
+- The MCP `screen` and `spc` answers list at most 40 runs per rule
+  when `max_runs` is left out. They listed every run before. On two
+  days at 60 s with a lone spike every fourth sample, the `spc` answer
+  holds 17,278 characters instead of 188,754, and the `screen` answer
+  9,376 instead of 142,808. On the switchback demo temperature, a 12 h
+  baseline and a two-day window, the `spc` answer holds 24,858
+  characters instead of 32,884 and lists 40 of its 74 `TREND_6` runs.
+  `tsdive screen --json` and `tsdive spc --json` keep every run.
+
 ## 0.9.0 - 2026-09-29
 
 ### Added

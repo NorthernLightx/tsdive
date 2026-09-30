@@ -89,7 +89,9 @@ without `--tz`, a date that reads day first and month first, a metadata
 key tsdive does not define, a `quality_codes` entry that names no
 severity, or a string value on a tag that is not `role: MODE` and that
 `quality_codes` does not name. A single-tag ingest raises it for an
-export of several tags, one column naming the tag of each row.
+export of several tags, one column naming the tag of each row. It also
+raises it when the tags sample on offset clocks, so no timestamp repeats
+but consecutive rows belong to different tags.
 
 ```csv file=export.csv
 timestamp,value,quality

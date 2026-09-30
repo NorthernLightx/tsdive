@@ -59,10 +59,12 @@ every finding, in step order:
 ```
 
 The `TAGS` row reads the archive's profile: coverage, the GOOD share of
-its samples, the censoring verdict, the gap count, the longest gap, the
-flatline verdict (`not run` without `flatline = true`) and the steps
-refused for that tag. A tag the `profile` step did not read shows
-`n/a`.
+its samples, the censoring verdict, the gap count and the longest gap.
+`constant` is the [constant run](../../reference/glossary.md#constant-run),
+its length and its sample count. `flatline` is the flatline verdict, or
+`not run` without `flatline = true`. `refused` and `errors` name the
+steps that filed a refusal row or an error row for the tag. A tag the
+`profile` step did not read shows `n/a`.
 
 `ledger.json` holds the same content for a script:
 
@@ -71,7 +73,7 @@ refused for that tag. A tag the `profile` step did not read shows
 | `result_kind` | `ledger` |
 | `title` | the plan's file name |
 | `tsdive_version` | the version that wrote the ledger |
-| `tags` | one object per archive: `tag`, `coverage`, `good_share`, `censored`, `gaps`, `longest_gap_s`, `flatline`, `refused`. The profile keys are `null` for a tag the `profile` step did not read |
+| `tags` | one object per archive: `tag`, `coverage`, `good_share`, `censored`, `gaps`, `longest_gap_s`, `constant_run_s`, `constant_run_samples`, `flatline`, `refused`, `errors`. The profile keys are `null` for a tag the `profile` step did not read |
 | `profiles` | one rendered profile report per archive |
 | `findings` | one object per result: `step`, `tags`, the rendered `text`, and `data`, the document the command prints under `--json` |
 | `refusals` | one object per step that raised a typed error: `step`, `tags`, `error_type`, `cause` |

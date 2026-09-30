@@ -24,9 +24,14 @@ TAG_COLUMNS = (
     ("censored", "censored", False),
     ("gaps", "gaps", True),
     ("longest", "longest_gap_s", False),
+    ("constant", "constant_run_s", False),
     ("flatline", "flatline", False),
     ("refused", "refused", False),
+    ("errors", "errors", False),
 )
+
+# Cells that list steps: ``none`` when the list is empty, on every row.
+STEP_LISTS = frozenset({"refused", "errors"})
 
 
 def row_text(row: Mapping[str, str]) -> str:
@@ -42,7 +47,7 @@ def _cell(row: Mapping[str, object], key: str) -> str:
     profile cells is ``n/a``.
     """
     value = row[key]
-    if key == "refused":
+    if key in STEP_LISTS:
         return ", ".join(str(step) for step in value) or "none"  # type: ignore[attr-defined]
     if row["gaps"] is None:
         return "n/a"
@@ -56,6 +61,8 @@ def _cell(row: Mapping[str, object], key: str) -> str:
         return f"{float(value):.3f}"  # type: ignore[arg-type]
     if key == "longest_gap_s":
         return fmt_duration(float(value))  # type: ignore[arg-type]
+    if key == "constant_run_s":
+        return f"{fmt_duration(float(value))} n={row['constant_run_samples']}"  # type: ignore[arg-type]
     return str(value)
 
 
@@ -102,8 +109,9 @@ class EvidenceLedger:
     # Any other error of one step (a rejected option, overlapping windows,
     # a file the OS cannot read), in the same four keys.
     errors: list[dict[str, str]] = field(default_factory=list)
-    # One row per archive: the profile's headline numbers and the steps
-    # refused for it. A tag the profile step did not read carries None.
+    # One row per archive: the profile's headline numbers, its longest
+    # constant run, and the steps that filed a refusal or an error row for
+    # it. A tag the profile step did not read carries None.
     tags: list[dict[str, object]] = field(default_factory=list)
     # The contract ledger.json follows, named as in every tsdive JSON document.
     result_kind: str = "ledger"

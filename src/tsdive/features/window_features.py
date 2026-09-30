@@ -5,7 +5,8 @@ says why. Features never silently drop censoring, gaps, or quality.
 
 :class:`WindowStats` sits beside the feature row for readers rather than
 models: the same numbers plus distribution tails, the sample interval the
-archive actually carries, and a MODE tag's state counts.
+archive actually carries, a MODE tag's state counts, and the longest run
+of one value.
 """
 
 from __future__ import annotations
@@ -55,16 +56,21 @@ def _good_values(window: Window) -> pd.DataFrame:
     return window.frame[window.frame["valid"]]
 
 
-def _stall_and_changes(good: pd.DataFrame) -> tuple[float | None, float | None]:
-    if len(good) < 2:
-        return None, None
-    ts = good["timestamp"].reset_index(drop=True)
+def _change_index(good: pd.DataFrame) -> np.ndarray:
+    """Positions of the GOOD rows whose value differs from the row before."""
     # Compared as stored, not as floats: a MODE tag's states ("R0" -> "R1")
     # are changes in exactly the same sense a measurement's are. Compared
     # whole-array, not row by row: an hour of 1 Hz data is 3,600 rows and
     # a .iloc walk over them costs more than every other feature together.
     arr = good["value"].to_numpy(dtype=object)
-    change_idx = np.flatnonzero(arr[1:] != arr[:-1]) + 1
+    return np.flatnonzero(arr[1:] != arr[:-1]) + 1
+
+
+def _stall_and_changes(good: pd.DataFrame) -> tuple[float | None, float | None]:
+    if len(good) < 2:
+        return None, None
+    ts = good["timestamp"].reset_index(drop=True)
+    change_idx = _change_index(good)
     span_s = (ts.iloc[-1] - ts.iloc[0]).total_seconds()
     last_change_s = (
         (ts.iloc[-1] - ts.iloc[int(change_idx[-1])]).total_seconds()
@@ -73,6 +79,50 @@ def _stall_and_changes(good: pd.DataFrame) -> tuple[float | None, float | None]:
     )
     per_hour = len(change_idx) / (span_s / 3600.0) if span_s > 0 else None
     return last_change_s, per_hour
+
+
+@dataclass(frozen=True)
+class ConstantRun:
+    """The longest stretch of consecutive GOOD samples that hold one value.
+
+    ``start`` and ``end`` are the first and last sample of the stretch, and
+    ``duration_s`` is the time between them, so a single sample has a
+    duration of 0. Only GOOD samples count: a BAD sample or a gap between
+    two equal values does not end the stretch.
+    """
+
+    start: pd.Timestamp
+    end: pd.Timestamp
+    duration_s: float
+    samples: int
+
+
+def _longest_constant_run(good: pd.DataFrame) -> ConstantRun | None:
+    """The longest run of equal GOOD values, or None with no GOOD sample.
+
+    Longest by duration. A tie goes to the run with more samples, then to
+    the earlier one.
+    """
+    if len(good) == 0:
+        return None
+    ts = good["timestamp"].reset_index(drop=True)
+    bounds = np.concatenate(([0], _change_index(good), [len(good)]))
+    first = bounds[:-1]
+    last = bounds[1:] - 1
+    samples = last - first + 1
+    duration_s = (
+        (ts.iloc[last].reset_index(drop=True) - ts.iloc[first].reset_index(drop=True))
+        .dt.total_seconds()
+        .to_numpy(dtype=float)
+    )
+    # lexsort sorts by its last key first.
+    i = int(np.lexsort((first, -samples, -duration_s))[0])
+    return ConstantRun(
+        start=pd.Timestamp(ts.iloc[int(first[i])]),
+        end=pd.Timestamp(ts.iloc[int(last[i])]),
+        duration_s=float(duration_s[i]),
+        samples=int(samples[i]),
+    )
 
 
 def extract(window: Window, *, window_end: pd.Timestamp | None = None) -> WindowFeatures:
@@ -178,6 +228,9 @@ class WindowStats:
     declared_rate_s: float | None
     interval_differs_from_declared: bool
     state_valued: bool
+    # A measurement with no threshold: a healthy tag archived on exception
+    # or compression settings also holds one value for hours.
+    constant_run: ConstantRun | None
 
     @property
     def distinct_count(self) -> int | None:
@@ -250,4 +303,5 @@ def compute_stats(window: Window, *, window_end: pd.Timestamp | None = None) -> 
         declared_rate_s=declared,
         interval_differs_from_declared=differs,
         state_valued=state_valued,
+        constant_run=_longest_constant_run(good),
     )

@@ -243,10 +243,14 @@ def _row_lines(marker: str, row: Mapping[str, str]) -> list[str]:
     ]
 
 
-def _tag_row(tag: str, doc: Mapping[str, Any] | None, refused: list[str]) -> dict[str, object]:
+def _tag_row(
+    tag: str, doc: Mapping[str, Any] | None, refused: list[str], errors: list[str]
+) -> dict[str, object]:
     """One row of the per-tag table, read off ``Profile.to_dict()``.
 
     A tag without a profile document carries None in every profile field.
+    ``refused`` and ``errors`` name the steps that filed a refusal row and
+    an error row for the tag.
     """
     if doc is None:
         return {
@@ -256,11 +260,15 @@ def _tag_row(tag: str, doc: Mapping[str, Any] | None, refused: list[str]) -> dic
             "censored": None,
             "gaps": None,
             "longest_gap_s": None,
+            "constant_run_s": None,
+            "constant_run_samples": None,
             "flatline": None,
             "refused": refused,
+            "errors": errors,
         }
     values = doc["values"]
     coverage = doc["coverage"]
+    run = values["constant_run"]
     return {
         "tag": tag,
         "coverage": coverage["coverage"],
@@ -270,8 +278,11 @@ def _tag_row(tag: str, doc: Mapping[str, Any] | None, refused: list[str]) -> dic
         "censored": doc["range"]["censored"],
         "gaps": coverage["n_gaps"],
         "longest_gap_s": coverage["longest_gap_s"],
+        "constant_run_s": None if run is None else run["duration_s"],
+        "constant_run_samples": None if run is None else run["samples"],
         "flatline": None if doc["flatline"] is None else doc["flatline"]["verdict"],
         "refused": refused,
+        "errors": errors,
     }
 
 
@@ -344,6 +355,7 @@ def execute(plan: Plan) -> Walk:
     walk = Walk()
     documents: dict[str, dict[str, Any]] = {}
     refused: dict[str, list[str]] = {path: [] for path in plan.archives}
+    errored: dict[str, list[str]] = {path: [] for path in plan.archives}
     windows: dict[str, Window] = {}
     screens: dict[str, ScreenAnalysis] = {}
     spcs: dict[str, SpcAnalysis] = {}
@@ -369,6 +381,8 @@ def execute(plan: Plan) -> Walk:
                 continue
             except (ValueError, OSError) as e:
                 walk.errors.append({"step": step, "tags": tags, **error_fields(e)})
+                for path in paths:
+                    errored[path].append(step)
                 continue
             if isinstance(result, Profile):
                 windows[paths[0]] = result.window
@@ -384,7 +398,8 @@ def execute(plan: Plan) -> Walk:
                     {"step": step, "tags": tags, "text": "\n".join(lines), "data": data}
                 )
     walk.tags = [
-        _tag_row(labels[path], documents.get(path), refused[path]) for path in plan.archives
+        _tag_row(labels[path], documents.get(path), refused[path], errored[path])
+        for path in plan.archives
     ]
     walk.figures = _figures(plan.archives, windows, screens, spcs)
     return walk

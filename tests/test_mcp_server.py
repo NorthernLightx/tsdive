@@ -270,7 +270,7 @@ def test_a_two_day_spc_answer_is_bounded_and_its_counts_exact(server: Any, ti201
     from tsdive.ui.jsonout import to_jsonable
 
     size, payload = _answer_size(server, "spc", {"archive": ti201, **TWO_DAYS})
-    assert size < 40_000
+    assert size < 32_828  # the same answer before runs were capped
     full = json_spc(
         _parser_spc().parse_args(
             ["--baseline", TWO_DAYS["baseline"], "--window", TWO_DAYS["window"], ti201]
@@ -281,7 +281,13 @@ def test_a_two_day_spc_answer_is_bounded_and_its_counts_exact(server: Any, ti201
         assert trimmed["n"] == entry["n"] == len(entry["hits"])
         assert trimmed["hits"] == []
         assert trimmed["hits_dropped"] == entry["n"]
-    assert payload["runs"] == to_jsonable(full["runs"])
+    full_runs = to_jsonable(full["runs"])
+    kept = {
+        rule: [r for r in full_runs if r["rule"] == rule][: mcp_server.DEFAULT_MAX_RUNS]
+        for rule in ("BEYOND_3SIGMA", "RUN_9_SAMESIDE", "TREND_6")
+    }
+    assert payload["runs"] == [r for runs in kept.values() for r in runs]
+    assert [r["runs_dropped"] for r in payload["rules"]] == [0, 0, 34]
     beyond = [r for r in payload["runs"] if r["rule"] == "BEYOND_3SIGMA"]
     assert (len(beyond), sum(r["n"] for r in beyond)) == (34, 849)
 
@@ -331,3 +337,94 @@ def test_build_server_without_the_extra_names_the_install(
     wheel = f"{releases}/v{version}/tsdive-{version}-py3-none-any.whl"
     assert f'pip install "tsdive[mcp] @ {wheel}"' in message
     assert "clone" not in message
+
+
+@pytest.fixture(scope="module")
+def spiky(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """A 12 h baseline of noise, then two days with a lone spike every fourth sample."""
+    import numpy as np
+    import pandas as pd
+
+    import tsdive
+
+    rng = np.random.default_rng(7)
+    n_base, n_window = 720, 2880
+    values = 50.0 + rng.normal(0.0, 1.0, n_base + n_window)
+    values[n_base::4] += 20.0
+    frame = pd.DataFrame(
+        {
+            "timestamp": pd.date_range(
+                "2024-06-01", periods=n_base + n_window, freq="60s", tz="UTC"
+            ),
+            "value": values,
+            "quality": "GOOD",
+        }
+    )
+    meta = tsdive.TagMeta(
+        identity=tsdive.TagIdentity("demo", "TI900.PV"), name="spiky", sample_rate_s=60.0
+    )
+    return str(tsdive.write_tag(tmp_path_factory.mktemp("spiky") / "ti900.parquet", frame, meta))
+
+
+SPIKY = {
+    "baseline": "2024-06-01T00:00:00Z/2024-06-01T11:59:00Z",
+    "window": "2024-06-01T12:00:00Z/2024-06-03T11:59:00Z",
+}
+
+
+def _full(tool: str, archive: str) -> dict[str, Any]:
+    """The ``--json`` document of ``screen`` or ``spc`` over SPIKY, every run kept."""
+    from tsdive import cli
+    from tsdive.ui.jsonout import to_jsonable
+
+    argv = ["--baseline", SPIKY["baseline"], "--window", SPIKY["window"], archive]
+    parser = getattr(cli, f"_parser_{tool}")()
+    return dict(to_jsonable(getattr(cli, f"json_{tool}")(parser.parse_args(argv))))
+
+
+def test_isolated_flags_keep_max_runs_runs_and_exact_counts(spiky: str) -> None:
+    full_screen = _full("screen", spiky)
+    # 720 spikes, each a run of its own, and the noise adds a few flags.
+    total = len(full_screen["runs"])
+    assert total >= 720
+    screened = mcp_server.screen(archive=spiky, **SPIKY)
+    assert screened["runs"] == full_screen["runs"][: mcp_server.DEFAULT_MAX_RUNS]
+    assert screened["runs_dropped"] == total - mcp_server.DEFAULT_MAX_RUNS
+    assert screened["n_flagged"] == full_screen["n_flagged"]
+
+    full_spc = _full("spc", spiky)
+    charted = mcp_server.spc(archive=spiky, **SPIKY, max_runs=5)
+    for entry, full_entry in zip(charted["rules"], full_spc["rules"], strict=True):
+        runs = [r for r in full_spc["runs"] if r["rule"] == entry["rule"]]
+        kept = [r for r in charted["runs"] if r["rule"] == entry["rule"]]
+        assert kept == runs[:5]
+        assert entry["runs_dropped"] == len(runs) - len(kept)
+        assert entry["n"] == full_entry["n"] == sum(r["n"] for r in runs)
+    assert charted["rules"][0]["runs_dropped"] >= 715
+    assert charted["n_hits"] == full_spc["n_hits"]
+
+
+def test_max_runs_zero_lists_no_run_and_a_negative_one_raises(spiky: str) -> None:
+    screened = mcp_server.screen(archive=spiky, **SPIKY, max_runs=0)
+    assert screened["runs"] == []
+    assert screened["runs_dropped"] == len(_full("screen", spiky)["runs"])
+    with pytest.raises(ValueError, match="max_runs must be 0 or more, not -1"):
+        mcp_server.spc(archive=spiky, **SPIKY, max_runs=-1)
+
+
+def test_a_spc_answer_on_isolated_flags_stays_under_the_two_day_size(
+    server: Any, spiky: str
+) -> None:
+    size, payload = _answer_size(server, "spc", {"archive": spiky, **SPIKY})
+    unbounded, _ = _answer_size(server, "spc", {"archive": spiky, **SPIKY, "max_runs": 10_000})
+    assert size < 32_828 < unbounded
+    full = _full("spc", spiky)
+    beyond = [r for r in full["runs"] if r["rule"] == "BEYOND_3SIGMA"]
+    kept = [r for r in payload["runs"] if r["rule"] == "BEYOND_3SIGMA"]
+    assert kept == beyond[: mcp_server.DEFAULT_MAX_RUNS]
+    assert payload["rules"][0]["runs_dropped"] == len(beyond) - mcp_server.DEFAULT_MAX_RUNS
+
+
+def test_the_documented_max_runs_default_is_the_one_applied() -> None:
+    for fn in (mcp_server.screen, mcp_server.spc):
+        assert f"Omitted, {mcp_server.DEFAULT_MAX_RUNS}." in (fn.__doc__ or "")

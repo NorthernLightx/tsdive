@@ -54,6 +54,12 @@ DAY2 = (
     pd.Timestamp("2025-01-03 00:00:00+00:00"),
 )
 
+# The planted freeze of the constant-run row: 7 days at 300 s, one value
+# held for 400 samples from sample 900.
+FREEZE_WINDOW_SAMPLES = 7 * 288
+FREEZE_AT = 900
+FREEZE_SAMPLES = 400
+
 # No-change pairs scored for the coverage of compare's pair interval.
 PAIR_COVERAGE_REPLICATES = 400
 
@@ -161,6 +167,49 @@ def _switchback_rows() -> list[tuple[str, ...]]:
     ]
 
 
+def _constant_run_row(tmp: Path) -> tuple[str, ...]:
+    """The longest constant run profile reports, against a freeze planted mid-window.
+
+    A seeded random walk over 7 days at 300 s holds one value for
+    ``FREEZE_SAMPLES`` samples from sample ``FREEZE_AT``. The row states the
+    run profile reports and whether its start, end and sample count equal
+    the planted run's.
+    """
+    import tsdive
+
+    rng = np.random.default_rng(42)
+    stamps = pd.date_range("2025-01-01", periods=FREEZE_WINDOW_SAMPLES, freq="300s", tz="UTC")
+    values = np.round(50.0 + np.cumsum(rng.normal(0.0, 0.2, FREEZE_WINDOW_SAMPLES)), 3)
+    values[FREEZE_AT : FREEZE_AT + FREEZE_SAMPLES] = values[FREEZE_AT]
+    frame = pd.DataFrame({"timestamp": stamps, "value": values, "quality": "GOOD"})
+    meta = tsdive.TagMeta(
+        identity=tsdive.TagIdentity("bench", "FREEZE.PV"), name="freeze", sample_rate_s=300.0
+    )
+    path = tsdive.write_tag(tmp / "freeze.parquet", frame, meta)
+    p = tsdive.profile(path)
+    run = p.stats.constant_run
+    planted = (
+        stamps[FREEZE_AT],
+        stamps[FREEZE_AT + FREEZE_SAMPLES - 1],
+        FREEZE_SAMPLES,
+    )
+    same = run is not None and (run.start, run.end, run.samples) == planted
+    value = (
+        "none"
+        if run is None
+        else f"{run.samples} samples over {run.duration_s / 3600:.2f} h; "
+        f"{'equals' if same else 'differs from'} the planted run"
+    )
+    return (
+        "1",
+        f"profile longest constant run, {FREEZE_SAMPLES}-sample freeze planted mid-window",
+        value,
+        "random walk seed=42, 7 d @ 300 s",
+        f"a measurement with no flag; stall at the window end reads "
+        f"{p.stats.features.stall_s:.0f} s",
+    )
+
+
 def build_rows(tmp: Path) -> list[tuple[str, ...]]:
     from sklearn.metrics import roc_auc_score
 
@@ -188,7 +237,7 @@ def build_rows(tmp: Path) -> list[tuple[str, ...]]:
         (t for t in store.list_tags() if t.point_id.endswith("PV")),
         key=lambda t: (t.source_id, t.point_id),
     )
-    rows: list[tuple[str, ...]] = []
+    rows: list[tuple[str, ...]] = [_constant_run_row(tmp)]
 
     # ---- stage 2: features replay-stable ----
     f1 = [_window_features(store, i)["train"] for i in pv_ids]

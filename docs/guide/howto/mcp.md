@@ -74,7 +74,9 @@ against 20:00 to 01:00", and the assistant calls:
 
 `screen` and `spc` answer with counts and runs of consecutive flagged
 samples, so a two-day window stays a short answer. `max_events` lists
-that many flagged timestamps or rule hits as well.
+that many flagged timestamps or rule hits as well. `max_runs` sets the
+runs listed per rule, 40 when left out, and `runs_dropped` counts the
+rest.
 
 A question the data cannot answer returns a refusal, not a tool error,
 so the assistant can explain it instead of retrying:
