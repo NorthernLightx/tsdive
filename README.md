@@ -22,8 +22,8 @@ pip install "git+https://github.com/NorthernLightx/tsdive.git"
 tsdive demo data
 ```
 
-Guides and full reference: https://northernlightx.github.io/tsdive/.
-Built wheels are on the
+Guides and reference: https://northernlightx.github.io/tsdive/.
+Wheels are on the
 [releases page](https://github.com/NorthernLightx/tsdive/releases). Add
 `[ml]` to the install for the IsolationForest detector (scikit-learn) or
 `[mcp]` for the MCP server. The package is not on PyPI.
@@ -69,14 +69,14 @@ Range
 
 Values  GOOD n=561
   min 60.86   p05 61.20   median 62.32   p95 100.0   max 100.0
-  mean 63.95 (time-weighted)   std 8.399   mad 0.4017
+  constant run 2024-03-31 02:01:00Z -> 02:29:00Z   28 min   n=29
 
 Flatline
   NOT ASSESSED (window censored; saturated != frozen)
 ```
 
-Omit `--window` to profile the whole archive. The transmitter sat at
-full scale for half an hour.
+Omit `--window` to profile the whole archive. The constant run is the
+half hour at full scale.
 
 ### segment
 

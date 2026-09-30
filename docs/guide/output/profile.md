@@ -89,7 +89,16 @@ Statistics over the GOOD samples only, `n=561` here.
 - `distinct 533`: how many different values the GOOD samples hold. A
   handful on a measurement points at heavy rounding or a frozen value.
 - `stall 0 s`: time since the value last changed, at the end of the
-  window. Hours on a measurement point at a frozen sensor.
+  window. Hours on a measurement point at a frozen sensor. A value that
+  froze and moved again before the window end has a stall of 0 s.
+- `constant run 2024-03-31 02:01:00Z -> 02:29:00Z   28 min   n=29`: the
+  [constant run](../../reference/glossary.md#constant-run), the longest
+  stretch of GOOD samples holding one value. The line gives its first and
+  last sample, the time between them and the sample count. Here it is the
+  half hour at full scale. A freeze that ended before the window end shows
+  here and not in `stall`. The line carries no verdict, because a tag
+  archived on exception or compression settings also holds one value for
+  hours.
 - `changes/h 53.20`: value changes per hour. A 60 s tag that changes
   every sample makes about 60.
 - `interval 60 s (p05 60 s, p95 60 s)   declared 60 s`: the median

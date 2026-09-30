@@ -19,7 +19,7 @@ from collections.abc import Iterable
 import pandas as pd
 
 from tsdive.detectors.flatline import FlatlineVerdict
-from tsdive.features.window_features import MAX_STATES_LISTED, WindowStats
+from tsdive.features.window_features import MAX_STATES_LISTED, ConstantRun, WindowStats
 from tsdive.store.gaps import DATA_LOSS_CLASSES, GapFinding
 from tsdive.store.quality import Severity
 from tsdive.store.tagstore import Window
@@ -181,6 +181,16 @@ def _flatline_token(verdict: FlatlineVerdict) -> str:
     return "SUSPECTED" if verdict.fired else "none"
 
 
+def _constant_run_lines(run: ConstantRun) -> list[str]:
+    """``constant run <span>   <duration>   n=<samples>``, the span on its own line when long."""
+    span = fmt_span(run.start, run.end)
+    size = f"{fmt_duration(run.duration_s)}{SEP}n={run.samples}"
+    line = f"constant run {span}{SEP}{size}"
+    if fits(f"  {line}"):
+        return [line]
+    return [f"constant run {size}", f"  {span}"]
+
+
 def render_stats(window: Window, stats: WindowStats) -> list[str]:
     """The Values section: distribution, movement, and the clock."""
     f = stats.features
@@ -222,6 +232,8 @@ def render_stats(window: Window, stats: WindowStats) -> list[str]:
                 )
             )
         )
+    if stats.constant_run is not None:
+        body.extend(_constant_run_lines(stats.constant_run))
     declared = (
         "none" if stats.declared_rate_s is None else fmt_seconds(stats.declared_rate_s)
     )
@@ -256,6 +268,17 @@ def _flatline_json(verdict: FlatlineVerdict) -> dict[str, object]:
         "saturated_not_frozen": verdict.saturated_not_frozen,
         "not_assessed": verdict.not_assessed,
         "signals": list(verdict.signals),
+    }
+
+
+def _constant_run_json(run: ConstantRun | None) -> dict[str, object] | None:
+    if run is None:
+        return None
+    return {
+        "start": run.start,
+        "end": run.end,
+        "duration_s": run.duration_s,
+        "samples": run.samples,
     }
 
 
@@ -359,6 +382,7 @@ def profile_json(
             "distinct": stats.distinct_count,
             "stall_s": f.stall_s,
             "changes_per_hour": f.changes_per_hour,
+            "constant_run": _constant_run_json(stats.constant_run),
             "interval_median_s": stats.interval_median_s,
             "interval_p05_s": stats.interval_p05_s,
             "interval_p95_s": stats.interval_p95_s,

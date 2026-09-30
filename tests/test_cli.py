@@ -393,6 +393,7 @@ def test_profile_prints_descriptive_statistics(tmp_path, capsys):
         "  min 50.00   p05 51.00   median 60.00   p95 69.00   max 70.00",
         "  mean 59.50 (time-weighted)   std 6.205   mad 5.000",
         "  distinct 21   stall 0 s   changes/h 60.00",
+        "  constant run 2024-03-01 00:00:00Z -> 00:00:00Z   0 s   n=1",
         "  interval 60 s (p05 60 s, p95 60 s)   declared 60 s",
     ]
 
@@ -411,6 +412,7 @@ def test_profile_counts_states_for_a_mode_tag(tmp_path, capsys):
         "Values  states  GOOD n=13",
         "  R1 7   R0 6",
         "  distinct 2   stall 360 s   changes/h 5.000",
+        "  constant run 2024-03-01 00:06:00Z -> 00:12:00Z   6 min   n=7",
         "  interval 60 s (p05 60 s, p95 60 s)   declared 60 s",
     ]
 
@@ -444,6 +446,7 @@ def test_profile_statistics_over_a_single_sample(tmp_path, capsys):
         "  min 62.50   p05 62.50   median 62.50   p95 62.50   max 62.50",
         "  mean refused: InsufficientQuality   std n/a   mad n/a",
         "  distinct 1   stall n/a   changes/h n/a",
+        "  constant run 2024-03-01 00:00:00Z -> 00:00:00Z   0 s   n=1",
         "  interval n/a (p05 n/a, p95 n/a)   declared 60 s",
     ]
 

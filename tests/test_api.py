@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -65,6 +66,117 @@ def test_rendered_profile_equals_cli_output(tmp_path, capsys):
     cli_out = capsys.readouterr().out
     assert rc == 0
     assert tsdive.profile(path, WINDOW).render() + "\n" == cli_out
+
+
+def _series_archive(tmp_path, values, *, qualities=None, stamps=None, name="RUN.PV"):
+    base = pd.Timestamp("2026-01-01 00:00:00+00:00")
+    if stamps is None:
+        stamps = [base + pd.Timedelta(300 * i, unit="s") for i in range(len(values))]
+    df = pd.DataFrame(
+        {
+            "timestamp": stamps,
+            "value": values,
+            "quality": qualities or ["GOOD"] * len(values),
+        }
+    )
+    meta = make_meta(point_id=name, sample_rate_s=300.0)
+    return write_archive(tmp_path / "plant1" / f"{name}.parquet", df, meta)
+
+
+def test_profile_reports_a_freeze_that_ended_before_the_window_did(tmp_path):
+    rng = np.random.default_rng(42)
+    n = 7 * 288
+    values = np.round(50.0 + np.cumsum(rng.normal(0.0, 0.2, n)), 3)
+    values[900:1300] = values[900]
+    path = _series_archive(tmp_path, values.tolist())
+    p = tsdive.profile(path)
+    run = p.stats.constant_run
+    assert run is not None
+    base = pd.Timestamp("2026-01-01 00:00:00+00:00")
+    assert (run.start, run.end) == (
+        base + pd.Timedelta(900 * 300, unit="s"),
+        base + pd.Timedelta(1299 * 300, unit="s"),
+    )
+    assert (run.samples, run.duration_s) == (400, 399 * 300.0)
+    # The freeze ended long before the window did, so the stall misses it.
+    assert p.stats.features.stall_s == 0.0
+    assert p.to_dict()["values"]["constant_run"] == {
+        "start": "2026-01-04T03:00:00+00:00",
+        "end": "2026-01-05T12:15:00+00:00",
+        "duration_s": 119700.0,
+        "samples": 400,
+    }
+    assert (
+        "  constant run 2026-01-04 03:00:00Z -> 2026-01-05 12:15:00Z   1995 min   n=400"
+        in p.render().splitlines()
+    )
+
+
+def test_constant_run_of_a_stepped_tag_is_its_longest_step(tmp_path):
+    path = _series_archive(tmp_path, [10.0] * 3 + [20.0] * 5 + [30.0] * 2)
+    run = tsdive.profile(path, stepped=True).stats.constant_run
+    assert run is not None
+    assert (run.samples, run.duration_s) == (5, 1200.0)
+    assert run.start == pd.Timestamp("2026-01-01 00:15:00+00:00")
+
+
+def test_constant_run_is_longest_in_time_then_in_samples_then_first(tmp_path):
+    base = pd.Timestamp("2026-01-01 00:00:00+00:00")
+    offsets_s = [0, 60, 120, 180, 240, 300, 1500, 1560, 1620]
+    values = [1.0] * 5 + [2.0] * 2 + [3.0, 4.0]
+    stamps = [base + pd.Timedelta(s, unit="s") for s in offsets_s]
+    run = tsdive.profile(_series_archive(tmp_path, values, stamps=stamps)).stats.constant_run
+    # Two samples 20 min apart outlast five samples over 4 min.
+    assert run is not None
+    assert (run.samples, run.duration_s) == (2, 1200.0)
+
+    tied = _series_archive(tmp_path, [1.0, 1.0, 2.0, 3.0, 3.0], name="TIED.PV")
+    run = tsdive.profile(tied).stats.constant_run
+    assert run is not None
+    assert (run.start, run.samples) == (base, 2)
+
+
+def test_a_bad_sample_inside_a_constant_run_does_not_end_it(tmp_path):
+    path = _series_archive(
+        tmp_path,
+        [1.0, 5.0, 5.0, 9.0, 5.0, 5.0, 2.0],
+        qualities=["GOOD", "GOOD", "GOOD", "BAD", "GOOD", "GOOD", "GOOD"],
+    )
+    run = tsdive.profile(path).stats.constant_run
+    assert run is not None
+    assert (run.samples, run.duration_s) == (4, 1200.0)
+
+
+def test_constant_run_with_no_good_sample_is_null(tmp_path):
+    path = _series_archive(tmp_path, [5.0] * 4, qualities=["BAD"] * 4)
+    p = tsdive.profile(path)
+    assert p.stats.constant_run is None
+    assert p.to_dict()["values"]["constant_run"] is None
+    assert not any("constant run" in line for line in p.render().splitlines())
+
+
+def test_constant_run_of_a_single_good_sample_lasts_zero_seconds(tmp_path):
+    path = _series_archive(tmp_path, [5.0, 6.0, 7.0], qualities=["BAD", "GOOD", "BAD"])
+    run = tsdive.profile(path).stats.constant_run
+    assert run is not None
+    assert (run.start, run.end) == (
+        pd.Timestamp("2026-01-01 00:05:00+00:00"),
+        pd.Timestamp("2026-01-01 00:05:00+00:00"),
+    )
+    assert (run.samples, run.duration_s) == (1, 0.0)
+
+
+def test_a_long_constant_run_line_puts_its_span_on_a_line_of_its_own(tmp_path):
+    base = pd.Timestamp("2026-01-01 00:00:00.125+00:00")
+    stamps = [base, base + pd.Timedelta(days=6, seconds=1, milliseconds=300)]
+    path = _series_archive(tmp_path, [4.0, 4.0], stamps=stamps)
+    lines = tsdive.profile(path).render().splitlines()
+    at = next(i for i, line in enumerate(lines) if line.startswith("  constant run"))
+    assert lines[at : at + 2] == [
+        "  constant run 518401.3 s   n=2",
+        "    2026-01-01 00:00:00.125Z -> 2026-01-07 00:00:01.425Z",
+    ]
+    assert all(len(line) < 80 for line in lines[at : at + 2])
 
 
 def test_profile_accepts_a_single_tz_string(tmp_path):

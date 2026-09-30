@@ -76,6 +76,15 @@ A score that reads only a window's position in its record and no sensor
 value. The evaluation protocol publishes it beside every detector, so a
 detector's result can be read against what time alone gives.
 
+## Constant run {#constant-run}
+
+`constant run` in the profile: the longest stretch of consecutive GOOD
+samples that hold one value, from its first sample to its last. A BAD
+sample or a gap between two equal values does not end it. 28 min on the
+demo flow: 29 samples sat at 100 m3/h. tsdive sets no threshold on it,
+because a healthy tag archived on exception or compression settings also
+holds one value for hours.
+
 ## Contributors {#contributors}
 
 The tags that carry the most of a T2 or SPE breach in `mspc` and
@@ -364,7 +373,8 @@ period's. x6.0 for the demo temperature, which got six times noisier.
 
 `stall` in the profile: the time from the last change of the GOOD value
 to the last GOOD sample of the window. A long stall on a measurement suggests a
-frozen value.
+frozen value. A value that froze and moved again before the window end
+has a stall of 0 s, and the [constant run](#constant-run) still shows it.
 
 ## Stepped {#stepped}
 
