@@ -96,7 +96,8 @@ def test_plan_runs_every_step_over_every_archive(tmp_path, capsys):
     assert text[: len(printed)] == printed
     assert text[len(printed) : len(printed) + 2] == ["", "TAGS"]
     assert text[len(printed) + 2].split() == [
-        "tag", "coverage", "GOOD", "censored", "gaps", "longest", "flatline", "refused"
+        "tag", "coverage", "GOOD", "censored", "gaps", "longest", "constant", "flatline",
+        "refused", "errors",
     ]
     assert [ln for ln in text if ln.startswith("PROFILE  ")] == [
         "PROFILE  plant1:FIC101.PV",
@@ -609,8 +610,11 @@ def test_the_tag_rows_read_the_profile_document(tmp_path):
         "censored": doc["range"]["censored"],
         "gaps": doc["coverage"]["n_gaps"],
         "longest_gap_s": doc["coverage"]["longest_gap_s"],
+        "constant_run_s": doc["values"]["constant_run"]["duration_s"],
+        "constant_run_samples": doc["values"]["constant_run"]["samples"],
         "flatline": doc["flatline"]["verdict"],
         "refused": [],
+        "errors": [],
     }
     html_text = (out / "report.html").read_text(encoding="utf-8")
     assert html_text.index("<h2>Tags</h2>") < html_text.index("<h2>Plots</h2>")
@@ -624,6 +628,36 @@ def test_a_tag_without_a_profile_reads_n_a(tmp_path):
     assert cmd_run([str(_plan(tmp_path, body)), "-o", str(out)]) == 0
     row = _ledger(out)["tags"][0]
     assert row["gaps"] is None and row["coverage"] is None and row["refused"] == []
+    assert row["constant_run_s"] is None and row["constant_run_samples"] is None
     text = (out / "ledger.txt").read_text(encoding="utf-8").splitlines()
     at = text.index("TAGS")
-    assert text[at + 2].split() == ["plant1:FIC101.PV", *["n/a"] * 6, "none"]
+    assert text[at + 2].split() == ["plant1:FIC101.PV", *["n/a"] * 7, "none", "none"]
+
+
+def test_a_step_that_errors_is_named_under_errors_not_refused(tmp_path):
+    _two_archives(tmp_path)
+    body = ONE_ARCHIVE_MSPC.replace('"mspc"', '"screen", "mspc"') + "[options.screen]\nk = -1\n"
+    out = tmp_path / "out"
+    assert cmd_run([str(_plan(tmp_path, body)), "-o", str(out)]) == 0
+    (row,) = _ledger(out)["tags"]
+    assert (row["refused"], row["errors"]) == (["mspc"], ["screen"])
+    text = (out / "ledger.txt").read_text(encoding="utf-8").splitlines()
+    at = text.index("TAGS")
+    assert text[at + 2].split()[-2:] == ["mspc", "screen"]
+
+
+def test_the_tag_table_carries_the_longest_constant_run(tmp_path):
+    values = [50.0 + (i % 5) for i in range(121)]
+    values[70:81] = [58.0] * 11
+    _archive(tmp_path, "FIC101.PV", values)
+    body = 'archives = ["plant1/*.parquet"]\nsteps = ["profile"]\n'
+    out = tmp_path / "out"
+    assert cmd_run([str(_plan(tmp_path, body)), "-o", str(out)]) == 0
+    (row,) = _ledger(out)["tags"]
+    assert (row["constant_run_s"], row["constant_run_samples"]) == (600.0, 11)
+    text = (out / "ledger.txt").read_text(encoding="utf-8").splitlines()
+    header, cells = text[text.index("TAGS") + 1 : text.index("TAGS") + 3]
+    at = header.index("constant")
+    assert cells[at : at + len("10 min n=11")] == "10 min n=11"
+    html_text = (out / "report.html").read_text(encoding="utf-8")
+    assert "<td>10 min n=11</td>" in html_text
